@@ -744,6 +744,47 @@ async function topupText(
 const NOTICE_CLAIM_MS = 10 * 60_000;
 
 /** Sends up to `limit` pending notices. One bad notice never stops the rest. */
+/**
+ * Batch 58: why a queued client billing notice is no longer owed — its
+ * invoice is cancelled by credit notes ("invoice_cancelled"), or its
+ * workspace is internal ("internal_workspace") — else null. A failed read
+ * answers null: the notice goes as it would have before.
+ */
+export async function noticeNoLongerOwed(
+  supabase: SupabaseClient,
+  row: Record<string, unknown>,
+): Promise<string | null> {
+  if (row["audience"] !== "client") return null;
+  const kind = String(row["kind"] ?? "");
+  const orgId = (row["organization_id"] as string | null) ?? null;
+  try {
+    const { INTERNAL_SKIPPED_NOTICE_KINDS, isInternalWorkspace } = await import(
+      "@/lib/internal-workspace.server"
+    );
+    if (orgId && INTERNAL_SKIPPED_NOTICE_KINDS.has(kind) && (await isInternalWorkspace(supabase, orgId))) {
+      return "internal_workspace";
+    }
+    const invoiceId = (row["payload"] as Record<string, unknown> | null)?.["invoice_id"];
+    if ((kind === "invoice_issued" || kind === "invoice_overdue") && invoiceId) {
+      const { data: invoice, error } = await supabase
+        .from("invoices")
+        .select("id, status, total")
+        .eq("id", String(invoiceId))
+        .maybeSingle();
+      if (error || !invoice) return null;
+      const { loadCreditCover } = await import("@/lib/credit-notes.server");
+      const { cancellingNotes } = await import("@/lib/invoice-cancel");
+      const cover = await loadCreditCover(supabase, [String(invoiceId)], { strict: true });
+      if (cancellingNotes(invoice as Record<string, unknown>, cover.get(String(invoiceId)))) {
+        return "invoice_cancelled";
+      }
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 export async function drainBillingNotifications(
   supabase: SupabaseClient,
   limit = 50,
@@ -818,6 +859,14 @@ export async function drainBillingNotifications(
       }
 
       const kind = String(row["kind"]);
+      // Batch 58: a notice queued before its invoice was cancelled by credit
+      // notes, or before its workspace was marked internal, is never sent.
+      const settledWhy = await noticeNoLongerOwed(supabase, row);
+      if (settledWhy) {
+        await mark(row, "skipped", settledWhy);
+        counts.skipped += 1;
+        continue;
+      }
       if (kind === "invoice_issued" && (row["payload"] as Record<string, unknown> | null)?.["invoice_id"]) {
         // The invoice as it stands now: already on the buyer's WhatsApp (a
         // super admin's resend went first) → never a second copy; otherwise

@@ -62,8 +62,27 @@ export async function runPlanBilling(supabase: SupabaseClient): Promise<Counts> 
     .in("plan_status", ["trial", "active", "past_due", "paused"])
     .limit(1000);
 
-  for (const row of (orgs ?? []) as Record<string, unknown>[]) {
+  // Batch 58: an internal workspace is never invoiced, even if a plan change
+  // stamped billing_enabled_at again. Can't tell → nobody is invoiced today.
+  const orgRows = (orgs ?? []) as Record<string, unknown>[];
+  let internal: Set<string>;
+  try {
+    const { internalWorkspaceIds } = await import("@/lib/internal-workspace.server");
+    internal = await internalWorkspaceIds(
+      supabase,
+      orgRows.map((r) => String(r["id"])),
+    );
+  } catch {
+    counts.skipped += orgRows.length;
+    return counts;
+  }
+
+  for (const row of orgRows) {
     const organizationId = String(row["id"]);
+    if (internal.has(organizationId)) {
+      counts.skipped += 1;
+      continue;
+    }
 
     // No trial end date means the trial has no end — never treat it as expired.
     // The three-days-out heads-up is sweepTrials' (once, deduped); it was

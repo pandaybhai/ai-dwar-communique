@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { usePermissions } from "@/hooks/use-permissions";
 import { money } from "@/lib/billing";
 import { callApi } from "@/lib/whatsapp-client";
+import { cancelledLabel } from "@/lib/invoice-cancel";
 import {
   openCashfreeSubscriptionCheckout,
   type CashfreeSubscriptionCheckout,
@@ -29,6 +30,8 @@ type InvoiceRow = {
   currency: string;
   pdf_path: string | null;
   pay_url: string | null;
+  /** Batch 58: the credit notes that cancel this unpaid invoice, else null. */
+  cancelled_by?: string[] | null;
   roi_snapshot: { attributed_revenue?: number; total_cost?: number } | null;
 };
 
@@ -283,10 +286,13 @@ export function InvoicesPanel({
                 </thead>
                 <tbody>
                   {invoices.map((invoice) => {
-                    const status = STATUS_COPY[invoice.status] ?? {
-                      label: invoice.status,
-                      tone: "bg-muted text-muted-foreground",
-                    };
+                    const cancelled = invoice.cancelled_by ?? null;
+                    const status = cancelled
+                      ? { label: cancelledLabel(cancelled), tone: "bg-muted text-muted-foreground" }
+                      : (STATUS_COPY[invoice.status] ?? {
+                          label: invoice.status,
+                          tone: "bg-muted text-muted-foreground",
+                        });
                     const roi = invoice.roi_snapshot;
                     return (
                       <tr key={invoice.id} className="border-t align-top">
@@ -324,7 +330,7 @@ export function InvoicesPanel({
                           >
                             {status.label}
                           </span>
-                          {invoice.status === "issued" && invoice.due_date ? (
+                          {invoice.status === "issued" && !cancelled && invoice.due_date ? (
                             <div className="mt-1 text-xs text-muted-foreground">
                               Due {day(invoice.due_date)}
                             </div>
@@ -335,6 +341,7 @@ export function InvoicesPanel({
                         </td>
                         <td className="py-3 text-right whitespace-nowrap">
                           {(invoice.status === "issued" || invoice.status === "partially_paid") &&
+                          !cancelled &&
                           invoice.pay_url &&
                           can("billing.pay") ? (
                             <Button asChild size="sm" className="mr-1 rounded-full">

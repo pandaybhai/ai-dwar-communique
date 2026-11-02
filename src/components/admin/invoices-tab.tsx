@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Download, FileText, Loader2, RefreshCw, Send, Receipt } from "lucide-react";
+import { Ban, Download, FileText, Loader2, RefreshCw, Send, Receipt } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState, ErrorState } from "@/components/empty-state";
 import { TableSkeleton } from "@/components/data-pagination";
@@ -18,6 +18,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { money } from "@/lib/billing";
 import { callApi } from "@/lib/whatsapp-client";
+import { cancelledLabel } from "@/lib/invoice-cancel";
 
 type AdminInvoice = {
   id: string;
@@ -41,6 +42,8 @@ type AdminInvoice = {
   whatsapp_at: string | null;
   pdf_error: string | null;
   payment_id: string | null;
+  /** Batch 58: the credit notes that cancel this unpaid invoice, else null. */
+  cancelled_by?: string[] | null;
 };
 
 type Reconciliation = {
@@ -84,6 +87,7 @@ export function InvoicesTab() {
   const [search, setSearch] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [creditFor, setCreditFor] = useState<AdminInvoice | null>(null);
+  const [cancelFor, setCancelFor] = useState<AdminInvoice | null>(null);
   const [recon, setRecon] = useState<Reconciliation | null>(null);
   const [reconLoading, setReconLoading] = useState(false);
 
@@ -148,7 +152,7 @@ export function InvoicesTab() {
             <option value="issued">Due</option>
             <option value="partially_paid">Part paid</option>
             <option value="paid">Paid</option>
-            <option value="void">Cancelled</option>
+            <option value="cancelled">Cancelled</option>
             <option value="draft">Draft</option>
           </select>
         </div>
@@ -244,7 +248,8 @@ export function InvoicesTab() {
             <tbody>
               {rows.map((inv) => {
                 const gst = Number(inv.cgst) + Number(inv.sgst) + Number(inv.igst);
-                const canCredit = (inv.kind === "tax_invoice" || inv.kind === "invoice") && inv.invoice_number && inv.status !== "void" && inv.status !== "draft";
+                const canCredit = (inv.kind === "tax_invoice" || inv.kind === "invoice") && inv.invoice_number && inv.status !== "void" && inv.status !== "draft" && !inv.cancelled_by;
+                const canCancel = canCredit && inv.status === "issued" && Number(inv.amount_paid) <= 0;
                 return (
                   <tr key={inv.id} className="border-t border-border/60 align-top">
                     <td className="px-3 py-2 text-muted-foreground">{day(inv.issue_date)}</td>
@@ -262,10 +267,10 @@ export function InvoicesTab() {
                     <td className="px-3 py-2">{inv.organization_name ?? "—"}</td>
                     <td className="px-3 py-2">{inv.purpose === "plan_fee" ? "Plan fee" : inv.purpose === "credit_purchase" ? "Credits" : inv.purpose}</td>
                     <td className="px-3 py-2">
-                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS[inv.status] ?? "bg-muted"}`}>
-                        {inv.status.replace("_", " ")}
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${inv.cancelled_by ? STATUS["void"] : (STATUS[inv.status] ?? "bg-muted")}`}>
+                        {inv.cancelled_by ? cancelledLabel(inv.cancelled_by) : inv.status.replace("_", " ")}
                       </span>
-                      {inv.status === "issued" && inv.due_date ? (
+                      {inv.status === "issued" && !inv.cancelled_by && inv.due_date ? (
                         <div className="mt-1 text-xs text-muted-foreground">Due {day(inv.due_date)}</div>
                       ) : null}
                     </td>
@@ -344,6 +349,17 @@ export function InvoicesTab() {
                         >
                           <Receipt className="h-4 w-4" />
                         </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="rounded-full"
+                          title="Cancel invoice"
+                          aria-label="Cancel invoice"
+                          disabled={!canCancel}
+                          onClick={() => setCancelFor(inv)}
+                        >
+                          <Ban className="h-4 w-4" />
+                        </Button>
                       </div>
                     </td>
                   </tr>
@@ -402,6 +418,15 @@ export function InvoicesTab() {
           </div>
         ) : null}
       </section>
+
+      <CancelInvoiceDialog
+        invoice={cancelFor}
+        onClose={() => setCancelFor(null)}
+        onCancelled={() => {
+          setCancelFor(null);
+          void load();
+        }}
+      />
 
       <CreditNoteDialog
         invoice={creditFor}
@@ -495,6 +520,84 @@ function CreditNoteDialog({
           <Button className="rounded-full" onClick={() => void submit()} disabled={saving || !reason.trim() || !(Number(amount) > 0)}>
             {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
             Issue credit note
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * Batch 58: "Cancel invoice" — a credit note for what is left on an unpaid
+ * invoice through the existing credit-note path, never to the wallet.
+ */
+function CancelInvoiceDialog({
+  invoice,
+  onClose,
+  onCancelled,
+}: {
+  invoice: AdminInvoice | null;
+  onClose: () => void;
+  onCancelled: () => void;
+}) {
+  const [reason, setReason] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (invoice) setReason("");
+  }, [invoice]);
+
+  const submit = async () => {
+    if (!invoice) return;
+    setSaving(true);
+    const { data, error } = await callApi<{ number: string; dunning_lifted: boolean }>("/api/admin/billing", {
+      body: { action: "cancel_invoice", invoice_id: invoice.id, reason },
+    });
+    setSaving(false);
+    if (error || !data) {
+      toast.error(error ?? "We couldn't cancel the invoice.");
+      return;
+    }
+    toast.success(
+      `Invoice cancelled with credit note ${data.number}.${data.dunning_lifted ? " Dunning lifted." : ""}`,
+    );
+    onCancelled();
+  };
+
+  return (
+    <Dialog open={Boolean(invoice)} onOpenChange={(open) => (!open ? onClose() : null)}>
+      <DialogContent className="rounded-2xl">
+        <DialogHeader>
+          <DialogTitle>Cancel invoice</DialogTitle>
+          <DialogDescription>
+            {invoice?.invoice_number} for {invoice?.organization_name ?? "this workspace"},{" "}
+            {invoice ? money(Number(invoice.total), invoice.currency) : "—"}. A credit note is issued for
+            the whole amount; nothing is added to the wallet. The invoice keeps its number and shows
+            as cancelled — it is never edited or deleted.
+          </DialogDescription>
+        </DialogHeader>
+        <div>
+          <Label htmlFor="cancel-reason">Reason</Label>
+          <Textarea
+            id="cancel-reason"
+            rows={3}
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Why this invoice is cancelled — it prints on the credit note."
+          />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" className="rounded-full" onClick={onClose} disabled={saving}>
+            Keep invoice
+          </Button>
+          <Button
+            variant="destructive"
+            className="rounded-full"
+            onClick={() => void submit()}
+            disabled={saving || reason.trim().length < 3}
+          >
+            {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            Cancel invoice
           </Button>
         </DialogFooter>
       </DialogContent>

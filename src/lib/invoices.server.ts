@@ -844,16 +844,16 @@ export async function markPaid(
   // other plan invoice for the workspace is still overdue.
   if (status === "paid" && invoice["purpose"] === "plan_fee" && invoice["organization_id"]) {
     const orgId = String(invoice["organization_id"]);
-    const { data: stillOpen, error: openError } = await supabase
-      .from("invoices")
-      .select("id")
-      .eq("organization_id", orgId)
-      .eq("purpose", "plan_fee")
-      .in("status", ["issued", "partially_paid"])
-      .neq("id", invoiceId)
-      .limit(1);
-    if (openError) return { error: `open invoices read failed: ${openError.message}` };
-    if (!((stillOpen as { id: string }[] | null)?.length)) {
+    // Batch 58: an invoice cancelled by credit notes is owed by nobody, so it
+    // never keeps the ladder up.
+    let stillOpen: string[];
+    try {
+      const { openPlanInvoices } = await import("@/lib/credit-notes.server");
+      stillOpen = await openPlanInvoices(supabase, orgId, invoiceId);
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : String(error) };
+    }
+    if (stillOpen.length === 0) {
       const { restoreAfterPayment } = await import("@/lib/dunning.server");
       try {
         await restoreAfterPayment(supabase, orgId);

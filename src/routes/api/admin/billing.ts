@@ -201,6 +201,32 @@ export const Route = createFileRoute("/api/admin/billing")({
                 }),
               );
 
+            // Batch 58: "Internal workspace - don't bill" (billing_enabled_at
+            // NULL + a marker; see internal-workspace.server.ts).
+            case "internal_workspace": {
+              if (!orgId) return jsonError("Which workspace?");
+              const { readInternalWorkspace } = await import("@/lib/internal-workspace.server");
+              return Response.json(await readInternalWorkspace(supabase, orgId));
+            }
+
+            case "set_internal_workspace": {
+              if (!orgId) return jsonError("Which workspace?");
+              const { setInternalWorkspace } = await import("@/lib/internal-workspace.server");
+              const internal = payload["internal"] === true;
+              const result = await setInternalWorkspace(supabase, {
+                organizationId: orgId,
+                internal,
+                reason: String(payload["reason"] ?? ""),
+                actorId,
+              });
+              if ("error" in result) return jsonError(result.error);
+              await logPlatformAction(internal ? "internal_workspace_on" : "internal_workspace_off", {
+                organization_id: orgId,
+                reason: String(payload["reason"] ?? "") || null,
+              });
+              return Response.json(result);
+            }
+
             // Moves trial_ends_at only — never assignPlan, never a feature re-sync.
             case "extend_trial":
               return Response.json(
@@ -354,7 +380,10 @@ export const Route = createFileRoute("/api/admin/billing")({
                 .order("created_at", { ascending: false })
                 .limit(300);
               if (orgId) query = query.eq("organization_id", orgId);
-              if (status) query = query.eq("status", status);
+              // Batch 58: "cancelled" = void, or open but cancelled by credit
+              // notes; "issued" (Due) no longer lists the cancelled ones.
+              if (status === "cancelled") query = query.in("status", ["void", "issued", "partially_paid"]);
+              else if (status) query = query.eq("status", status);
               if (purpose) query = query.eq("purpose", purpose);
               if (month && /^\d{4}-\d{2}$/.test(month)) {
                 const start = `${month}-01`;
@@ -365,7 +394,23 @@ export const Route = createFileRoute("/api/admin/billing")({
               if (search) query = query.ilike("invoice_number", `%${search}%`);
               const { data, error } = await query;
               if (error) return jsonError("We couldn't load invoices.");
-              const rows = ((data ?? []) as Record<string, unknown>[]).map((r) => ({
+              const { loadCreditCover } = await import("@/lib/credit-notes.server");
+              const { cancellingNotes } = await import("@/lib/invoice-cancel");
+              const found = (data ?? []) as Record<string, unknown>[];
+              const cover = await loadCreditCover(supabase, found.map((r) => String(r["id"])));
+              const withCancel = found
+                .map((r): Record<string, unknown> & { cancelled_by: string[] | null } => ({
+                  ...r,
+                  cancelled_by: cancellingNotes(r, cover.get(String(r["id"]))),
+                }))
+                .filter((r) =>
+                  status === "cancelled"
+                    ? r["status"] === "void" || r.cancelled_by !== null
+                    : status === "issued" || status === "partially_paid"
+                      ? r.cancelled_by === null
+                      : true,
+                );
+              const rows = withCancel.map((r) => ({
                 ...r,
                 organization_name:
                   ((r["organizations"] as Record<string, unknown> | null)?.["name"] as string) ?? null,
@@ -410,6 +455,19 @@ export const Route = createFileRoute("/api/admin/billing")({
                 confirmed: payload["confirmed"] === true,
               });
               if (!result.ok) return jsonError(result.error);
+              return Response.json(result);
+            }
+
+            // Batch 58: cancel an unpaid invoice = issueCreditNote for what is
+            // left, wallet switch forced OFF, a required reason.
+            case "cancel_invoice": {
+              const { cancelInvoice } = await import("@/lib/credit-notes.server");
+              const result = await cancelInvoice(supabase, {
+                invoiceId: String(payload["invoice_id"] ?? ""),
+                reason: String(payload["reason"] ?? ""),
+                actorId,
+              });
+              if ("error" in result) return jsonError(result.error);
               return Response.json(result);
             }
 
@@ -477,7 +535,14 @@ export const Route = createFileRoute("/api/admin/billing")({
               const paymentsWithoutInvoice = ((payments ?? []) as Record<string, unknown>[])
                 .filter((p) => !byPayment.has(String(p["id"])))
                 .map((p) => ({ ...p, organization_name: name(p), organizations: undefined }));
-              const invoicesWithoutPayment = invoiceRows
+              // Batch 58: an invoice cancelled by credit notes is owed by nobody.
+              const { loadCreditCover } = await import("@/lib/credit-notes.server");
+              const { withoutCancelled } = await import("@/lib/invoice-cancel");
+              const owed = withoutCancelled(
+                invoiceRows,
+                await loadCreditCover(supabase, invoiceRows.map((i) => String(i["id"]))),
+              );
+              const invoicesWithoutPayment = owed
                 .filter((i) => !i["payment_id"] && Number(i["amount_paid"] ?? 0) <= 0)
                 .map((i) => ({ ...i, organization_name: name(i), organizations: undefined }));
               return Response.json({

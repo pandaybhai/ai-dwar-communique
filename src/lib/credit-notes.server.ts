@@ -1,6 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { gstFromGross, round2, toPaise } from "@/lib/billing";
 import { TAX_RATE, loadSupplier } from "@/lib/invoices.server";
+import {
+  cancellingNotes,
+  creditCoverByInvoice,
+  withoutCancelled,
+  type CreditCover,
+  type CreditNoteLike,
+} from "@/lib/invoice-cancel";
 
 /**
  * Credit notes against an issued invoice.
@@ -273,4 +280,162 @@ export async function listCreditNotes(
   if (filter.invoiceId) query = query.eq("invoice_id", filter.invoiceId);
   const { data } = await query;
   return (data ?? []) as Record<string, unknown>[];
+}
+
+/**
+ * Batch 58: the issued credit notes against these invoices, per invoice (see
+ * invoice-cancel.ts). A failed read answers an empty map, so a screen shows
+ * the stored status; callers that chase money read it with `strict`.
+ */
+export async function loadCreditCover(
+  supabase: SupabaseClient,
+  invoiceIds: string[],
+  options: { strict?: boolean } = {},
+): Promise<Map<string, CreditCover>> {
+  const ids = [...new Set(invoiceIds.filter(Boolean))];
+  if (ids.length === 0) return new Map();
+  const notes: CreditNoteLike[] = [];
+  for (let i = 0; i < ids.length; i += 200) {
+    const { data, error } = await supabase
+      .from("credit_notes")
+      .select("invoice_id, number, amount, status, created_at")
+      .in("invoice_id", ids.slice(i, i + 200))
+      .eq("status", "issued")
+      .order("created_at", { ascending: true });
+    if (error) {
+      if (options.strict) throw new Error(`credit notes read failed: ${error.message}`);
+      return new Map();
+    }
+    notes.push(...((data ?? []) as CreditNoteLike[]));
+  }
+  return creditCoverByInvoice(notes);
+}
+
+/**
+ * Batch 58 "Cancel invoice" (Super Admin): the existing credit-note path,
+ * issueCreditNote, for whatever is still uncredited on an unpaid invoice,
+ * with the wallet switch forced OFF and a required reason. The invoice row is
+ * never edited; it reads as cancelled from its credit notes from then on.
+ * A plan fee whose cancel leaves the workspace with nothing else overdue
+ * lifts the dunning ladder exactly as a payment would (restoreAfterPayment).
+ */
+export async function cancelInvoice(
+  supabase: SupabaseClient,
+  input: { invoiceId: string; reason: string; actorId: string },
+): Promise<
+  | { credit_note_id: string; number: string; amount: number; dunning_lifted: boolean }
+  | { error: string }
+> {
+  const reason = input.reason.trim();
+  if (reason.length < 3) return { error: "Say why the invoice is being cancelled." };
+
+  const { data: invoice, error: readError } = await supabase
+    .from("invoices")
+    .select("id, organization_id, invoice_number, kind, purpose, status, total, amount_paid")
+    .eq("id", input.invoiceId)
+    .maybeSingle();
+  if (readError) return { error: "We couldn't read that invoice." };
+  if (!invoice) return { error: "That invoice no longer exists." };
+  const row = invoice as Record<string, unknown>;
+  if (row["status"] === "paid" || Number(row["amount_paid"] ?? 0) > 0) {
+    return { error: "Money was paid against this invoice — issue a credit note (or a refund) instead." };
+  }
+  if (!["issued", "overdue"].includes(String(row["status"]))) {
+    return { error: "Only an issued, unpaid invoice can be cancelled." };
+  }
+
+  let cover: Map<string, CreditCover>;
+  try {
+    cover = await loadCreditCover(supabase, [input.invoiceId], { strict: true });
+  } catch {
+    return { error: "We couldn't read this invoice's credit notes." };
+  }
+  if (cancellingNotes(row, cover.get(input.invoiceId))) {
+    return { error: "This invoice is already cancelled by its credit notes." };
+  }
+  const remainingP =
+    toPaise(Number(row["total"] ?? 0)) - toPaise(cover.get(input.invoiceId)?.credited ?? 0);
+  if (!(remainingP > 0)) return { error: "Nothing is left to cancel on this invoice." };
+
+  const issued = await issueCreditNote(supabase, {
+    invoiceId: input.invoiceId,
+    amount: remainingP / 100,
+    reason: `Invoice cancelled: ${reason}`,
+    refundToWallet: false,
+    actorId: input.actorId,
+  });
+  if ("error" in issued) return issued;
+
+  const orgId = String(row["organization_id"] ?? "");
+  await supabase.from("activity_log").insert({
+    organization_id: orgId,
+    user_id: input.actorId,
+    action: "invoice_cancelled",
+    details: {
+      invoice: row["invoice_number"],
+      credit_note: issued.number,
+      amount: issued.amount,
+      reason,
+      refunded_to_wallet: false,
+    },
+  });
+
+  let dunningLifted = false;
+  if (row["purpose"] === "plan_fee" && orgId) {
+    try {
+      dunningLifted = await liftDunningIfNothingOwed(supabase, orgId);
+    } catch (error) {
+      console.error("[credit-notes] dunning lift after cancel failed", orgId, String(error));
+    }
+  }
+  return {
+    credit_note_id: issued.credit_note_id,
+    number: issued.number,
+    amount: issued.amount,
+    dunning_lifted: dunningLifted,
+  };
+}
+
+/**
+ * The plan-fee invoices of a workspace that are still owed: open and not
+ * cancelled by credit notes. Throws when it can't tell.
+ */
+export async function openPlanInvoices(
+  supabase: SupabaseClient,
+  organizationId: string,
+  exceptId?: string,
+): Promise<string[]> {
+  let query = supabase
+    .from("invoices")
+    .select("id, status, total")
+    .eq("organization_id", organizationId)
+    .eq("purpose", "plan_fee")
+    .in("status", ["issued", "partially_paid"]);
+  if (exceptId) query = query.neq("id", exceptId);
+  const { data, error } = await query.limit(100);
+  if (error) throw new Error(`open invoices read failed: ${error.message}`);
+  const rows = (data ?? []) as Record<string, unknown>[];
+  const cover = await loadCreditCover(
+    supabase,
+    rows.map((r) => String(r["id"])),
+    { strict: true },
+  );
+  return withoutCancelled(rows, cover).map((r) => String(r["id"]));
+}
+
+/** Lifts the dunning ladder when it is up and no plan invoice is still owed. */
+async function liftDunningIfNothingOwed(
+  supabase: SupabaseClient,
+  organizationId: string,
+): Promise<boolean> {
+  const { data: settings, error } = await supabase
+    .from("organization_billing_settings")
+    .select("dunning_stage")
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+  if (error || !settings?.["dunning_stage"]) return false;
+  if ((await openPlanInvoices(supabase, organizationId)).length > 0) return false;
+  const { restoreAfterPayment } = await import("@/lib/dunning.server");
+  await restoreAfterPayment(supabase, organizationId);
+  return true;
 }
