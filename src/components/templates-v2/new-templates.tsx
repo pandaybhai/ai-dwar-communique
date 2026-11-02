@@ -45,6 +45,7 @@ import {
   type ReviewState,
 } from "./templates-data";
 import { DeleteTemplateDialog } from "./delete-template";
+import { templatesCopy as tc } from "./copy";
 
 /**
  * Batch 47: Templates in the new design, the Campaigns section's second tab.
@@ -87,7 +88,7 @@ export function NewTemplates() {
       .select("*")
       .eq("organization_id", orgId)
       .order("created_at", { ascending: false });
-    if (err) setError("We couldn’t load your templates. Please refresh.");
+    if (err) setError(tc.loadError);
     // Batch 51: one deleted here (deleted_at) leaves the gallery.
     else setTemplates(((data ?? []) as TemplateRow[]).filter((t) => !isDeletedTemplate(t)));
     setLoading(false);
@@ -111,7 +112,7 @@ export function NewTemplates() {
         if (!silent) toast.error(err);
         return;
       }
-      if (!silent) toast.success("Templates synced from Meta.");
+      if (!silent) toast.success(tc.refreshed);
       await load();
     },
     [orgId, load],
@@ -153,7 +154,7 @@ export function NewTemplates() {
   const ownerOf = useCallback(
     (wabaId: string | null) => {
       const owners = numbers.filter((n) => n.waba_id && n.waba_id === wabaId);
-      return owners.length ? owners.map((n) => numberLabel(n)).join(", ") : "No connected number";
+      return owners.length ? owners.map((n) => numberLabel(n)).join(", ") : tc.noNumber;
     },
     [numbers],
   );
@@ -174,7 +175,7 @@ export function NewTemplates() {
           className={cn("h-4 w-4", syncing && "motion-safe:animate-spin")}
           aria-hidden="true"
         />
-        {numberFilter === "all" ? "Sync with Meta" : "Sync this number"}
+        {numberFilter === "all" ? tc.refreshAll : tc.refreshOne}
       </Button>
       {canManage && orgId ? (
         <CreateTemplateDialog
@@ -189,34 +190,36 @@ export function NewTemplates() {
 
   return (
     <>
-      <PageHeader
-        title="Templates"
-        description="Messages Meta has approved, which you can send any time, even after the 24-hour window. Meta usually reviews a new one within minutes."
-        actions={actions}
-      />
+      <PageHeader title={tc.page.title} description={tc.page.description} actions={actions} />
 
       {loading ? (
         <GallerySkeleton />
       ) : error ? (
-        <ErrorState message={error} />
+        <ErrorState
+          message={error}
+          onRetry={() => {
+            setLoading(true);
+            void load();
+          }}
+        />
       ) : (
         <div className="flex flex-col gap-7">
           {canManage ? (
             <section aria-labelledby="tpl-starters" className="flex flex-col gap-3">
               <h2 id="tpl-starters" className="m-0 font-display text-lg font-semibold">
-                Start from
+                {tc.starters.heading}
               </h2>
               <div className="grid gap-3 wide:grid-cols-2 min-[1001px]:grid-cols-3">
                 <Starter
                   icon={FilePlus2}
-                  title="A blank template"
-                  detail="Your own words, buttons and picture."
+                  title={tc.starters.blank.title}
+                  detail={tc.starters.blank.detail}
                   onClick={() => setStart({ kind: "blank", at: Date.now() })}
                 />
                 <Starter
                   icon={FileText}
-                  title="Invoice or receipt with a PDF"
-                  detail="A utility message with the file at the top."
+                  title={tc.starters.invoice.title}
+                  detail={tc.starters.invoice.detail}
                   onClick={() => setStart({ kind: "invoice", at: Date.now() })}
                 />
               </div>
@@ -226,13 +229,23 @@ export function NewTemplates() {
           {templates.length === 0 ? (
             <EmptyState
               icon={MessageSquareText}
-              title="No templates yet"
-              description="Start one above and submit it for review, or sync the ones already approved on your business account."
+              title={tc.empty.title}
+              description={tc.empty.description}
+              action={
+                canManage ? (
+                  <Button
+                    className="phone:h-11"
+                    onClick={() => setStart({ kind: "blank", at: Date.now() })}
+                  >
+                    <FilePlus2 className="h-4 w-4" aria-hidden="true" /> {tc.empty.action}
+                  </Button>
+                ) : undefined
+              }
             />
           ) : (
             <section aria-labelledby="tpl-library" className="flex flex-col gap-4">
               <h2 id="tpl-library" className="sr-only">
-                Your templates
+                {tc.libraryHeading}
               </h2>
               <div className="flex flex-wrap items-center gap-2">
                 <div className="relative w-full wide:w-72">
@@ -245,19 +258,22 @@ export function NewTemplates() {
                     type="search"
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
-                    placeholder="Search templates"
-                    aria-label="Search templates"
+                    placeholder={tc.searchPlaceholder}
+                    aria-label={tc.searchLabel}
                     aria-keyshortcuts="/"
-                    className="pl-9"
+                    className="pl-9 phone:h-11"
                   />
                 </div>
                 {multiple ? (
                   <Select value={numberFilter} onValueChange={setNumberFilter}>
-                    <SelectTrigger className="w-full wide:w-56" aria-label="Number">
+                    <SelectTrigger
+                      className="w-full phone:h-11 wide:w-56"
+                      aria-label={tc.numberFilterLabel}
+                    >
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">All numbers</SelectItem>
+                      <SelectItem value="all">{tc.allNumbers}</SelectItem>
                       {numbers.map((n) => (
                         <SelectItem key={n.id} value={n.id}>
                           {numberLabel(n)}
@@ -266,7 +282,7 @@ export function NewTemplates() {
                     </SelectContent>
                   </Select>
                 ) : null}
-                <div role="group" aria-label="Show templates" className="flex flex-wrap gap-1.5">
+                <div role="group" aria-label={tc.filterLabel} className="flex flex-wrap gap-1.5">
                   {TEMPLATE_STATUS_FILTERS.map((f) => {
                     const n =
                       f.key === "all"
@@ -280,7 +296,7 @@ export function NewTemplates() {
                         aria-pressed={on}
                         onClick={() => setStatusFilter(f.key)}
                         className={cn(
-                          "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-semibold transition-colors duration-200",
+                          "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-semibold transition-colors duration-200 phone:min-h-11",
                           on
                             ? "border-transparent bg-aiden-soft text-aiden-deep"
                             : "border-line bg-surface text-foreground hover:bg-bubble-in",
@@ -297,8 +313,21 @@ export function NewTemplates() {
               {filtered.length === 0 ? (
                 <EmptyState
                   icon={Search}
-                  title="No matching templates"
-                  description="Try a different name, wording, number or review state."
+                  title={tc.noMatch.title}
+                  description={tc.noMatch.description}
+                  action={
+                    <Button
+                      variant="outline"
+                      className="phone:h-11"
+                      onClick={() => {
+                        setQuery("");
+                        setNumberFilter("all");
+                        setStatusFilter("all");
+                      }}
+                    >
+                      {tc.noMatch.action}
+                    </Button>
+                  }
                 />
               ) : (
                 <ul className="m-0 grid list-none grid-cols-[repeat(auto-fill,minmax(250px,1fr))] items-start gap-5 p-0">
@@ -358,8 +387,8 @@ function TemplateTile({
     state === "OTHER" ? t.status.charAt(0) + t.status.slice(1).toLowerCase() : chip.label;
   return (
     <li
-      className="nd-slide-in flex flex-col gap-3 phone:mx-auto phone:w-full phone:max-w-[320px]"
-      style={{ ["--i" as string]: Math.min(index, 6) }}
+      className="nd-rise flex flex-col gap-3 phone:mx-auto phone:w-full phone:max-w-[320px]"
+      style={{ ["--d" as string]: Math.min(index, 6) }}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
@@ -385,8 +414,8 @@ function TemplateTile({
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  className="-mr-1.5 -mt-1 text-muted-foreground hover:text-foreground"
-                  aria-label={`More for ${t.name}`}
+                  className="-mr-1.5 -mt-1 text-muted-foreground hover:text-foreground phone:h-11 phone:w-11"
+                  aria-label={tc.moreFor(t.name)}
                 >
                   <MoreHorizontal />
                 </Button>
@@ -397,7 +426,7 @@ function TemplateTile({
                   className="text-danger-soft-foreground focus:text-danger-soft-foreground"
                 >
                   <Trash2 className="h-4 w-4" aria-hidden="true" />
-                  Delete template
+                  {tc.deleteAction}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -406,14 +435,11 @@ function TemplateTile({
       </div>
       {state === "REJECTED" && t.rejection_reason ? (
         <p className="m-0 rounded-[14px] border border-danger-border bg-danger-soft px-3 py-2 text-sm text-danger-soft-foreground">
-          <b>Meta’s reason:</b> {t.rejection_reason}
+          <b>{tc.metaReason}</b> {t.rejection_reason}
         </p>
       ) : null}
       {/* A smaller PhoneFrame for the gallery: the same ink frame and dotted wall. */}
-      <figure
-        aria-label={`${t.name}: the message`}
-        className="m-0 rounded-[30px] bg-ink p-2 shadow-xl"
-      >
+      <figure aria-label={tc.tileLabel(t.name)} className="m-0 rounded-[30px] bg-ink p-2 shadow-xl">
         <div className="nd-wall flex min-h-[260px] flex-col rounded-[23px] px-2.5 pb-4 pt-7">
           <TemplateMessage model={componentsToPreview(t.components)} />
         </div>
@@ -437,7 +463,7 @@ function Starter({
     <button
       type="button"
       onClick={onClick}
-      className="flex items-start gap-3 rounded-[18px] border border-line bg-surface p-4 text-left shadow-sm transition-shadow duration-200 hover:shadow-md"
+      className="nd-lift flex items-start gap-3 rounded-[18px] border border-line bg-surface p-4 text-left shadow-sm"
     >
       <span
         aria-hidden="true"
@@ -458,7 +484,7 @@ function GallerySkeleton() {
     <div
       className="grid grid-cols-[repeat(auto-fill,minmax(250px,1fr))] gap-5"
       aria-busy="true"
-      aria-label="Loading templates"
+      aria-label={tc.loading}
     >
       {[0, 1, 2, 3].map((i) => (
         <Skeleton key={i} className="h-[340px] rounded-[30px]" />

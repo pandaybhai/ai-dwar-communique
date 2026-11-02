@@ -88,7 +88,8 @@ const SECTION_DEFS: Array<{
     icon: Megaphone,
     tabs: [
       { to: "/app/campaigns", label: "Campaigns" },
-      { to: "/app/templates", label: "Templates" },
+      // Batch 57 (approved): the visible name; the route and code stay "templates".
+      { to: "/app/templates", label: "Message designs" },
       { to: "/app/cards", label: "Cards" },
     ],
   },
@@ -98,7 +99,8 @@ const SECTION_DEFS: Array<{
     icon: Users,
     tabs: [
       { to: "/app/contacts", label: "Contacts" },
-      { to: "/app/contacts", label: "Segments", search: { tab: "segments" } },
+      // Batch 57 (approved): the visible name; the route and code stay "segments".
+      { to: "/app/contacts", label: "Groups", search: { tab: "segments" } },
       { to: "/app/receipts", label: "Sales from chats" },
     ],
   },
@@ -197,7 +199,7 @@ export function buildShellModel(
 
   const analyticsItem = items.find((i) => i.to === "/app/analytics");
   const analytics: ShellLink | null = analyticsItem
-    ? { key: "/app/analytics", to: "/app/analytics", label: "All numbers" }
+    ? { key: "/app/analytics", to: "/app/analytics", label: "Your numbers" }
     : null;
   if (analytics) placed.add(analytics.to);
 

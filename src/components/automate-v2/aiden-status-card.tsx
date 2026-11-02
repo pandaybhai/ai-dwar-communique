@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { moneyText } from "@/lib/employee-client";
 import { cn } from "@/lib/utils";
 import { AIDEN_MODES, aidenStatus, type AidenMode } from "./aiden-v2";
+import { statusCard as t } from "./copy";
 
 /**
  * Batch 49: the top of Automate > Aiden. The orb and a sentence say what
@@ -41,7 +42,7 @@ export function AidenStatusCard({
   return (
     <section
       aria-labelledby="aiden-status-heading"
-      className="flex flex-col gap-6 rounded-[20px] border border-line bg-surface p-6 shadow-md phone:p-5"
+      className="nd-rise flex flex-col gap-6 rounded-[20px] border border-line bg-surface p-6 shadow-md phone:p-5"
     >
       <div className="flex items-center gap-5 phone:gap-4">
         <AidenOrb state={status.orb} size={72} />
@@ -59,11 +60,16 @@ export function AidenStatusCard({
       {!aiEnabled ? (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-[18px] border border-gold-line bg-gold-bg p-4">
           <p className="m-0 min-w-0 text-sm text-gold-ink">
-            <b className="block text-body">AI is switched off for this workspace</b>
-            Turn it on to choose Drafts or Replying.
+            <b className="block text-body">{t.aiOffTitle}</b>
+            {t.aiOffLine}
           </p>
-          <Button variant="gold" disabled={!canConfigure || turningOn} onClick={onTurnOn}>
-            {turningOn ? "Turning on…" : `Turn ${name} on`}
+          <Button
+            variant="gold"
+            className="phone:h-11"
+            disabled={!canConfigure || turningOn}
+            onClick={onTurnOn}
+          >
+            {turningOn ? t.turningOn : t.turnOn(name)}
           </Button>
         </div>
       ) : null}
@@ -71,7 +77,7 @@ export function AidenStatusCard({
       <div className="flex flex-col gap-2.5">
         <div
           role="group"
-          aria-label={`What ${name} does`}
+          aria-label={t.modeGroup(name)}
           className="inline-flex self-start rounded-[14px] border border-line bg-surface p-1 phone:grid phone:grid-cols-3 phone:self-stretch"
         >
           {AIDEN_MODES.map((o) => {
@@ -85,12 +91,12 @@ export function AidenStatusCard({
                 aria-pressed={pressed}
                 aria-busy={busy === o.key || undefined}
                 disabled={!canConfigure || locked || busy !== null}
-                title={locked ? "Turn AI on for this workspace first." : undefined}
+                title={locked ? t.locked : undefined}
                 onClick={() => {
                   if (!pressed) onSetMode(o.key);
                 }}
                 className={cn(
-                  "rounded-[10px] px-4 py-2 text-sm font-semibold transition-[background-color,color] duration-[250ms] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aiden active:scale-[0.98] disabled:cursor-not-allowed phone:px-1",
+                  "rounded-[10px] px-4 py-2 text-sm font-semibold transition-[background-color,color,transform] phone:min-h-11 duration-[250ms] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aiden active:scale-[0.98] disabled:cursor-not-allowed phone:px-1",
                   pressed
                     ? "bg-ink text-ink-foreground"
                     : "text-muted-foreground hover:text-foreground disabled:hover:text-muted-foreground",
@@ -112,27 +118,23 @@ export function AidenStatusCard({
       </div>
 
       <dl className="m-0 grid grid-cols-3 gap-4 border-t border-line pt-5 phone:grid-cols-1 phone:gap-0 phone:pt-2">
-        <Stat label="Answered this week">
+        <Stat label={t.answered}>
           <NumberTicker value={week.answered} />
         </Stat>
-        <Stat label="Passed to you">
+        <Stat label={t.passed}>
           <NumberTicker value={week.passed} />
         </Stat>
-        <Stat label="Cost this month">{moneyText(spend, currency)}</Stat>
+        <Stat label={t.cost}>
+          <MoneyTicker amount={spend} currency={currency} />
+        </Stat>
       </dl>
 
       {!testedRecently && canConfigure ? (
         <p className="m-0 rounded-[14px] bg-bubble-in px-4 py-3 text-sm text-foreground">
-          You haven&rsquo;t tried {name} yet. Ask your last 20 real customer questions before
-          letting {name} reply alone: Test {name} below, or Compare two setups under Try.
+          {t.notTested(name)}
         </p>
       ) : null}
-      {!canConfigure ? (
-        <p className="m-0 text-sm text-muted-foreground">
-          You can see everything {name} does. Changing how {name} works needs the &ldquo;Configure
-          AI&rdquo; permission.
-        </p>
-      ) : null}
+      {!canConfigure ? <p className="m-0 text-sm text-muted-foreground">{t.viewOnly}</p> : null}
     </section>
   );
 }
@@ -146,4 +148,15 @@ function Stat({ label, children }: { label: string; children: React.ReactNode })
       </dd>
     </div>
   );
+}
+
+/**
+ * Batch 57: the month's cost counts up like the other two numbers. The final
+ * text is exactly moneyText's (INR: ₹ with two decimals under 100, none from
+ * 100); any other currency shows moneyText as it is.
+ */
+function MoneyTicker({ amount, currency }: { amount: number; currency: string }) {
+  if (currency !== "INR" || !Number.isFinite(amount) || amount < 0)
+    return <>{moneyText(amount, currency)}</>;
+  return <NumberTicker value={amount} prefix="₹" decimalPlaces={amount < 100 ? 2 : 0} />;
 }

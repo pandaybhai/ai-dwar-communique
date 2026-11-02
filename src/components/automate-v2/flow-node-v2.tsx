@@ -3,6 +3,7 @@ import type { RFData } from "@/components/flows/v2/flow-node";
 import { NODE_META, handleLabel, summary } from "@/components/flows/v2/node-meta";
 import { outputsOf, type FlowNode } from "@/lib/flow-graph";
 import { cn } from "@/lib/utils";
+import { stepCardCopy } from "./copy";
 import { toneOf } from "./flows-v2";
 import "./flow-builder-v2.css";
 
@@ -48,7 +49,7 @@ export function FlowNodeViewV2({ id, data, selected }: NodeProps & { data: RFDat
         {data.stats && (
           <span
             className="shrink-0 rounded-full bg-bubble-in px-2 py-0.5 text-[11px] font-semibold tabular-nums text-muted-foreground"
-            title="entered, moved on, dropped"
+            title={stepCardCopy.statsTitle}
           >
             {data.stats.entered}/{data.stats.exited}/{data.stats.dropped}
           </span>
@@ -78,7 +79,7 @@ export function FlowNodeViewV2({ id, data, selected }: NodeProps & { data: RFDat
               key={h}
               className="relative flex h-5 items-center justify-end text-[11px] font-semibold text-muted-foreground"
             >
-              <span className="truncate pr-2">{handleLabel(node, h) || "Next"}</span>
+              <span className="truncate pr-2">{handleLabel(node, h) || stepCardCopy.next}</span>
               <Handle
                 id={h}
                 type="source"

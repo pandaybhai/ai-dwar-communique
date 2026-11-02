@@ -52,6 +52,92 @@ export function consentLine(record: ConsentRecord | null): string | null {
   return `Opted in by ${how} on ${formatDate(record.opted_in_at)}.`;
 }
 
+/**
+ * Batch 57: the drawer's words. Classic passes nothing and gets exactly these;
+ * Aiden Workspace passes its own. Consent lines keep
+ * their meaning (only the customer can undo an opt-out, by replying START).
+ */
+export type DrawerWords = {
+  /** Before the date, as its own text (Classic's "Added "). */
+  addedPrefix: string;
+  name: string;
+  phone: string;
+  tags: string;
+  removeTag: (name: string) => string;
+  addTag: string;
+  noOtherTags: string;
+  createTag: string;
+  tagPlaceholder: string;
+  colour: (c: string) => string;
+  createAndAdd: string;
+  attributes: string;
+  keyPlaceholder: string;
+  valuePlaceholder: string;
+  removeAttribute: string;
+  addAttribute: string;
+  conversation: string;
+  viewConversation: string;
+  noConversation: string;
+  save: string;
+  saving: string;
+  delete: string;
+  tagAddError: string;
+  tagCreateError: string;
+  tagRemoveError: string;
+  saveError: string;
+  updated: string;
+  deleteDenied: string;
+  deleted: string;
+  optIn: OptInWords;
+};
+
+export type OptInWords = {
+  label: string;
+  labels: Record<OptInStatus, string>;
+  optedOut: string;
+  optOutWarning: string;
+};
+
+export const OPT_IN_WORDS: OptInWords = {
+  label: "Opt-in status",
+  labels: OPT_IN_LABELS,
+  optedOut: "This customer opted out. Only they can opt back in, by replying START.",
+  optOutWarning: "Once saved, only the customer can undo an opt-out, by replying START.",
+};
+
+export const DRAWER_WORDS: DrawerWords = {
+  addedPrefix: "Added ",
+  name: "Name",
+  phone: "Phone",
+  tags: "Tags",
+  removeTag: (name) => `Remove ${name}`,
+  addTag: "Tag",
+  noOtherTags: "No other tags yet.",
+  createTag: "Create a tag",
+  tagPlaceholder: "VIP customers",
+  colour: (c) => `Colour ${c}`,
+  createAndAdd: "Create & add",
+  attributes: "Custom attributes",
+  keyPlaceholder: "key",
+  valuePlaceholder: "value",
+  removeAttribute: "Remove attribute",
+  addAttribute: "Add attribute",
+  conversation: "Conversation",
+  viewConversation: "View conversation",
+  noConversation: "No conversation yet.",
+  save: "Save changes",
+  saving: "Saving…",
+  delete: "Delete",
+  tagAddError: "We couldn't add that tag.",
+  tagCreateError: "A tag with that name may already exist.",
+  tagRemoveError: "We couldn't remove that tag.",
+  saveError: "We couldn't save these changes.",
+  updated: "Contact updated.",
+  deleteDenied: "Only owners and admins can delete contacts.",
+  deleted: "Contact deleted.",
+  optIn: OPT_IN_WORDS,
+};
+
 export function ContactDrawer({
   contact,
   organizationId,
@@ -61,6 +147,8 @@ export function ContactDrawer({
   onChanged,
   extra,
   side,
+  words = DRAWER_WORDS,
+  roomy = false,
 }: {
   contact: ContactRow | null;
   organizationId: string;
@@ -76,7 +164,13 @@ export function ContactDrawer({
   extra?: ReactNode;
   /** Batch 48: "bottom" makes it the phone's sheet. Unset: the right-hand drawer as before. */
   side?: "bottom";
+  /** Batch 57, Aiden Workspace: its words. Unset: Classic's exactly. */
+  words?: DrawerWords;
+  /** Batch 57, Aiden Workspace: 44px controls on a phone and a spring rise. Unset: as before. */
+  roomy?: boolean;
 }) {
+  const w = words;
+  const big = (base: string, more: string) => (roomy ? `${base} ${more}` : base);
   const [name, setName] = useState("");
   const [optIn, setOptIn] = useState<OptInStatus>("unknown");
   const [attrs, setAttrs] = useState<AttrPair[]>([]);
@@ -143,7 +237,7 @@ export function ContactDrawer({
         );
       if (error) {
         setTags((prev) => prev.filter((t) => t.id !== tag.id));
-        toast.error("We couldn't add that tag.");
+        toast.error(w.tagAddError);
         return;
       }
       onChanged();
@@ -160,7 +254,7 @@ export function ContactDrawer({
       .select("id, name, color")
       .single();
     if (error || !data) {
-      toast.error("A tag with that name may already exist.");
+      toast.error(w.tagCreateError);
       return;
     }
     void logActivity("tag_created", organizationId, { tag_name: label });
@@ -179,7 +273,7 @@ export function ContactDrawer({
       .eq("tag_id", tagId);
     if (error) {
       setTags(previous);
-      toast.error("We couldn't remove that tag.");
+      toast.error(w.tagRemoveError);
       return;
     }
     onChanged();
@@ -199,7 +293,7 @@ export function ContactDrawer({
       .eq("id", contact.id);
     if (error) {
       setSaving(false);
-      toast.error("We couldn't save these changes.");
+      toast.error(w.saveError);
       return;
     }
     // Batch 36: the opt-in switch goes through the server (consent record +
@@ -221,7 +315,7 @@ export function ContactDrawer({
       }
     }
     setSaving(false);
-    toast.success("Contact updated.");
+    toast.success(w.updated);
     onChanged();
   }
 
@@ -229,10 +323,10 @@ export function ContactDrawer({
     if (!contact) return;
     const { error } = await aidwar.from("contacts").delete().eq("id", contact.id);
     if (error) {
-      toast.error("Only owners and admins can delete contacts.");
+      toast.error(w.deleteDenied);
       return;
     }
-    toast.success("Contact deleted.");
+    toast.success(w.deleted);
     onClose();
     onChanged();
   }
@@ -243,10 +337,14 @@ export function ContactDrawer({
         {...(side === "bottom"
           ? {
               side: "bottom" as const,
-              className:
+              className: big(
                 "max-h-[88dvh] w-full overflow-y-auto rounded-t-[24px] pb-[calc(24px+env(safe-area-inset-bottom))]",
+                "nd-sheet-spring",
+              ),
             }
-          : { className: "w-full overflow-y-auto sm:max-w-md" })}
+          : roomy
+            ? { className: "w-full overflow-y-auto sm:max-w-md nd-sheet-spring" }
+            : { className: "w-full overflow-y-auto sm:max-w-md" })}
       >
         {contact ? (
           <>
@@ -258,7 +356,8 @@ export function ContactDrawer({
                 <div className="min-w-0">
                   <SheetTitle className="truncate">{contact.name || contact.phone}</SheetTitle>
                   <p className="text-xs text-muted-foreground">
-                    Added {formatDate(contact.created_at)}
+                    {w.addedPrefix}
+                    {formatDate(contact.created_at)}
                   </p>
                 </div>
               </div>
@@ -269,13 +368,23 @@ export function ContactDrawer({
               <SourcePanel contact={contact} />
 
               <div className="space-y-2">
-                <Label htmlFor="drawer-name">Name</Label>
-                <Input id="drawer-name" value={name} onChange={(e) => setName(e.target.value)} />
+                <Label htmlFor="drawer-name">{w.name}</Label>
+                <Input
+                  id="drawer-name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  {...(roomy ? { className: "phone:h-11" } : {})}
+                />
               </div>
 
               <div className="space-y-2">
-                <Label>Phone</Label>
-                <Input value={contact.phone} readOnly aria-label="Phone" className="bg-muted/60" />
+                <Label>{w.phone}</Label>
+                <Input
+                  value={contact.phone}
+                  readOnly
+                  aria-label={w.phone}
+                  className={big("bg-muted/60", "phone:h-11")}
+                />
               </div>
 
               <OptInField
@@ -283,21 +392,26 @@ export function ContactDrawer({
                 value={optIn}
                 consent={consent}
                 onChange={setOptIn}
+                words={w.optIn}
               />
 
               <div className="space-y-2">
-                <Label>Tags</Label>
+                <Label>{w.tags}</Label>
                 <div className="flex flex-wrap items-center gap-2">
                   {tags.map((t) => (
                     <span
                       key={t.id}
                       className="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium"
-                      style={{ borderColor: `${t.color}55`, backgroundColor: `${t.color}18`, color: t.color }}
+                      style={{
+                        borderColor: `${t.color}55`,
+                        backgroundColor: `${t.color}18`,
+                        color: t.color,
+                      }}
                     >
                       {t.name}
                       <button
                         type="button"
-                        aria-label={`Remove ${t.name}`}
+                        aria-label={w.removeTag(t.name)}
                         onClick={() => void removeTag(t.id)}
                         className="opacity-60 transition-opacity hover:opacity-100"
                       >
@@ -307,8 +421,13 @@ export function ContactDrawer({
                   ))}
                   <Popover>
                     <PopoverTrigger asChild>
-                      <Button variant="outline" size="sm" className="h-7 rounded-full text-xs">
-                        <Plus className="mr-1 h-3 w-3" /> Tag
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className={big("h-7 rounded-full text-xs", "phone:h-10 phone:px-4")}
+                      >
+                        <Plus className="mr-1 h-3 w-3" />
+                        {` ${w.addTag}`}
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent align="start" className="w-64 space-y-3">
@@ -331,14 +450,14 @@ export function ContactDrawer({
                           ))}
                         </div>
                       ) : (
-                        <p className="text-xs text-muted-foreground">No other tags yet.</p>
+                        <p className="text-xs text-muted-foreground">{w.noOtherTags}</p>
                       )}
                       <div className="space-y-2 border-t border-border/70 pt-3">
-                        <Label className="text-xs">Create a tag</Label>
+                        <Label className="text-xs">{w.createTag}</Label>
                         <Input
                           value={newTagName}
                           onChange={(e) => setNewTagName(e.target.value)}
-                          placeholder="VIP customers"
+                          placeholder={w.tagPlaceholder}
                           className="h-8 text-sm"
                         />
                         <div className="flex flex-wrap gap-1.5">
@@ -346,7 +465,7 @@ export function ContactDrawer({
                             <button
                               key={c}
                               type="button"
-                              aria-label={`Colour ${c}`}
+                              aria-label={w.colour(c)}
                               onClick={() => setNewTagColor(c)}
                               className={`h-5 w-5 rounded-full transition-transform duration-150 ${
                                 newTagColor === c ? "scale-110 ring-2 ring-offset-2 ring-ring" : ""
@@ -361,7 +480,7 @@ export function ContactDrawer({
                           onClick={() => void createTag()}
                           disabled={!newTagName.trim()}
                         >
-                          Create & add
+                          {w.createAndAdd}
                         </Button>
                       </div>
                     </PopoverContent>
@@ -370,14 +489,14 @@ export function ContactDrawer({
               </div>
 
               <div className="space-y-2">
-                <Label>Custom attributes</Label>
+                <Label>{w.attributes}</Label>
                 <div className="space-y-2">
                   {attrs.map((pair, i) => (
                     <div key={i} className="flex items-center gap-2">
                       <Input
                         value={pair.key}
-                        placeholder="key"
-                        className="h-9"
+                        placeholder={w.keyPlaceholder}
+                        className={big("h-9", "phone:h-11")}
                         onChange={(e) =>
                           setAttrs((prev) =>
                             prev.map((p, idx) => (idx === i ? { ...p, key: e.target.value } : p)),
@@ -386,8 +505,8 @@ export function ContactDrawer({
                       />
                       <Input
                         value={pair.value}
-                        placeholder="value"
-                        className="h-9"
+                        placeholder={w.valuePlaceholder}
+                        className={big("h-9", "phone:h-11")}
                         onChange={(e) =>
                           setAttrs((prev) =>
                             prev.map((p, idx) => (idx === i ? { ...p, value: e.target.value } : p)),
@@ -397,7 +516,7 @@ export function ContactDrawer({
                       <Button
                         variant="ghost"
                         size="icon"
-                        aria-label="Remove attribute"
+                        aria-label={w.removeAttribute}
                         onClick={() => setAttrs((prev) => prev.filter((_, idx) => idx !== i))}
                       >
                         <Trash2 className="h-4 w-4 text-muted-foreground" />
@@ -407,42 +526,51 @@ export function ContactDrawer({
                   <Button
                     variant="outline"
                     size="sm"
-                    className="rounded-full"
+                    className={big("rounded-full", "phone:h-10 phone:px-4")}
                     onClick={() => setAttrs((prev) => [...prev, { key: "", value: "" }])}
                   >
-                    <Plus className="mr-1 h-3 w-3" /> Add attribute
+                    <Plus className="mr-1 h-3 w-3" />
+                    {` ${w.addAttribute}`}
                   </Button>
                 </div>
               </div>
 
               {extra ? null : (
                 <div className="space-y-2">
-                  <Label>Conversation</Label>
+                  <Label>{w.conversation}</Label>
                   {loadingConversation ? (
                     <Skeleton className="h-9 w-full rounded-full" />
                   ) : conversationId ? (
                     <Button asChild variant="outline" className="w-full rounded-full">
                       <Link to="/app/inbox">
-                        <MessageSquare className="mr-2 h-4 w-4" /> View conversation
+                        <MessageSquare className="mr-2 h-4 w-4" />
+                        {` ${w.viewConversation}`}
                       </Link>
                     </Button>
                   ) : (
-                    <p className="text-xs text-muted-foreground">No conversation yet.</p>
+                    <p className="text-xs text-muted-foreground">{w.noConversation}</p>
                   )}
                 </div>
               )}
 
               <div className="flex items-center gap-2 border-t border-border/70 pt-4">
-                <Button className="rounded-full" onClick={() => void save()} disabled={saving}>
-                  {saving ? "Saving…" : "Save changes"}
+                <Button
+                  className={big("rounded-full", "phone:h-11 phone:flex-1")}
+                  onClick={() => void save()}
+                  disabled={saving}
+                >
+                  {saving ? w.saving : w.save}
                 </Button>
                 {canDelete ? (
                   <Button
                     variant="ghost"
-                    className="rounded-full text-destructive hover:text-destructive"
+                    className={big(
+                      "rounded-full text-destructive hover:text-destructive",
+                      "phone:h-11",
+                    )}
                     onClick={() => void deleteContact()}
                   >
-                    Delete
+                    {w.delete}
                   </Button>
                 ) : null}
               </div>
@@ -459,46 +587,45 @@ export function OptInField({
   value,
   consent,
   onChange,
+  words = OPT_IN_WORDS,
 }: {
   current: OptInStatus;
   value: OptInStatus;
   consent: ConsentRecord | null;
   onChange: (v: OptInStatus) => void;
+  /** Batch 57, Aiden Workspace: its words. Unset: Classic's exactly. */
+  words?: OptInWords;
 }) {
   const choices = drawerOptInChoices(current);
   const line = current === "opted_in" ? consentLine(consent) : null;
   return (
     <div className="space-y-2">
-      <Label>Opt-in status</Label>
+      <Label>{words.label}</Label>
       {choices.length === 0 ? (
         <>
           <span
             className={`inline-flex rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${OPT_IN_CLASSES[current]}`}
           >
-            {OPT_IN_LABELS[current]}
+            {words.labels[current]}
           </span>
-          <p className="text-xs text-muted-foreground">
-            This customer opted out. Only they can opt back in, by replying START.
-          </p>
+          <p className="text-xs text-muted-foreground">{words.optedOut}</p>
         </>
       ) : (
         <>
           <Select value={value} onValueChange={(v) => onChange(v as OptInStatus)}>
-            <SelectTrigger aria-label="Opt-in status">
+            <SelectTrigger aria-label={words.label}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               {choices.map((k) => (
                 <SelectItem key={k} value={k}>
-                  {OPT_IN_LABELS[k]}
+                  {words.labels[k]}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
           {value === "opted_out" && current !== "opted_out" ? (
-            <p className="text-xs text-muted-foreground">
-              Once saved, only the customer can undo an opt-out, by replying START.
-            </p>
+            <p className="text-xs text-muted-foreground">{words.optOutWarning}</p>
           ) : line ? (
             <p className="text-xs text-muted-foreground">{line}</p>
           ) : null}

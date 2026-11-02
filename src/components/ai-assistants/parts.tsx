@@ -1,11 +1,18 @@
-import { useState } from "react";
-import { Check, Copy } from "lucide-react";
+import { useState, type CSSProperties } from "react";
+import { Check, Copy, History } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/empty-state";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CONNECT_CLIENTS, MCP_SAFETY, MCP_URL, OTHER_CLIENT } from "@/lib/mcp-connect";
 import { PROMPT_GROUPS } from "@/lib/mcp-prompts";
-import { ACTION_WORDS, type AssistantApp, type AssistantEvent, type AssistantsOverview } from "@/lib/mcp-workspace";
+import {
+  ACTION_WORDS,
+  type AssistantApp,
+  type AssistantEvent,
+  type AssistantsOverview,
+} from "@/lib/mcp-workspace";
 import { cn } from "@/lib/utils";
+import { ASSISTANTS_COPY, type AssistantsCopy } from "./copy";
 
 /**
  * Batch 53: the AI assistants page's sections, as plain views (no data
@@ -48,7 +55,11 @@ export function CopyText({
       aria-label={copied ? `${label}: copied` : label}
       className={cn("shrink-0", className)}
     >
-      {copied ? <Check className="h-4 w-4" aria-hidden="true" /> : <Copy className="h-4 w-4" aria-hidden="true" />}
+      {copied ? (
+        <Check className="h-4 w-4" aria-hidden="true" />
+      ) : (
+        <Copy className="h-4 w-4" aria-hidden="true" />
+      )}
       {showText ? (copied ? "Copied" : "Copy") : null}
       <span className="sr-only" aria-live="polite">
         {copied ? "Copied" : ""}
@@ -63,12 +74,15 @@ export function SectionCard({
   blurb,
   children,
   className,
+  rise,
 }: {
   id: string;
   title: string;
   blurb?: string;
   children: React.ReactNode;
   className?: string;
+  /** Batch 57, Aiden Workspace only: arrive in turn (nd-rise, n × 70ms). */
+  rise?: number | undefined;
 }) {
   return (
     <section
@@ -76,7 +90,12 @@ export function SectionCard({
       id={id}
       // Hallmark floor: no card inside a card — a section is a divider and a
       // heading; its rows are the cards.
-      className={cn("scroll-mt-24 space-y-4 border-t border-border pt-6 first:border-t-0 first:pt-0", className)}
+      className={cn(
+        "scroll-mt-24 space-y-4 border-t border-border pt-6 first:border-t-0 first:pt-0",
+        rise !== undefined && "nd-rise",
+        className,
+      )}
+      style={rise !== undefined ? ({ "--d": rise } as CSSProperties) : undefined}
     >
       <div className="space-y-1">
         <h2 id={`${id}-title`} className="text-lg font-semibold text-foreground">
@@ -103,7 +122,11 @@ export function ServerUrl() {
 
 const TABS = [
   ...CONNECT_CLIENTS.map((c) => ({ key: c.key as string, tab: c.name.split(" (")[0]!, client: c })),
-  { key: OTHER_CLIENT.key as string, tab: OTHER_CLIENT.name, client: { ...OTHER_CLIENT, code: undefined, source: null as string | null } },
+  {
+    key: OTHER_CLIENT.key as string,
+    tab: OTHER_CLIENT.name,
+    client: { ...OTHER_CLIENT, code: undefined, source: null as string | null },
+  },
 ];
 
 /** Connect: the URL and the steps for each app, from mcp-connect.ts (the same words as /developers#mcp). */
@@ -133,8 +156,14 @@ export function ConnectSteps({ defaultTab = "claude" }: { defaultTab?: string })
             {t.client.code ? (
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-medium text-muted-foreground">{t.client.code.label}</span>
-                  <CopyText value={t.client.code.text} label={`Copy ${t.client.code.label}`} className={focusRing} />
+                  <span className="text-sm font-medium text-muted-foreground">
+                    {t.client.code.label}
+                  </span>
+                  <CopyText
+                    value={t.client.code.text}
+                    label={`Copy ${t.client.code.label}`}
+                    className={focusRing}
+                  />
                 </div>
                 <pre className="overflow-x-auto rounded-xl bg-muted px-4 py-3 font-mono text-sm text-foreground">
                   {t.client.code.text}
@@ -148,7 +177,10 @@ export function ConnectSteps({ defaultTab = "claude" }: { defaultTab?: string })
                   href={t.client.source}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className={cn("rounded font-medium text-primary underline-offset-4 hover:underline", focusRing)}
+                  className={cn(
+                    "rounded font-medium text-primary underline-offset-4 hover:underline",
+                    focusRing,
+                  )}
                 >
                   {t.tab}'s documentation
                 </a>
@@ -180,7 +212,12 @@ export function PromptLibrary({ headingLevel = 3 }: { headingLevel?: 3 | 2 }) {
                   <p className="text-[0.9375rem] font-medium text-foreground">“{p.text}”</p>
                   <p className="mt-0.5 text-sm text-muted-foreground">{p.does}</p>
                 </div>
-                <CopyText value={p.text} label={`Copy the prompt: ${p.text}`} showText={false} className={focusRing} />
+                <CopyText
+                  value={p.text}
+                  label={`Copy the prompt: ${p.text}`}
+                  showText={false}
+                  className={focusRing}
+                />
               </li>
             ))}
           </ul>
@@ -230,8 +267,16 @@ function Meter({ label, used, limit }: { label: string; used: number; limit: num
 export function UsageMeters({ usage }: { usage: AssistantsOverview["usage"] }) {
   return (
     <div className="grid gap-4 sm:grid-cols-2">
-      <Meter label="Your actions this minute" used={usage.callsThisMinute} limit={usage.callsPerMinute} />
-      <Meter label="Campaign sends this hour (whole workspace)" used={usage.sendsThisHour} limit={usage.sendsPerHour} />
+      <Meter
+        label="Your actions this minute"
+        used={usage.callsThisMinute}
+        limit={usage.callsPerMinute}
+      />
+      <Meter
+        label="Campaign sends this hour (whole workspace)"
+        used={usage.sendsThisHour}
+        limit={usage.sendsPerHour}
+      />
     </div>
   );
 }
@@ -241,7 +286,12 @@ const when = (iso: string | null) => {
   const d = new Date(iso);
   return Number.isNaN(d.getTime())
     ? null
-    : d.toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+    : d.toLocaleString("en-IN", {
+        day: "numeric",
+        month: "short",
+        hour: "numeric",
+        minute: "2-digit",
+      });
 };
 
 /** Owners and admins: the team's other connected apps (each person removes their own). */
@@ -262,7 +312,11 @@ export function TeamApps({ apps }: { apps: AssistantApp[] }) {
                 {a.name} <span className="font-normal text-muted-foreground">for {a.member}</span>
               </p>
               <p className="text-sm text-muted-foreground">
-                {[a.site, a.grantedAt ? `connected ${when(a.grantedAt)}` : null, a.lastUsedAt ? `last used ${when(a.lastUsedAt)}` : "not used yet"]
+                {[
+                  a.site,
+                  a.grantedAt ? `connected ${when(a.grantedAt)}` : null,
+                  a.lastUsedAt ? `last used ${when(a.lastUsedAt)}` : "not used yet",
+                ]
                   .filter(Boolean)
                   .join(", ")}
               </p>
@@ -271,8 +325,8 @@ export function TeamApps({ apps }: { apps: AssistantApp[] }) {
         ))}
       </ul>
       <p className="text-sm text-muted-foreground">
-        Each person removes their own apps here. To stop every AI app in this workspace at once, switch AI assistants
-        off below.
+        Each person removes their own apps here. To stop every AI app in this workspace at once,
+        switch AI assistants off below.
       </p>
     </div>
   );
@@ -281,29 +335,47 @@ export function TeamApps({ apps }: { apps: AssistantApp[] }) {
 export function Timeline({
   events,
   seesEveryone,
+  copy = ASSISTANTS_COPY.classic.activity,
 }: {
   events: AssistantEvent[];
   seesEveryone: boolean;
+  /** The page's words for this design (copy.ts); Classic's by default. */
+  copy?: AssistantsCopy["activity"];
 }) {
   if (!events.length) {
+    // Aiden Workspace: the illustrated empty state with its one next step.
+    if (copy.emptyAction) {
+      return (
+        <EmptyState
+          icon={History}
+          title={copy.emptyTitle}
+          description={copy.emptyBody}
+          action={
+            <Button asChild variant="outline" className="phone:min-h-11">
+              <a href="#prompts">{copy.emptyAction}</a>
+            </Button>
+          }
+        />
+      );
+    }
     return (
       <div className="rounded-xl border border-dashed border-border bg-card px-5 py-6">
-        <p className="font-semibold text-foreground">Nothing yet.</p>
-        <p className="mt-1 text-body text-muted-foreground">
-          When your assistant creates a segment, drafts a campaign or a flow, or sends or switches one on after you
-          confirm, it shows here with who asked, from which app and a link to it. Try asking it: “Draft a Diwali
-          campaign to customers tagged VIP”.
-        </p>
+        <p className="font-semibold text-foreground">{copy.emptyTitle}</p>
+        <p className="mt-1 text-body text-muted-foreground">{copy.emptyBody}</p>
       </div>
     );
   }
   return (
     <ol className="m-0 grid list-none gap-2 p-0">
       {events.map((e) => (
-        <li key={e.id} className="flex flex-col gap-1 rounded-xl border border-border bg-card px-4 py-3 sm:flex-row sm:items-center sm:gap-4">
+        <li
+          key={e.id}
+          className="flex flex-col gap-1 rounded-xl border border-border bg-card px-4 py-3 sm:flex-row sm:items-center sm:gap-4"
+        >
           <div className="min-w-0 flex-1">
             <p className="text-foreground [overflow-wrap:anywhere]">
-              <span className="font-semibold">{e.app}</span> {ACTION_WORDS[e.action] ?? "made a change"}
+              <span className="font-semibold">{e.app}</span>{" "}
+              {ACTION_WORDS[e.action] ?? "made a change"}
               {e.name ? <span className="text-muted-foreground">: {e.name}</span> : null}
             </p>
             <p className="text-sm text-muted-foreground">
@@ -314,9 +386,12 @@ export function Timeline({
           {e.link ? (
             <a
               href={e.link}
-              className={cn("rounded text-sm font-semibold text-primary underline-offset-4 hover:underline", focusRing)}
+              className={cn(
+                "rounded text-sm font-semibold text-primary underline-offset-4 hover:underline",
+                focusRing,
+              )}
             >
-              Open
+              {copy.open}
             </a>
           ) : null}
         </li>

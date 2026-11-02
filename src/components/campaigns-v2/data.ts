@@ -12,6 +12,7 @@ import {
 import type { TemplateRow } from "@/lib/templates";
 import { componentsToPreview, type PreviewModel } from "@/components/templates/template-preview";
 import { money, type CampaignCostEstimate } from "@/lib/billing";
+import { campaignsCopy, costCopy, customers } from "./copy";
 
 /**
  * Batch 47: the new Campaigns screen's reads (docs/design/preview.html
@@ -46,7 +47,7 @@ export async function loadCampaignList(organizationId: string) {
     .order("created_at", { ascending: false });
   return {
     rows: (data ?? []) as CampaignRow[],
-    error: error ? "We couldn’t load your campaigns. Please try again." : null,
+    error: error ? campaignsCopy.loadError : null,
   };
 }
 
@@ -82,7 +83,7 @@ export async function loadCampaignResults(q: ResultsQuery) {
   ]);
   return {
     campaign: cErr || !c ? null : (c as CampaignRow),
-    error: cErr || !c ? "We couldn’t find this campaign." : null,
+    error: cErr || !c ? campaignsCopy.notFound : null,
     recipients: (r ?? []) as CampaignRecipientRow[],
     total: total ?? 0,
   };
@@ -260,7 +261,7 @@ export function campaignSubtitle(
     case "scheduled":
       return c.scheduled_at ? `Sends ${shortWhen(c.scheduled_at, timezone)}` : "Scheduled";
     case "awaiting_approval":
-      return `To ${total} people`;
+      return `To ${customers(c.total_recipients)}`;
     case "paused":
       return `Paused at ${count.format(c.sent_count)} of ${total}`;
     case "cancelled":
@@ -268,7 +269,7 @@ export function campaignSubtitle(
         ? `Stopped after ${count.format(c.sent_count)} of ${total}`
         : "Cancelled";
     case "failed":
-      return "Could not send";
+      return "Couldn’t send";
     default:
       return CAMPAIGN_STATUS_LABELS[c.status] ?? "Draft";
   }
@@ -382,8 +383,10 @@ export function ndCostLine(
   audienceLoading: boolean,
   estimate: CampaignCostEstimate | null,
 ): string {
-  if (audienceLoading && !audience) return "Counting who gets it";
-  if (!audience) return "Pick who gets it to see the cost";
-  const people = `${count.format(audience.eligible)} people`;
-  return estimate ? `${people}, about ${money(estimate.estimate, estimate.currency)}` : people;
+  if (audienceLoading && !audience) return costCopy.line.counting;
+  if (!audience) return costCopy.line.pick;
+  const people = customers(audience.eligible);
+  return estimate
+    ? costCopy.line.about(people, money(estimate.estimate, estimate.currency))
+    : people;
 }

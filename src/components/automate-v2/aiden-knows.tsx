@@ -14,6 +14,7 @@ import { NOT_ARCHIVED_DUPLICATE } from "@/lib/catalog";
 import type { KnowledgeSource } from "@/lib/employee-client";
 import { cn } from "@/lib/utils";
 import { knowsRows, type KnowsRow } from "./aiden-v2";
+import { knowsCopy as t } from "./copy";
 
 const ICONS: Record<KnowsRow["key"], LucideIcon> = {
   website: Globe,
@@ -23,8 +24,8 @@ const ICONS: Record<KnowsRow["key"], LucideIcon> = {
 };
 
 const STATE_TEXT: Partial<Record<KnowsRow["state"], string>> = {
-  reading: "Reading now",
-  problem: "Needs a look",
+  reading: t.reading,
+  problem: t.problem,
 };
 
 /**
@@ -86,10 +87,10 @@ export function AidenKnows({
     <section aria-labelledby="aiden-knows-heading" className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-3">
         <h2 id="aiden-knows-heading" className="m-0 font-display text-[1.25rem] font-semibold">
-          What {name} knows
+          {t.heading(name)}
         </h2>
-        <Button variant="ghost" size="sm" onClick={onManage}>
-          <BookOpen className="mr-1.5 h-4 w-4" aria-hidden="true" /> Manage
+        <Button variant="ghost" size="sm" className="phone:h-11" onClick={onManage}>
+          <BookOpen className="mr-1.5 h-4 w-4" aria-hidden="true" /> {t.manage}
         </Button>
       </div>
       <ul className="m-0 flex list-none flex-col rounded-[20px] border border-line bg-surface p-0 shadow-md">
@@ -132,7 +133,7 @@ export function AidenKnows({
               {row.key === "catalogue" ? (
                 <Link
                   to="/app/catalog"
-                  className="flex items-center gap-3.5 rounded-[20px] px-4 py-3.5 transition-colors duration-200 hover:bg-ground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aiden"
+                  className="flex items-center gap-3.5 rounded-[20px] px-4 py-3.5 transition-[background-color] duration-200 hover:bg-ground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aiden"
                 >
                   {body}
                 </Link>

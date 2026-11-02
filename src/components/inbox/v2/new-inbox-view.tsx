@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Search, X } from "lucide-react";
-import { ErrorState } from "@/components/empty-state";
+import { Link } from "@tanstack/react-router";
+import { MessagesSquare, Search, X } from "lucide-react";
+import { EmptyState, ErrorState } from "@/components/empty-state";
+import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import {
@@ -29,6 +31,7 @@ import {
   type QuickFilter,
 } from "./inbox-v2";
 import { useInbox } from "./use-inbox";
+import { INBOX_COPY } from "./copy";
 
 /** The details panel's open/closed choice, shared with the classic Inbox. */
 const DETAILS_KEY = "aidwar.inbox_details";
@@ -433,16 +436,14 @@ export function NewInboxView() {
             />
           ) : (
             <div className="grid h-full place-items-center bg-ground bg-[radial-gradient(var(--line)_1px,transparent_1.2px)] bg-[length:20px_20px] p-8">
-              <div className="max-w-xs rounded-[18px] border border-line bg-surface px-6 py-6 text-center shadow-md">
-                <h2 className="m-0 font-display text-xl font-semibold">
-                  {conversations.length ? "Pick a chat" : "Your chats land here"}
-                </h2>
-                <p className="m-0 mt-1.5 text-[0.9375rem] text-muted-foreground">
-                  {conversations.length
-                    ? "Open a chat on the left to read it and reply. Aiden keeps answering the rest."
-                    : "When a customer writes to your WhatsApp number, the chat shows up here and Aiden can answer it."}
-                </p>
-                {conversations.length ? (
+              {conversations.length ? (
+                <div className="nd-rise max-w-xs rounded-[18px] border border-line bg-surface px-6 py-6 text-center shadow-md">
+                  <h2 className="m-0 font-display text-xl font-semibold">
+                    {INBOX_COPY.paneEmpty.pick}
+                  </h2>
+                  <p className="m-0 mt-1.5 text-[0.9375rem] text-muted-foreground">
+                    {INBOX_COPY.paneEmpty.pickBody}
+                  </p>
                   <p
                     className="m-0 mt-3 flex items-center justify-center gap-1 text-[0.8125rem] text-muted-foreground"
                     aria-hidden="true"
@@ -450,8 +451,24 @@ export function NewInboxView() {
                     <Kbd>J</Kbd>
                     <Kbd>K</Kbd> move, <Kbd>↵</Kbd> open, <Kbd>/</Kbd> search
                   </p>
-                ) : null}
-              </div>
+                </div>
+              ) : (
+                // Batch 57: the illustrated empty state, with the one next step.
+                <div className="w-full max-w-md rounded-[22px] bg-surface shadow-md">
+                  <EmptyState
+                    icon={MessagesSquare}
+                    art="people"
+                    variant="plain"
+                    title={INBOX_COPY.paneEmpty.noneTitle}
+                    description={INBOX_COPY.paneEmpty.noneBody}
+                    action={
+                      <Button asChild variant="outline">
+                        <Link to="/app/employee">{INBOX_COPY.paneEmpty.noneAction}</Link>
+                      </Button>
+                    }
+                  />
+                </div>
+              )}
             </div>
           )}
         </section>

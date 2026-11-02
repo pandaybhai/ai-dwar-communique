@@ -7,6 +7,8 @@ import { cn } from "@/lib/utils";
  * Magic UI's number-ticker (magicui.design), copied into the repo and restyled
  * for AiDwar (Batch 44): tokens only, Indian digit grouping by default, an
  * optional prefix (₹), and no animation at all under reduced motion.
+ * Batch 57: it counts up once, the first time it is seen; a later change (a
+ * live update) shows the new number at once instead of counting again.
  */
 interface NumberTickerProps extends ComponentPropsWithoutRef<"span"> {
   value: number;
@@ -35,6 +37,7 @@ export function NumberTicker({
   const motionValue = useMotionValue(direction === "down" ? value : startValue);
   const springValue = useSpring(motionValue, { damping: 60, stiffness: 100 });
   const isInView = useInView(ref, { once: true, margin: "0px" });
+  const counted = useRef(false);
   const format = (n: number) =>
     prefix +
     Intl.NumberFormat(locale, {
@@ -48,9 +51,16 @@ export function NumberTicker({
       return;
     }
     let timer: ReturnType<typeof setTimeout> | null = null;
+    const target = direction === "down" ? startValue : value;
+    if (counted.current) {
+      motionValue.jump(target);
+      springValue.jump(target);
+      return;
+    }
     if (isInView) {
       timer = setTimeout(() => {
-        motionValue.set(direction === "down" ? startValue : value);
+        counted.current = true;
+        motionValue.set(target);
       }, delay * 1000);
     }
     return () => {
@@ -58,7 +68,7 @@ export function NumberTicker({
     };
     // format is derived from the props listed here.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [motionValue, isInView, delay, value, direction, startValue, reduce]);
+  }, [motionValue, springValue, isInView, delay, value, direction, startValue, reduce]);
 
   useEffect(
     () =>

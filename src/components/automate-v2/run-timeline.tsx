@@ -1,10 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { History } from "lucide-react";
+import { ErrorState } from "@/components/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
 import { aidwar } from "@/integrations/aidwar/client";
 import { relativeTime } from "@/lib/catalog";
 import type { FlowGraph } from "@/lib/flow-graph";
 import { RESPONSE_STATUS_LABELS, responseStatus, type ResponseStatus } from "@/lib/flow-responses";
 import { cn } from "@/lib/utils";
+import { runTimelineCopy as t } from "./copy";
 import { eventText, stepTitle, timelineEvents, triggerText } from "./flows-v2";
 
 type Run = {
@@ -51,6 +54,8 @@ export function RunTimeline({
   const [graphs, setGraphs] = useState<Record<string, FlowGraph>>({});
   const [names, setNames] = useState<Record<string, string>>({});
   const [failed, setFailed] = useState(false);
+  /** Batch 57: Try again reads the same runs once more. */
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let live = true;
@@ -120,38 +125,30 @@ export function RunTimeline({
     return () => {
       live = false;
     };
-  }, [organizationId, flowId]);
+  }, [organizationId, flowId, attempt]);
 
   if (runs === null) {
     return (
-      <div className="flex flex-col gap-2" aria-label={`Loading runs of ${flowName}`}>
+      <div className="flex flex-col gap-2" aria-busy="true" aria-label={t.loading(flowName)}>
         {[0, 1, 2].map((i) => (
-          <div
-            key={i}
-            className="h-20 animate-pulse rounded-[18px] bg-bubble-in motion-reduce:animate-none"
-          />
+          <Skeleton key={i} className="h-20 rounded-[18px]" />
         ))}
       </div>
     );
   }
-  if (failed)
-    return (
-      <p className="m-0 text-sm text-muted-foreground">
-        The run history didn&rsquo;t load. Refresh to try again.
-      </p>
-    );
+  if (failed) return <ErrorState message={t.failed} onRetry={() => setAttempt((n) => n + 1)} />;
   if (!runs.length) {
     return (
       <p className="m-0 flex items-center gap-2 rounded-[18px] border border-dashed border-line px-4 py-5 text-sm text-muted-foreground">
         <History className="h-4 w-4 shrink-0" aria-hidden="true" />
-        {flowName} hasn&rsquo;t run for anyone yet. Runs show up here as customers go through it.
+        {t.empty(flowName)}
       </p>
     );
   }
 
   return (
     <ol className="m-0 flex list-none flex-col gap-3 p-0">
-      {runs.map((run) => {
+      {runs.map((run, i) => {
         const status = responseStatus(run.status);
         const graph = graphs[run.version_id];
         const shown = timelineEvents(events[run.id] ?? []);
@@ -159,13 +156,17 @@ export function RunTimeline({
           ? triggerText({ kind: String(run.trigger["kind"]), config: run.trigger })
           : null;
         return (
-          <li key={run.id} className="rounded-[18px] border border-line bg-surface p-4 shadow-md">
+          <li
+            key={run.id}
+            style={{ "--d": Math.min(i, 6) } as CSSProperties}
+            className="nd-rise rounded-[18px] border border-line bg-surface p-4 shadow-md"
+          >
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="m-0 min-w-0 font-semibold text-foreground">
-                {names[run.contact_id] ?? "A customer"}
+                {names[run.contact_id] ?? t.someone}
                 <span className="ml-2 text-sm font-medium text-muted-foreground">
                   {relativeTime(run.started_at)}
-                  {how ? `, from ${how.charAt(0).toLowerCase()}${how.slice(1)}` : ""}
+                  {how ? t.from(how) : ""}
                 </span>
               </p>
               <span

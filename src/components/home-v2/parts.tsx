@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { motion } from "motion/react";
 import { AidenOrb, NumberTicker } from "@/components/design-v2";
 import { initials } from "@/components/inbox/inbox-utils";
 import {
@@ -16,6 +17,7 @@ import { money } from "@/lib/billing";
 import { percent, type CampaignRow } from "@/lib/campaigns";
 import type { HomeMode } from "@/lib/new-home";
 import { cn } from "@/lib/utils";
+import { HOME_COPY } from "./copy";
 
 /**
  * Batch 45: the small pieces the new Home is drawn with
@@ -64,9 +66,9 @@ export function firstName(label: string): string {
 }
 
 const MODE_OPTIONS: Array<{ key: HomeMode; label: string }> = [
-  { key: "replying", label: "Aiden replying" },
-  { key: "draft", label: "Aiden drafts" },
-  { key: "off", label: "Aiden off" },
+  { key: "replying", label: HOME_COPY.modes.replying },
+  { key: "draft", label: HOME_COPY.modes.draft },
+  { key: "off", label: HOME_COPY.modes.off },
 ];
 
 /**
@@ -89,7 +91,7 @@ export function ModeSwitch({
   return (
     <div
       role="group"
-      aria-label="Aiden"
+      aria-label={HOME_COPY.modeGroup}
       className="inline-flex self-end rounded-[14px] border border-line bg-surface p-1 phone:grid phone:grid-cols-3 phone:self-stretch"
     >
       {MODE_OPTIONS.map((o) => {
@@ -101,23 +103,28 @@ export function ModeSwitch({
             aria-pressed={pressed}
             aria-busy={busy === o.key || undefined}
             disabled={!canChange || busy !== null}
-            title={
-              canChange
-                ? undefined
-                : "Only someone who can change Aiden’s settings can switch this."
-            }
+            title={canChange ? undefined : HOME_COPY.modeLocked}
             onClick={() => {
               if (!pressed) onChange(o.key);
             }}
             className={cn(
-              "rounded-[10px] px-3.5 py-2 text-sm font-semibold transition-[background-color,color] duration-[250ms] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aiden active:scale-[0.98] disabled:cursor-not-allowed phone:px-1 phone:py-[9px] phone:text-[13px]",
+              "relative rounded-[10px] px-3.5 py-2 text-sm font-semibold transition-[color,transform] duration-[250ms] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aiden active:scale-[0.98] disabled:cursor-not-allowed phone:px-1 phone:py-[9px] phone:text-[13px]",
               pressed
-                ? "bg-ink text-ink-foreground"
+                ? "text-ink-foreground"
                 : "text-muted-foreground hover:text-foreground disabled:hover:text-muted-foreground",
               !pressed && !canChange && "opacity-60",
             )}
           >
-            {o.label}
+            {pressed ? (
+              // Batch 57: the ink pill slides to the mode you pick.
+              <motion.span
+                layoutId="nd-home-mode"
+                aria-hidden="true"
+                className="absolute inset-0 rounded-[10px] bg-ink"
+                transition={{ duration: 0.35, ease: [0.2, 0.8, 0.2, 1] }}
+              />
+            ) : null}
+            <span className="relative">{o.label}</span>
           </button>
         );
       })}
@@ -140,11 +147,11 @@ export function TestFirstDialog({
     <AlertDialog open={gate !== null} onOpenChange={(open) => !open && onClose()}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Test Aiden first?</AlertDialogTitle>
+          <AlertDialogTitle>{HOME_COPY.testFirst.title}</AlertDialogTitle>
           <AlertDialogDescription>{gate?.message}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Not now</AlertDialogCancel>
+          <AlertDialogCancel>{HOME_COPY.testFirst.notNow}</AlertDialogCancel>
           <Button
             variant="outline"
             onClick={() => {
@@ -153,7 +160,7 @@ export function TestFirstDialog({
               if (mode) onSwitchAnyway(mode);
             }}
           >
-            Switch anyway
+            {HOME_COPY.testFirst.anyway}
           </Button>
           <Button
             onClick={() => {
@@ -161,7 +168,7 @@ export function TestFirstDialog({
               void navigate({ to: "/app/employee" });
             }}
           >
-            Test on Aiden’s page
+            {HOME_COPY.testFirst.test}
           </Button>
         </AlertDialogFooter>
       </AlertDialogContent>
@@ -182,7 +189,7 @@ export function TodayStats({ rows }: { rows: StatRow[] }) {
   return (
     <section aria-labelledby="home-today" className="flex flex-col gap-2.5">
       <h2 id="home-today" className="font-display text-lg font-semibold">
-        Today
+        {HOME_COPY.today}
       </h2>
       <dl className="m-0">
         {rows.map((r) => (
@@ -250,15 +257,14 @@ export function LatestCampaign({ campaign }: { campaign: CampaignRow }) {
   return (
     <SideSection id="home-campaign" title={campaign.name}>
       <div className="flex justify-between text-sm text-muted-foreground">
-        <span>Read</span>
+        <span>{HOME_COPY.campaign.read}</span>
         <span className="tabular-nums">{read}%</span>
       </div>
       <Bar value={read} />
       <div className="flex justify-between text-sm text-muted-foreground">
-        <span>Replied</span>
+        <span>{HOME_COPY.campaign.replied}</span>
         <span className="tabular-nums">
-          {count.format(campaign.replied_count)}{" "}
-          {campaign.replied_count === 1 ? "person" : "people"}
+          {count.format(campaign.replied_count)} {HOME_COPY.campaign.people(campaign.replied_count)}
         </span>
       </div>
       <Bar value={replied} />
@@ -269,40 +275,71 @@ export function LatestCampaign({ campaign }: { campaign: CampaignRow }) {
 /**
  * The preview's two columns: the signature (live work) on the left, at most
  * three quiet supports on the right; one column under 900px.
+ *
+ * Batch 57 (approved preview): the page opens like a person saying good
+ * morning — the greeting is the title, Aiden's live line sits under it, then
+ * the one gold thing that needs you (`focus`) before anything else. Blocks
+ * arrive one after another (nd-rise), once, on load.
  */
 export function HomeGrid({
   orb,
+  greeting,
   headline,
   lede,
+  focus,
   children,
   side,
 }: {
   orb: ReactNode;
+  /** "Good morning, Riya"; without it the headline is the title (as before). */
+  greeting?: string | undefined;
   headline: string;
   lede: string;
+  /** The single gold card: what needs you now. */
+  focus?: ReactNode;
   children: ReactNode;
   side: ReactNode;
 }) {
   return (
     <div className="grid items-start gap-10 min-[901px]:grid-cols-[minmax(0,7fr)_minmax(0,4fr)]">
       <section aria-labelledby="home-headline" className="flex min-w-0 flex-col gap-[22px]">
-        <div aria-live="polite" className="flex flex-col gap-[22px]">
+        <div aria-live="polite" className="nd-rise flex flex-col gap-3">
           <div className="flex items-center gap-5 phone:gap-3.5">
             {orb}
-            <h1
-              id="home-headline"
-              className="m-0 min-w-0 font-display text-[clamp(32px,4.6vw,52px)] font-extrabold leading-[1.02] tracking-[-1.6px] text-balance [overflow-wrap:break-word] phone:text-[30px] phone:tracking-[-1px]"
-            >
-              {headline}
-            </h1>
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <h1
+                id="home-headline"
+                className="m-0 min-w-0 font-display text-[clamp(32px,4.6vw,52px)] font-extrabold leading-[1.02] tracking-[-1.6px] text-balance [overflow-wrap:break-word] phone:text-[30px] phone:tracking-[-1px]"
+              >
+                {greeting ?? headline}
+              </h1>
+              {greeting ? (
+                <p className="m-0 font-display text-[clamp(19px,2vw,23px)] font-semibold leading-tight tracking-[-0.3px] text-aiden-deep">
+                  {headline}
+                </p>
+              ) : null}
+            </div>
           </div>
-          <p className="m-0 max-w-[44ch] text-[17px] text-muted-foreground phone:text-base">
+          <p className="m-0 max-w-[48ch] text-[17px] text-muted-foreground phone:text-base">
             {lede}
           </p>
         </div>
-        {children}
+        {focus ? (
+          <div className="nd-rise" style={{ "--d": 1 } as React.CSSProperties}>
+            {focus}
+          </div>
+        ) : null}
+        {children ? (
+          <div className="nd-rise min-w-0" style={{ "--d": 2 } as React.CSSProperties}>
+            {children}
+          </div>
+        ) : null}
       </section>
-      <aside aria-label="Today and what needs you" className="flex min-w-0 flex-col gap-7">
+      <aside
+        aria-label="Today and what needs you"
+        className="nd-rise flex min-w-0 flex-col gap-7"
+        style={{ "--d": 3 } as React.CSSProperties}
+      >
         {side}
       </aside>
     </div>

@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { callApi } from "@/lib/whatsapp-client";
 import type { TemplateRow } from "@/lib/templates";
 import { deleteTemplateRequest } from "./templates-data";
+import { deleteCopy } from "./copy";
 
 /**
  * Batch 51: "Delete template" from a gallery tile's menu. The dialog names the
@@ -47,7 +48,7 @@ export function DeleteTemplateDialog({
       setRefusal(error);
       return;
     }
-    toast.success(`Deleted “${template.name}”.`);
+    toast.success(deleteCopy.done(template.name));
     onOpenChange(false);
     onDeleted();
   };
@@ -63,11 +64,8 @@ export function DeleteTemplateDialog({
     >
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Delete “{template?.name}”?</AlertDialogTitle>
-          <AlertDialogDescription>
-            It is deleted on your WhatsApp business account too ({template?.language}). Meta doesn’t
-            let a deleted template’s name be used again for 30 days, and this can’t be undone.
-          </AlertDialogDescription>
+          <AlertDialogTitle>{deleteCopy.title(template?.name)}</AlertDialogTitle>
+          <AlertDialogDescription>{deleteCopy.body(template?.language)}</AlertDialogDescription>
         </AlertDialogHeader>
         {refusal ? (
           <p
@@ -78,10 +76,10 @@ export function DeleteTemplateDialog({
           </p>
         ) : null}
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={busy}>Keep it</AlertDialogCancel>
+          <AlertDialogCancel disabled={busy}>{deleteCopy.keep}</AlertDialogCancel>
           <Button variant="destructive" disabled={busy} onClick={() => void remove()}>
             {busy ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : null}
-            Delete template
+            {deleteCopy.confirm}
           </Button>
         </AlertDialogFooter>
       </AlertDialogContent>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -77,6 +77,8 @@ import { useNewDesign } from "@/lib/new-design";
 import { TemplatePhone } from "@/components/templates-v2/template-phone";
 import { NdCostPanel, NdSteps } from "@/components/campaigns-v2/wizard-parts";
 import { ndCostLine } from "@/components/campaigns-v2/data";
+import { sendCopy } from "@/components/campaigns-v2/copy";
+import { ConfettiBurst, ProgressRing } from "@/components/design-v2";
 
 type AudienceSummary = {
   matched: number;
@@ -203,6 +205,15 @@ export function CampaignWizard({
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
   const [launching, setLaunching] = useState(false);
+  // Batch 57 (Aiden Workspace only): the moment after a successful launch.
+  const [ndDone, setNdDone] = useState<"sent" | "scheduled" | "approval" | null>(null);
+  const ndTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (ndTimer.current) clearTimeout(ndTimer.current);
+    },
+    [],
+  );
   const [loadingLists, setLoadingLists] = useState(true);
   // Media this campaign sends: the header picture/clip/file, and one per
   // carousel card. Blank means "use the file the template was built with".
@@ -555,7 +566,25 @@ export function CampaignWizard({
       toast.error(error ?? "We couldn't launch this campaign.");
       return;
     }
-    toast.success(sendNow ? "Campaign launched — sending now." : "Campaign scheduled.");
+    // Batch 57: in Aiden Workspace the footer says it in place (role="status"), so no toast over it.
+    if (!nd) toast.success(sendNow ? "Campaign launched — sending now." : "Campaign scheduled.");
+    if (nd) {
+      // Batch 57: the ring completes, one burst of confetti for a send, then
+      // the same close and onLaunched as before.
+      const id = data.campaign_id;
+      setNdDone(estimate?.needs_approval ? "approval" : sendNow ? "sent" : "scheduled");
+      const still =
+        typeof window !== "undefined" &&
+        window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+      ndTimer.current = setTimeout(
+        () => {
+          onOpenChange(false);
+          onLaunched(id);
+        },
+        still ? 1200 : 2400,
+      );
+      return;
+    }
     onOpenChange(false);
     onLaunched(data.campaign_id);
   };
@@ -1305,6 +1334,8 @@ export function CampaignWizard({
               >
                 Continue <ArrowRight className="h-4 w-4" />
               </Button>
+            ) : nd && (launching || ndDone) ? (
+              <NdSendMoment done={ndDone} people={audience ? audience.eligible : null} />
             ) : (
               <Button disabled={!canLaunch} onClick={() => void launch()}>
                 {launching ? (
@@ -1312,7 +1343,11 @@ export function CampaignWizard({
                 ) : (
                   <Rocket className="h-4 w-4" />
                 )}
-                {sendNow ? "Launch campaign" : "Schedule campaign"}
+                {nd
+                  ? ndLaunchLabel(sendNow, audience, estimate)
+                  : sendNow
+                    ? "Launch campaign"
+                    : "Schedule campaign"}
               </Button>
             )}
           </div>
@@ -1510,5 +1545,62 @@ function CostPanel({ audience, audienceLoading, estimate }: CostProps) {
         </p>
       ) : null}
     </section>
+  );
+}
+
+/** Batch 57: the last button in Aiden Workspace says exactly what happens. */
+function ndLaunchLabel(
+  sendNow: boolean,
+  audience: { eligible: number } | null,
+  estimate: CampaignCostEstimate | null,
+): string {
+  if (estimate?.needs_approval) return sendCopy.forApproval;
+  if (!audience) return sendNow ? "Launch campaign" : "Schedule campaign";
+  return sendNow ? sendCopy.sendTo(audience.eligible) : sendCopy.scheduleFor(audience.eligible);
+}
+
+/**
+ * Batch 57 (approved preview): while the launch request runs, a ring turns;
+ * when it succeeds the ring completes, a send gets one burst of confetti, and
+ * the words say what happened. Nothing here sends: launch() already did.
+ */
+function NdSendMoment({
+  done,
+  people,
+}: {
+  done: "sent" | "scheduled" | "approval" | null;
+  people: number | null;
+}) {
+  const text =
+    done === "sent"
+      ? sendCopy.sent(people)
+      : done === "scheduled"
+        ? sendCopy.scheduled
+        : done === "approval"
+          ? sendCopy.approval
+          : sendCopy.starting(people);
+  return (
+    <div className="flex min-w-0 items-center gap-3" role="status" aria-live="polite">
+      <ProgressRing
+        value={done ? 100 : 35}
+        size={40}
+        strokeWidth={4}
+        gaugePrimaryColor="var(--aiden)"
+        gaugeSecondaryColor="var(--line)"
+        className={done ? "" : "motion-safe:animate-spin"}
+      />
+      <span
+        className={cn(
+          "min-w-0 text-sm font-semibold",
+          done ? "text-aiden-deep" : "text-muted-foreground",
+        )}
+      >
+        {text}
+      </span>
+      <ConfettiBurst
+        fire={done === "sent"}
+        className="fixed inset-x-0 bottom-0 top-auto z-[60] h-[min(60dvh,420px)]"
+      />
+    </div>
   );
 }

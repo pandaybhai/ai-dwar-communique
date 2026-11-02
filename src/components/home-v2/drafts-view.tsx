@@ -13,8 +13,10 @@ import {
   LatestCampaign,
   TodayStats,
   contactName,
+  firstName,
   type StatRow,
 } from "./parts";
+import { HOME_COPY } from "./copy";
 import type { NewHomeData } from "./use-new-home";
 
 /**
@@ -49,7 +51,10 @@ export function DraftsView({
   stats,
   headlineFor,
   onSent,
+  greeting,
 }: {
+  /** Batch 57: "Good morning, Riya", the page's title. */
+  greeting?: string | undefined;
   data: NewHomeData;
   organizationId: string;
   canReply: boolean;
@@ -78,7 +83,7 @@ export function DraftsView({
       if (error) toast.error(error);
       return false;
     }
-    toast.success(`Sent to ${contactName(draft.contact)}.`);
+    toast.success(HOME_COPY.drafts.sent(contactName(draft.contact)));
     setLeaving(draft.runId);
     timer.current = setTimeout(() => {
       setSent((s) => new Set(s).add(draft.runId));
@@ -91,24 +96,23 @@ export function DraftsView({
   const needs = data.needsYou;
   return (
     <HomeGrid
-      orb={<HomeOrb state="draft" label="Aiden writes drafts for you" />}
+      orb={<HomeOrb state="draft" label={HOME_COPY.orb.draft} />}
+      greeting={greeting}
       headline={headlineFor(left)}
-      lede={
-        left > 0
-          ? "Aiden wrote them. Nothing goes out until you send it."
-          : "Aiden will line up the next ones as customers write."
+      lede={left > 0 ? HOME_COPY.drafts.ledeReady : HOME_COPY.drafts.ledeNone}
+      focus={
+        needs && needs.items.length > 0 ? (
+          <NeedsYou
+            items={needs.items}
+            total={needs.total}
+            organizationId={organizationId}
+            canDecide={canDecide}
+            onDecided={onSent}
+          />
+        ) : null
       }
       side={
         <>
-          {needs && needs.items.length > 0 ? (
-            <NeedsYou
-              items={needs.items}
-              total={needs.total}
-              organizationId={organizationId}
-              canDecide={canDecide}
-              onDecided={onSent}
-            />
-          ) : null}
           <TodayStats rows={stats} />
           {data.campaign ? <LatestCampaign campaign={data.campaign} /> : null}
         </>
@@ -116,11 +120,13 @@ export function DraftsView({
     >
       {data.drafts === null ? null : drafts.length === 0 ? (
         <p className="m-0 rounded-[20px] border border-line bg-surface p-5 text-muted-foreground shadow-md">
-          <b className="block font-display text-lg font-semibold text-foreground">All caught up</b>
-          Every draft has been sent or answered.
+          <b className="block font-display text-lg font-semibold text-foreground">
+            {HOME_COPY.drafts.allCaughtUp}
+          </b>
+          {HOME_COPY.drafts.allCaughtUpBody}
         </p>
       ) : (
-        <div role="group" className="relative pb-7" aria-label="Aiden’s drafts">
+        <div role="group" className="relative pb-7" aria-label={HOME_COPY.drafts.label}>
           {drafts.slice(0, 3).map((d, i) => {
             const pos =
               d.runId === leaving
@@ -169,7 +175,7 @@ function DraftCard({
       data-pos={pos}
       aria-hidden={top ? undefined : true}
       inert={top ? undefined : true}
-      aria-label={top ? `Draft for ${who}` : undefined}
+      aria-label={top ? HOME_COPY.drafts.draftFor(who) : undefined}
       className={
         "nd-draft rounded-[20px] border border-line bg-surface p-5 shadow-lg " +
         (top
@@ -193,7 +199,9 @@ function DraftCard({
       ) : null}
       {editing === null ? (
         <div className="mt-2.5 rounded-[14px_14px_4px_14px] bg-bubble-out px-3 py-2.5">
-          <small className="block text-[13px] font-bold text-aiden-deep">Aiden’s draft</small>
+          <small className="block text-[13px] font-bold text-aiden-deep">
+            {HOME_COPY.drafts.aidenDraft}
+          </small>
           <span className="whitespace-pre-line">{draft.draft}</span>
         </div>
       ) : (
@@ -202,7 +210,7 @@ function DraftCard({
             htmlFor={`draft-${draft.runId}`}
             className="mb-1.5 block text-[13px] font-bold text-aiden-deep"
           >
-            Your reply to {who}
+            {HOME_COPY.drafts.yourReply(who)}
           </label>
           <Textarea
             id={`draft-${draft.runId}`}
@@ -220,22 +228,22 @@ function DraftCard({
             {editing === null ? (
               <>
                 <Button disabled={busy} onClick={() => void go(draft.draft)}>
-                  Send
+                  {HOME_COPY.drafts.send(firstName(who))}
                 </Button>
                 <Button variant="outline" disabled={busy} onClick={() => setEditing(draft.draft)}>
-                  Edit
+                  {HOME_COPY.drafts.edit}
                 </Button>
                 <Button variant="outline" disabled={busy} onClick={() => setEditing("")}>
-                  Write my own
+                  {HOME_COPY.drafts.writeOwn}
                 </Button>
               </>
             ) : (
               <>
                 <Button disabled={busy || !editing.trim()} onClick={() => void go(editing)}>
-                  Send
+                  {HOME_COPY.drafts.send(firstName(who))}
                 </Button>
                 <Button variant="outline" disabled={busy} onClick={() => setEditing(null)}>
-                  Back to Aiden’s draft
+                  {HOME_COPY.drafts.backToDraft}
                 </Button>
               </>
             )}
@@ -243,7 +251,7 @@ function DraftCard({
         ) : (
           <div className="mt-2.5">
             <Button asChild variant="outline">
-              <a href={`/app/inbox?c=${draft.conversationId}`}>Open the chat</a>
+              <a href={`/app/inbox?c=${draft.conversationId}`}>{HOME_COPY.drafts.openChat}</a>
             </Button>
           </div>
         )

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useState, type CSSProperties } from "react";
 import { Loader2, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -6,6 +6,8 @@ import { aidwar } from "@/integrations/aidwar/client";
 import { logActivity } from "@/lib/activity";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Skeleton } from "@/components/ui/skeleton";
+import { notesCopy as t } from "./copy";
 
 /**
  * Batch 51: notes on a customer, in the new design's customer drawer. A note
@@ -59,7 +61,7 @@ export async function addNote(
   log: Log,
   args: { organizationId: string; contactId: string; userId: string; body: string },
 ): Promise<{ note: Note } | { error: string }> {
-  if (!args.body.trim()) return { error: "Write the note first." };
+  if (!args.body.trim()) return { error: t.writeFirst };
   const { data, error } = await db
     .from("contact_notes")
     .insert(noteInsert(args))
@@ -67,9 +69,7 @@ export async function addNote(
     .single();
   if (error || !data)
     return {
-      error: missingTable(error?.code)
-        ? "Notes aren't switched on for this workspace yet."
-        : "We couldn't save that note. Please try again.",
+      error: missingTable(error?.code) ? t.notOn : t.saveFailed,
     };
   const note = data as Note;
   void log("contact_note_added", args.organizationId, {
@@ -91,7 +91,7 @@ export async function deleteNote(
     .eq("id", args.noteId)
     .eq("organization_id", args.organizationId)
     .eq("author_id", args.userId);
-  if (error) return { error: "We couldn't delete that note." };
+  if (error) return { error: t.deleteFailed };
   void log("contact_note_deleted", args.organizationId, {
     contact_id: args.contactId,
     note_id: args.noteId,
@@ -173,7 +173,7 @@ export function CustomerNotes({
         full_name: string | null;
         email: string | null;
       }>)
-        map[p.id] = p.full_name?.trim() || p.email || "Teammate";
+        map[p.id] = p.full_name?.trim() || p.email || t.teammate;
       setNames(map);
     }
   }, [organizationId, contactId]);
@@ -222,83 +222,89 @@ export function CustomerNotes({
   return (
     <section
       aria-labelledby={`${fieldId}-title`}
-      className="flex flex-col gap-3 rounded-[20px] border border-line bg-surface p-4"
+      className="nd-rise flex flex-col gap-3 rounded-[20px] border border-line bg-surface p-4"
+      style={{ "--d": 1 } as CSSProperties}
     >
       <h3
         id={`${fieldId}-title`}
         className="m-0 font-display text-base font-semibold text-foreground"
       >
-        Notes
+        {t.title}
       </h3>
 
       {summary ? (
         <div className="flex flex-col gap-1 rounded-[14px] bg-aiden-soft px-3 py-2.5 text-[0.9375rem]">
           <p className="m-0 flex items-center gap-1.5 text-sm font-semibold text-aiden-deep">
             <Sparkles className="h-4 w-4" aria-hidden="true" />
-            Aiden’s last summary, {when(summary.created_at)}
+            {t.summary(when(summary.created_at))}
           </p>
           <p className="m-0 whitespace-pre-wrap text-foreground">{summary.output.trim()}</p>
-          <p className="m-0 text-[0.8125rem] text-muted-foreground">
-            From “Catch me up” in the Inbox.
-          </p>
+          <p className="m-0 text-[0.8125rem] text-muted-foreground">{t.summaryFrom}</p>
         </div>
       ) : null}
 
       {notes === null ? (
-        <Loader2
-          className="h-4 w-4 animate-spin text-muted-foreground motion-reduce:animate-none"
-          aria-label="Loading notes"
-        />
+        <div className="flex flex-col gap-2" aria-busy="true" aria-label={t.loading}>
+          <Skeleton className="h-16 w-full rounded-[12px]" />
+          <Skeleton className="h-4 w-2/3 rounded-full" />
+        </div>
       ) : state === "unavailable" ? (
-        <p className="m-0 text-[0.9375rem] text-muted-foreground">
-          Notes aren’t switched on for this workspace yet.
-        </p>
+        <p className="m-0 text-[0.9375rem] text-muted-foreground">{t.unavailable}</p>
       ) : state === "error" ? (
-        <p className="m-0 text-[0.9375rem] text-muted-foreground">
-          We couldn’t load notes. Please try again.
-        </p>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1" role="alert">
+          <p className="m-0 text-[0.9375rem] text-muted-foreground">{t.loadFailed}</p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="phone:h-11"
+            onClick={() => {
+              setNotes(null);
+              void load();
+            }}
+          >
+            {t.retry}
+          </Button>
+        </div>
       ) : (
         <>
           {canWrite ? (
             <div className="flex flex-col gap-2">
               <label htmlFor={fieldId} className="sr-only">
-                Add a note about this customer
+                {t.fieldLabel}
               </label>
               <Textarea
                 id={fieldId}
                 value={draft}
                 maxLength={NOTE_MAX}
                 onChange={(e) => setDraft(e.target.value)}
-                placeholder="Add a note for your team"
+                placeholder={t.placeholder}
                 rows={2}
                 className="min-h-[64px] resize-y rounded-[12px] border-line text-[0.9375rem] shadow-none md:text-[0.9375rem]"
               />
               <Button
                 size="sm"
-                className="w-fit self-end"
+                className="w-fit self-end phone:h-11"
                 disabled={busy || !draft.trim() || !me}
                 onClick={() => void add()}
               >
                 {busy ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : null}
-                Add note
+                {t.add}
               </Button>
             </div>
           ) : null}
           {notes.length === 0 ? (
-            <p className="m-0 text-[0.9375rem] text-muted-foreground">
-              No notes yet. Only your team sees them.
-            </p>
+            <p className="m-0 text-[0.9375rem] text-muted-foreground">{t.empty}</p>
           ) : (
             <ul className="m-0 flex list-none flex-col gap-3 p-0">
               {notes.map((n) => (
                 <li
                   key={n.id}
-                  className="flex flex-col gap-1 border-t border-line pt-3 first:border-t-0 first:pt-0"
+                  className="flex flex-col gap-1 border-t border-line pt-3 animate-in fade-in slide-in-from-top-2 duration-300 ease-out first:border-t-0 first:pt-0 motion-reduce:animate-none"
                 >
                   <p className="m-0 whitespace-pre-wrap text-[0.9375rem]">{n.body}</p>
                   <p className="m-0 flex items-center justify-between gap-2 text-[0.8125rem] text-muted-foreground">
                     <span>
-                      {n.author_id ? (names[n.author_id] ?? "Teammate") : "Teammate"},{" "}
+                      {n.author_id ? (names[n.author_id] ?? t.teammate) : t.teammate},{" "}
                       {when(n.created_at)}
                     </span>
                     {me && n.author_id === me ? (
@@ -307,8 +313,8 @@ export function CustomerNotes({
                         size="icon-sm"
                         disabled={busy}
                         onClick={() => void remove(n)}
-                        aria-label="Delete this note"
-                        className="text-muted-foreground hover:text-danger-soft-foreground"
+                        aria-label={t.deleteLabel}
+                        className="text-muted-foreground hover:text-danger-soft-foreground phone:h-11 phone:w-11"
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>

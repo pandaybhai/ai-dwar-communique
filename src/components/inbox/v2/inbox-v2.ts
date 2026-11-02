@@ -44,6 +44,29 @@ export function isAidenChat(
   return c.status === "open" && c.needs_human !== true && !c.assigned_to;
 }
 
+/** Batch 57: how long after a customer's message the Inbox may show "Aiden is typing". */
+export const AIDEN_TYPING_MS = 90_000;
+
+/**
+ * Batch 57: "Aiden is typing…" — shown only while all of this is true: Aiden
+ * replies in this workspace (Replying), the chat is one Aiden answers
+ * (isAidenChat), the newest message is the customer's, and it arrived less
+ * than AIDEN_TYPING_MS ago. Aiden's reply (an outbound message, live) or the
+ * time running out ends it. Nothing new is read for it.
+ */
+export function aidenTyping(
+  c: Pick<ConversationRow, "status" | "needs_human" | "assigned_to">,
+  messages: Array<{ direction: string; created_at: string }>,
+  mode: AidenMode,
+  now: number = Date.now(),
+): { typing: boolean; until: number } {
+  const last = messages[messages.length - 1];
+  if (mode !== "replying" || !isAidenChat(c) || !last || last.direction !== "inbound")
+    return { typing: false, until: 0 };
+  const until = new Date(last.created_at).getTime() + AIDEN_TYPING_MS;
+  return { typing: now < until, until };
+}
+
 /** Does a chat belong in a view? "waiting", "done", "all", "open", "mine" are the classic filters exactly. */
 export function inView(
   c: Pick<ConversationRow, "status" | "needs_human" | "assigned_to">,

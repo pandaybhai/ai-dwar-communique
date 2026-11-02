@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import { Copy, Filter, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { aidwar } from "@/integrations/aidwar/client";
@@ -11,6 +11,8 @@ import { EmptyState, ErrorState, PageHeader } from "@/components/empty-state";
 import { SegmentBuilderDialog } from "@/components/segments/segment-builder-dialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { NumberTicker, StickyAction } from "@/components/design-v2";
+import { groupsCopy as t } from "./copy";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -59,7 +61,7 @@ export function NewSegmentsView({
       .eq("organization_id", organizationId)
       .order("created_at", { ascending: false });
     if (qErr) {
-      setError("We couldn't load your segments. Please try again.");
+      setError(t.loadFailed);
       setLoading(false);
       return;
     }
@@ -82,7 +84,7 @@ export function NewSegmentsView({
         full_name: string | null;
         email: string | null;
       }[]) ?? []) {
-        map[p.id] = p.full_name || p.email || "Teammate";
+        map[p.id] = p.full_name || p.email || t.teammate;
       }
       setAuthors(map);
     }
@@ -106,11 +108,11 @@ export function NewSegmentsView({
     setPendingDelete(null);
     const { error: delErr } = await aidwar.from("segments").delete().eq("id", segment.id);
     if (delErr) {
-      toast.error("We couldn't delete this segment.");
+      toast.error(t.deleteFailed);
       return;
     }
     void logActivity("segment_deleted", organizationId, { name: segment.name });
-    toast.success("Segment deleted.");
+    toast.success(t.deleted);
     void load();
   }
 
@@ -127,61 +129,78 @@ export function NewSegmentsView({
   }
 
   const action =
-    "inline-flex h-9 items-center gap-1.5 rounded-[11px] px-3 text-sm font-semibold text-muted-foreground transition-colors duration-200 hover:bg-ground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aiden";
+    "inline-flex h-9 items-center gap-1.5 rounded-[11px] px-3 text-sm font-semibold text-muted-foreground transition-colors duration-200 hover:bg-ground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aiden phone:h-11";
 
   return (
-    <div className="nd-view-enter">
+    // Phone: room under the list for the pinned "Make a group" button.
+    <div className="nd-view-enter phone:pb-20">
       <PageHeader
-        title="Segments"
-        description="Segments update themselves: build the rules once and the audience stays fresh. Campaigns pick a segment as their audience."
+        title={t.title}
+        description={t.description}
         actions={
-          <Button onClick={openNew}>
-            <Plus className="h-4 w-4" aria-hidden="true" />
-            New segment
-          </Button>
+          <StickyAction>
+            <Button onClick={openNew} className="phone:h-11">
+              <Plus className="h-4 w-4" aria-hidden="true" />
+              {t.make}
+            </Button>
+          </StickyAction>
         }
       />
 
       {error ? (
-        <ErrorState message={error} />
+        <ErrorState message={error} onRetry={() => void load()} />
       ) : loading ? (
-        <div className="grid gap-4 wide:grid-cols-2 lg:grid-cols-3">
+        <div
+          className="grid gap-4 wide:grid-cols-2 lg:grid-cols-3"
+          aria-busy="true"
+          aria-label={t.loading}
+        >
           {[0, 1, 2].map((i) => (
-            <Skeleton key={i} className="h-44 w-full rounded-[20px]" />
+            <div
+              key={i}
+              className="flex flex-col gap-3 rounded-[20px] border border-line bg-surface p-5"
+            >
+              <Skeleton className="h-5 w-2/3 rounded-full" />
+              <Skeleton className="h-4 w-full rounded-full" />
+              <Skeleton className="h-8 w-24 rounded-lg" />
+              <Skeleton className="h-4 w-1/2 rounded-full" />
+            </div>
           ))}
         </div>
       ) : segments.length === 0 ? (
         <EmptyState
           icon={Filter}
-          title="No segments yet"
-          description="Group your customers by tag, opt-in status or anything you've imported, then reach exactly the right people."
+          art="people"
+          title={t.empty.title}
+          description={t.empty.description}
           action={
-            <Button onClick={openNew}>
+            <Button onClick={openNew} className="phone:h-11">
               <Plus className="h-4 w-4" aria-hidden="true" />
-              Create your first segment
+              {t.makeFirst}
             </Button>
           }
         />
       ) : (
         <ul className="m-0 grid list-none gap-4 p-0 wide:grid-cols-2 lg:grid-cols-3">
-          {segments.map((s) => (
+          {segments.map((s, i) => (
             <li
               key={s.id}
-              className="flex flex-col gap-3 rounded-[20px] border border-line bg-surface p-5 shadow-md"
+              className="nd-rise flex flex-col gap-3 rounded-[20px] border border-line bg-surface p-5 shadow-md"
+              style={{ "--d": Math.min(i, 6) } as CSSProperties}
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <h2 className="m-0 truncate font-display text-lg font-semibold">{s.name}</h2>
                   <p className="m-0 mt-1 line-clamp-2 text-[0.9375rem] text-muted-foreground">
-                    {s.description || "No description"}
+                    {s.description || t.noNote}
                   </p>
                 </div>
                 <span className="shrink-0 rounded-full bg-aiden-soft px-2.5 py-1 text-[0.8125rem] font-semibold text-aiden-deep">
                   {isHandPicked(s.filters)
-                    ? "Picked by hand"
+                    ? t.pickedByHand
                     : s.filters.match === "all"
-                      ? "All rules"
-                      : "Any rule"}
+                      ? t.matchAll
+                      : t.matchAny}
                 </span>
               </div>
 
@@ -189,16 +208,21 @@ export function NewSegmentsView({
                 {counts[s.id] === undefined ? (
                   <Skeleton className="h-7 w-16" />
                 ) : (
-                  <span className="tabular font-display text-[1.75rem] font-semibold leading-none">
-                    {counts[s.id]!.toLocaleString("en-IN")}
-                  </span>
+                  <NumberTicker
+                    value={counts[s.id]!}
+                    className="tabular font-display text-[1.75rem] font-semibold leading-none"
+                  />
                 )}
-                <span className="text-[0.9375rem] text-muted-foreground">customers</span>
+                <span className="text-[0.9375rem] text-muted-foreground">
+                  {t.customers(counts[s.id] ?? 0)}
+                </span>
               </div>
 
               <p className="m-0 text-sm text-muted-foreground">
-                Made by {s.created_by ? (authors[s.created_by] ?? "Teammate") : "Teammate"} on{" "}
-                {formatDate(s.created_at)}
+                {t.madeBy(
+                  s.created_by ? (authors[s.created_by] ?? t.teammate) : t.teammate,
+                  formatDate(s.created_at),
+                )}
               </p>
 
               <div className="-mx-2 mt-auto flex items-center gap-1 border-t border-line pt-3">
@@ -215,11 +239,11 @@ export function NewSegmentsView({
                       }}
                     >
                       <Pencil className="h-4 w-4" aria-hidden="true" />
-                      Edit
+                      {t.edit}
                     </button>
                     <button type="button" className={action} onClick={() => openDuplicate(s)}>
                       <Copy className="h-4 w-4" aria-hidden="true" />
-                      Duplicate
+                      {t.copy}
                     </button>
                   </>
                 )}
@@ -228,7 +252,7 @@ export function NewSegmentsView({
                     type="button"
                     className={`${action} ml-auto hover:text-danger-soft-foreground`}
                     onClick={() => setPendingDelete(s)}
-                    aria-label={`Delete ${s.name}`}
+                    aria-label={t.deleteLabel(s.name)}
                   >
                     <Trash2 className="h-4 w-4" aria-hidden="true" />
                   </button>
@@ -253,14 +277,16 @@ export function NewSegmentsView({
       <AlertDialog open={Boolean(pendingDelete)} onOpenChange={(o) => !o && setPendingDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete this segment?</AlertDialogTitle>
+            <AlertDialogTitle>{t.confirm.title}</AlertDialogTitle>
             <AlertDialogDescription>
-              “{pendingDelete?.name}” will be removed. Your contacts stay exactly as they are.
+              {t.confirm.body(pendingDelete?.name ?? "")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Keep it</AlertDialogCancel>
-            <AlertDialogAction onClick={() => void confirmDelete()}>Delete</AlertDialogAction>
+            <AlertDialogCancel>{t.confirm.keep}</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void confirmDelete()}>
+              {t.confirm.delete}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

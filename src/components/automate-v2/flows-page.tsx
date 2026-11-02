@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Lock, Workflow } from "lucide-react";
+import { StickyAction } from "@/components/design-v2";
 import { EmptyState, PageHeader, PageSkeleton } from "@/components/empty-state";
 import { FlowsView } from "@/components/flows/flows-view";
 import { SendsLog } from "@/components/flows/sends-log";
@@ -9,6 +10,7 @@ import { usePermissions } from "@/hooks/use-permissions";
 import type { FlowRow } from "@/lib/flows";
 import { useOrg } from "@/lib/org-context";
 import { ChatFlowsV2, NewChatFlowButton } from "./chat-flows-v2";
+import { flowsPage as t } from "./copy";
 
 /**
  * Batch 49: Automate > Flows in the new design. The classic page's gates
@@ -31,38 +33,32 @@ export function NewFlowsPage() {
   return (
     <>
       <PageHeader
-        title="Flows"
-        description="Menus, questions and follow-ups that run on WhatsApp by themselves, plus your store's automatic messages."
+        title={t.title}
+        description={t.description}
         {...(canCreate && enabled && can("flows.view")
-          ? { actions: <NewChatFlowButton onClick={() => setCreating(true)} /> }
+          ? {
+              actions: (
+                <StickyAction>
+                  <NewChatFlowButton onClick={() => setCreating(true)} />
+                </StickyAction>
+              ),
+            }
           : {})}
       />
       {loading || permsLoading || flagLoading ? (
         <PageSkeleton />
       ) : !active ? (
-        <EmptyState
-          icon={Workflow}
-          title="Pick a shop first"
-          description="Choose a shop at the top of the page to see its automatic messages."
-        />
+        <EmptyState icon={Workflow} title={t.noShop.title} description={t.noShop.description} />
       ) : !enabled ? (
-        <EmptyState
-          icon={Lock}
-          title="This isn’t switched on for you yet"
-          description="Automatic messages aren't available on your account yet. Ask us or your administrator to switch them on."
-        />
+        <EmptyState icon={Lock} title={t.notOn.title} description={t.notOn.description} />
       ) : !can("flows.view") ? (
-        <EmptyState
-          icon={Lock}
-          title="You don’t have access to this"
-          description="Ask the shop owner to give you permission to see automatic messages."
-        />
+        <EmptyState icon={Lock} title={t.noAccess.title} description={t.noAccess.description} />
       ) : (
         <Tabs value={current} onValueChange={setTab}>
           <TabsList className="mb-6">
-            {v2 ? <TabsTrigger value="chat">Chat flows</TabsTrigger> : null}
-            <TabsTrigger value="flows">Store flows</TabsTrigger>
-            <TabsTrigger value="log">What was sent</TabsTrigger>
+            {v2 ? <TabsTrigger value="chat">{t.tabs.chat}</TabsTrigger> : null}
+            <TabsTrigger value="flows">{t.tabs.store}</TabsTrigger>
+            <TabsTrigger value="log">{t.tabs.log}</TabsTrigger>
           </TabsList>
           {v2 ? (
             <TabsContent value="chat">
@@ -86,6 +82,10 @@ export function NewFlowsPage() {
           </TabsContent>
         </Tabs>
       )}
+      {/* Batch 57: room under the page for the pinned New chat flow button on a phone. */}
+      {canCreate && enabled && can("flows.view") ? (
+        <div aria-hidden="true" className="hidden h-16 phone:block" />
+      ) : null}
     </>
   );
 }

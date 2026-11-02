@@ -4,6 +4,8 @@
  * entries only: each is a link to /app/settings?tab=…, offered under the same
  * flags and permissions that show the section (settings-sections.ts).
  */
+import { JUMP_COPY } from "./copy";
+
 export type SettingsJump = {
   key: string;
   label: string;
@@ -22,13 +24,13 @@ export function settingsJumps(input: {
   const jumps: SettingsJump[] = [
     {
       key: "profile",
-      label: "WhatsApp profile",
+      label: JUMP_COPY.profile,
       value: "whatsapp profile business photo about settings",
       tab: "whatsapp",
     },
     {
       key: "team",
-      label: "Team and roles",
+      label: JUMP_COPY.team,
       value: "team members roles invite people settings",
       tab: "team",
     },
@@ -36,7 +38,7 @@ export function settingsJumps(input: {
   if (input.isFeatureEnabled("public_api") && input.can("public_api.manage")) {
     jumps.push({
       key: "api",
-      label: "API and webhooks",
+      label: JUMP_COPY.api,
       value: "api keys webhooks developer console settings",
       tab: "api",
     });

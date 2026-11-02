@@ -297,7 +297,7 @@ describe("the phone layout", () => {
     expect(html).toContain("w-full wide:hidden");
     expect(html).toContain("hidden wide:inline-flex");
     expect(html).toContain("Free replies for 23 more hours");
-    expect(html).toContain("Type a message, or / for templates");
+    expect(html).toContain("Type a reply, or press / for message designs"); // Batch 57: copy
   });
 });
 

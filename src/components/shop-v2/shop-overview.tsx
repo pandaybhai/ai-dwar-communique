@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import { Link } from "@tanstack/react-router";
 import { Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { NumberTicker, PhoneFrame, PhoneMessage, ProductBubble } from "@/components/design-v2";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useFeatureFlag } from "@/hooks/use-feature-flag";
 import { usePermissions } from "@/hooks/use-permissions";
 import { aidwar } from "@/integrations/aidwar/client";
@@ -14,6 +15,10 @@ import {
   relativeTime,
 } from "@/lib/catalog";
 import { callApi } from "@/lib/whatsapp-client";
+import { overviewCopy as t } from "./copy";
+
+/** Batch 57: blocks arrive one after another (styles.css .nd-rise; still under reduced motion). */
+const rise = (d: number) => ({ "--d": d }) as CSSProperties;
 
 type Overview = {
   total: number;
@@ -134,22 +139,43 @@ export function ShopOverview({
       toast.error(error);
       return;
     }
-    toast.success(
-      "Reading your website for changes. New products and photos show up here when it's done.",
-    );
+    toast.success(t.refreshStarted);
     await load();
   }
 
   if (!summary) {
     return (
-      <div className="mb-10 h-64 animate-pulse rounded-[20px] bg-bubble-in motion-reduce:animate-none" />
+      <div
+        aria-busy="true"
+        aria-label={t.loading}
+        className="mb-10 grid items-start gap-10 wide:grid-cols-[minmax(0,7fr)_minmax(0,4fr)]"
+      >
+        <Skeleton className="h-64 rounded-[20px]" />
+        <Skeleton className="h-64 rounded-[20px]" />
+      </div>
     );
   }
   const reading = summary.site ? READING.has(summary.site.status) : false;
+  const canRefresh = Boolean(summary.site) && can("ai.configure");
+  const refreshButton = (
+    <Button
+      variant="outline"
+      className="phone:h-11"
+      disabled={busy || reading}
+      onClick={() => void refreshFromWebsite()}
+    >
+      {busy || reading ? (
+        <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
+      ) : (
+        <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
+      )}
+      {reading ? t.reading : t.refresh}
+    </Button>
+  );
 
   return (
     <div className="mb-10 grid items-start gap-10 wide:grid-cols-[minmax(0,7fr)_minmax(0,4fr)]">
-      <div className="flex min-w-0 flex-col gap-6">
+      <div className="nd-rise flex min-w-0 flex-col gap-6">
         <section
           aria-labelledby="shop-catalogue-heading"
           className="flex flex-col gap-5 rounded-[20px] border border-line bg-surface p-6 shadow-md phone:p-5"
@@ -160,49 +186,39 @@ export function ShopOverview({
                 id="shop-catalogue-heading"
                 className="m-0 text-body font-semibold text-muted-foreground"
               >
-                Your catalogue
+                {t.heading}
               </h2>
               <p className="m-0 font-display text-[clamp(2rem,4vw,2.75rem)] font-extrabold leading-none tracking-[-0.03em] tabular-nums">
                 <NumberTicker value={summary.total} />{" "}
-                <span className="text-[0.5em] font-semibold tracking-normal">products</span>
+                <span className="text-[0.5em] font-semibold tracking-normal">
+                  {t.productsWord(summary.total)}
+                </span>
               </p>
               <p className="m-0 mt-1.5 text-sm text-muted-foreground">
                 {summary.lastUpdated
-                  ? `Last change ${relativeTime(summary.lastUpdated)}.`
-                  : "Nothing added yet."}{" "}
-                Aiden, campaigns and your WhatsApp shop all use this list.
+                  ? t.lastChange(relativeTime(summary.lastUpdated))
+                  : t.nothingYet}{" "}
+                {t.usedBy}
               </p>
             </div>
-            {summary.site && can("ai.configure") ? (
-              <Button
-                variant="outline"
-                disabled={busy || reading}
-                onClick={() => void refreshFromWebsite()}
-              >
-                {busy || reading ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
-                )}
-                {reading ? "Reading your website…" : "Refresh from website"}
-              </Button>
-            ) : null}
+            {canRefresh ? refreshButton : null}
           </div>
-          <dl className="m-0 grid grid-cols-2 gap-x-6 border-t border-line pt-4 wide:grid-cols-4">
-            <Stat label="From your website" value={summary.website} />
-            <Stat label="From your store" value={summary.store} />
-            <Stat label="Hidden from customers" value={summary.hidden} />
-            <Stat label="Without a photo" value={summary.noPhoto} />
-          </dl>
+          {/* An empty catalogue skips the row of zeros; the product list below says how to fill it. */}
+          {summary.total > 0 ? (
+            <dl className="m-0 grid grid-cols-2 gap-x-6 border-t border-line pt-4 wide:grid-cols-4">
+              <Stat label={t.stats.website} value={summary.website} />
+              <Stat label={t.stats.store} value={summary.store} />
+              <Stat label={t.stats.hidden} value={summary.hidden} />
+              <Stat label={t.stats.noPhoto} value={summary.noPhoto} />
+            </dl>
+          ) : null}
           <p className="m-0 text-sm text-muted-foreground">
-            {summary.collections > 0
-              ? `${summary.collections} collection${summary.collections === 1 ? "" : "s"} group these for campaigns and flows. `
-              : "No collections yet. "}
+            {summary.collections > 0 ? t.collections(summary.collections) : t.noCollections}
             <Link
               to="/app/catalog/collections"
-              className="font-semibold text-aiden-deep underline-offset-4 hover:underline"
+              className="rounded-sm font-semibold text-aiden-deep underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aiden"
             >
-              {summary.collections > 0 ? "See collections" : "Make one"}
+              {summary.collections > 0 ? t.seeCollections : t.makeOne}
             </Link>
           </p>
         </section>
@@ -210,31 +226,28 @@ export function ShopOverview({
       </div>
 
       {shopOn ? (
-        <section aria-labelledby="shop-wa-heading" className="flex flex-col items-center gap-4">
+        <section
+          aria-labelledby="shop-wa-heading"
+          style={rise(1)}
+          className="nd-rise flex flex-col items-center gap-4"
+        >
           <div className="self-stretch">
             <h2 id="shop-wa-heading" className="m-0 font-display text-[1.25rem] font-semibold">
-              WhatsApp shop
+              {t.shopHeading}
             </h2>
             <p className="m-0 text-sm text-muted-foreground">
-              {summary.preview.length > 0
-                ? "How your products look to a customer in WhatsApp."
-                : "Products with a photo show here as a customer sees them in WhatsApp."}
+              {summary.preview.length > 0 ? t.shopLine : t.shopLineEmpty}
             </p>
           </div>
           {summary.preview.length > 0 ? (
-            <PhoneFrame label="Your products in a WhatsApp chat" className="phone:max-w-[300px]">
+            <PhoneFrame label={t.phoneLabel} className="phone:max-w-[300px]">
               <div className="-mt-4 flex flex-col gap-2">
-                <PhoneMessage
-                  text="Take a look at our shop. Tap a piece to see it, or add it to your cart."
-                  buttons={["View catalogue"]}
-                />
+                <PhoneMessage text={t.phoneMessage} buttons={[t.phoneButton]} />
                 {summary.preview.map((p) => (
                   <ProductBubble
                     key={p.id}
                     title={p.title}
-                    detail={
-                      p.price === null ? "Price on request" : formatMoney(p.price, p.currency)
-                    }
+                    detail={p.price === null ? t.priceOnRequest : formatMoney(p.price, p.currency)}
                     image={p.image_url}
                     imageAlt={p.title}
                     className="w-[200px] [&_b]:text-sm"

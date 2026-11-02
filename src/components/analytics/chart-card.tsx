@@ -4,6 +4,8 @@ import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { useShellSection } from "@/components/shell/section-tabs";
+import { AidenOrb, NumberTicker } from "@/components/design-v2";
 
 /**
  * A section card that always ships its three states: skeleton while loading,
@@ -32,11 +34,17 @@ export function ChartCard({
   children: ReactNode;
   className?: string | undefined;
 }) {
+  // Batch 57: only the new shell provides a section, so Classic draws exactly as before.
+  const nd = useShellSection() !== null;
   return (
     <Card className={cn("border-border/70 shadow-sm", className)}>
       <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
         <div>
-          <CardTitle className="text-base font-semibold">{title}</CardTitle>
+          <CardTitle
+            className={nd ? "font-display text-lg font-semibold" : "text-base font-semibold"}
+          >
+            {title}
+          </CardTitle>
           {description ? <CardDescription className="mt-1">{description}</CardDescription> : null}
         </div>
         {action}
@@ -44,6 +52,14 @@ export function ChartCard({
       <CardContent>
         {loading ? (
           <Skeleton className="h-56 w-full rounded-xl" />
+        ) : isEmpty && nd ? (
+          <div className="nd-rise flex flex-col items-center justify-center gap-2 rounded-[18px] border-[1.5px] border-dashed border-line px-6 py-10 text-center">
+            <AidenOrb state="draft" size={56} />
+            <p className="m-0 mt-1 font-display text-base font-semibold text-foreground">
+              {emptyTitle}
+            </p>
+            <p className="m-0 max-w-sm text-sm text-muted-foreground">{emptyDescription}</p>
+          </div>
         ) : isEmpty ? (
           <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border/70 bg-muted/30 px-6 py-12 text-center">
             <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-primary/15 bg-primary/10">
@@ -81,6 +97,7 @@ export function MetricCard({
   direction?: 0 | 1 | -1 | undefined;
   loading?: boolean | undefined;
 }) {
+  const nd = useShellSection() !== null;
   if (loading) {
     return (
       <Card className="border-border/70 shadow-sm">
@@ -98,10 +115,25 @@ export function MetricCard({
   return (
     <Card className="border-border/70 shadow-sm transition-shadow duration-200 hover:shadow-md">
       <CardContent className="p-5">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-        <p className="mt-2 text-2xl font-bold tracking-tight text-foreground">
-          {value.toLocaleString()}
-        </p>
+        {nd ? (
+          // Batch 57, Aiden Workspace: a sentence-case label (no tracked capitals)
+          // and the number counting up once, in Indian grouping.
+          <>
+            <p className="m-0 text-sm font-medium text-muted-foreground">{label}</p>
+            <p className="m-0 mt-1.5 font-display text-[1.75rem] font-semibold text-foreground">
+              <NumberTicker value={value} />
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              {label}
+            </p>
+            <p className="mt-2 text-2xl font-bold tracking-tight text-foreground">
+              {value.toLocaleString()}
+            </p>
+          </>
+        )}
         {rateText ? (
           <p className="mt-1 text-xs text-muted-foreground">
             <span className={cn("font-medium", thin ? "text-foreground/70" : "text-primary")}>

@@ -8,6 +8,7 @@ import { AnalyticsOverview } from "@/components/analytics/analytics-overview";
 import { AnalyticsQuality } from "@/components/analytics/analytics-quality";
 import { AnalyticsRevenue } from "@/components/analytics/analytics-revenue";
 import { ErrorState } from "@/components/empty-state";
+import { useShellSection } from "@/components/shell/section-tabs";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -51,12 +52,24 @@ import {
 /** One tab per feature that declares an analytics dashboard section. */
 const SECTIONS = analyticsSections();
 
-
 const RANGES = [
   { days: 7, label: "Last 7 days" },
   { days: 30, label: "Last 30 days" },
   { days: 90, label: "Last 90 days" },
 ];
+
+/**
+ * Batch 57: Aiden Workspace's words for this view (the feature registry's
+ * section labels stay the Classic names and the keys).
+ */
+const ND_WORDS = {
+  times: (zone: string) => `Times are in ${zone}`,
+  sections: {
+    inbox: "Inbox and team",
+    quality: "Number health",
+    revenue: "Sales from chats",
+  } as Record<string, string>,
+};
 
 export function AnalyticsView({
   organizationId,
@@ -65,12 +78,13 @@ export function AnalyticsView({
   organizationId: string;
   timezone: string;
 }) {
+  // Batch 57: only the new shell provides a section, so Classic draws exactly as before.
+  const nd = useShellSection() !== null;
   const [days, setDays] = useState(30);
   const [accountId, setAccountId] = useState<string>("all");
   const { numbers, multiple } = useWhatsAppNumbers({ activeOnly: false });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
 
   const [overview, setOverview] = useState<Overview | null>(null);
   const [series, setSeries] = useState<SeriesPoint[]>([]);
@@ -117,7 +131,6 @@ export function AnalyticsView({
       fetchAttributionSummary(organizationId, filters),
       fetchAttributionSources(organizationId, filters),
     ]);
-
 
     const firstError =
       overviewRes.error ??
@@ -195,11 +208,20 @@ export function AnalyticsView({
               key={range.days}
               type="button"
               onClick={() => setDays(range.days)}
-              className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors duration-150 ${
-                days === range.days
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
+              aria-pressed={nd ? days === range.days : undefined}
+              className={
+                nd
+                  ? `rounded-[10px] px-3.5 py-2 text-sm font-semibold transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aiden phone:min-h-11 ${
+                      days === range.days
+                        ? "bg-aiden-soft text-aiden-deep"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`
+                  : `rounded-lg px-3 py-1.5 text-xs font-medium transition-colors duration-150 ${
+                      days === range.days
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`
+              }
             >
               {range.label}
             </button>
@@ -222,9 +244,15 @@ export function AnalyticsView({
             </Select>
           ) : null}
 
-          <span className="text-xs text-muted-foreground">
-            Dates shown in {overview?.timezone ?? timezone}
-          </span>
+          {nd ? (
+            <span className="text-sm text-muted-foreground">
+              {ND_WORDS.times(overview?.timezone ?? timezone)}
+            </span>
+          ) : (
+            <span className="text-xs text-muted-foreground">
+              Dates shown in {overview?.timezone ?? timezone}
+            </span>
+          )}
           <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
             <RefreshCw className={`mr-2 h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
             Refresh
@@ -235,8 +263,14 @@ export function AnalyticsView({
       <Tabs defaultValue={SECTIONS[0]?.analytics.section_id ?? "overview"} className="space-y-6">
         <TabsList className="flex w-full flex-wrap justify-start">
           {SECTIONS.map((f) => (
-            <TabsTrigger key={f.key} value={f.analytics.section_id as string}>
-              {f.analytics.section_label}
+            <TabsTrigger
+              key={f.key}
+              value={f.analytics.section_id as string}
+              {...(nd ? { className: "phone:min-h-11" } : {})}
+            >
+              {nd
+                ? (ND_WORDS.sections[f.analytics.section_id as string] ?? f.analytics.section_label)
+                : f.analytics.section_label}
             </TabsTrigger>
           ))}
         </TabsList>

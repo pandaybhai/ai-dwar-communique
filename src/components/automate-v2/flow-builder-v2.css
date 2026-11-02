@@ -1,3 +1,6 @@
+/* Hallmark · checked: 2026-10-30 · genre: modern-minimal (inferred)
+ * floor: 0 FAIL · fixed: 3 (34, 48, 48) · structural: 0 printed
+ * built: the project · redesign: polish · v2.0.0 */
 /*
  * Batch 49: the flow builder in the new design (docs/design/spec.md tokens).
  * Everything sits under html[data-design="new"] .nd-flow-builder (the route's
@@ -14,7 +17,7 @@ html[data-design="new"] .nd-flow-builder .react-flow {
   --xy-edge-stroke-selected: var(--aiden);
   --xy-connectionline-stroke: var(--aiden);
   --xy-minimap-background-color: var(--surface);
-  --xy-minimap-mask-background-color: rgb(13 43 42 / 0.06);
+  --xy-minimap-mask-background-color: color-mix(in srgb, var(--foreground) 6%, transparent);
   --xy-minimap-mask-stroke-color: var(--line);
   --xy-minimap-node-background-color: var(--aiden-soft);
   --xy-minimap-node-stroke-color: var(--aiden);
@@ -24,7 +27,7 @@ html[data-design="new"] .nd-flow-builder .react-flow {
   --xy-controls-button-color-hover: var(--ink);
   --xy-controls-button-border-color: var(--line);
   --xy-controls-box-shadow: 0 10px 28px -20px var(--shadow-ink);
-  --xy-selection-background-color: rgb(15 157 116 / 0.08);
+  --xy-selection-background-color: color-mix(in srgb, var(--aiden) 8%, transparent);
   --xy-selection-border: 1px dotted var(--aiden);
 }
 
@@ -58,12 +61,12 @@ html[data-design="new"] .nd-flow-builder .nd-flow-handle {
 html[data-design="new"] .nd-flow-builder .react-flow__minimap {
   border: 1px solid var(--line);
   border-radius: 14px;
-  overflow: hidden;
+  overflow: clip;
   box-shadow: 0 10px 28px -20px var(--shadow-ink);
 }
 html[data-design="new"] .nd-flow-builder .react-flow__controls {
   border-radius: 12px;
-  overflow: hidden;
+  overflow: clip;
   border: 1px solid var(--line);
 }
 html[data-design="new"] .nd-flow-builder .react-flow__controls-button {

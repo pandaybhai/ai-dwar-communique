@@ -417,7 +417,19 @@ export function createBackend(options = {}) {
   const templates = options.templates === 0 ? [] : makeTemplates();
   const threads = new Map();
   const threadOf = (id) => {
-    if (!threads.has(id)) threads.set(id, id === conversations[0]?.id ? makeThread(id) : makeThread(id).slice(0, 4));
+    if (!threads.has(id)) {
+      const thread = id === conversations[0]?.id ? makeThread(id) : makeThread(id).slice(0, 4);
+      // Batch 57: options.typingIn — this chat's customer has just written (Aiden is typing).
+      if (id === options.typingIn)
+        thread.push({
+          ...thread[0],
+          id: "00000000-0000-4000-8000-000000009999",
+          direction: "inbound",
+          body: "Do you have the same set in red? It's for Diwali 🪔",
+          created_at: new Date(Date.now() - 2_000).toISOString(),
+        });
+      threads.set(id, thread);
+    }
     return threads.get(id);
   };
   const org = (id, name) => ({
@@ -876,6 +888,11 @@ export function createBackend(options = {}) {
     }
     if (url.pathname === "/api/campaigns/estimate") {
       return json({ enabled: true, recipients: 1186, category: "marketing", rate: 0.86, currency: "INR", estimate: 1019.96, available: 2840.5, shortfall: 0, can_send: true, needs_approval: false, approval_threshold: null, daily_limit: 10000, over_daily_limit: false, days_needed: 1 });
+    }
+    // Batch 57: a launch that succeeds after a moment (the send moment's screenshots).
+    if (url.pathname === "/api/campaigns/launch") {
+      await new Promise((r) => setTimeout(r, 900));
+      return json({ campaign_id: "00000000-0000-4000-8000-000000007000" });
     }
     if (url.pathname === "/api/ai/knowledge") {
       // Batch 51: Approve / Decline go through answer_gap.

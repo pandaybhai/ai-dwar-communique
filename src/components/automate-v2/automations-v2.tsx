@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import {
   Clock,
   Lock,
@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { AutomationDrawer } from "@/components/automations/automation-drawer";
-import { WhatsAppBubble } from "@/components/design-v2";
+import { StickyAction, WhatsAppBubble } from "@/components/design-v2";
 import { EmptyState, ErrorState, PageHeader, PageSkeleton } from "@/components/empty-state";
 import {
   AlertDialog,
@@ -24,13 +24,13 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { useFeatureFlag } from "@/hooks/use-feature-flag";
 import { usePermissions } from "@/hooks/use-permissions";
 import { aidwar } from "@/integrations/aidwar/client";
 import { logActivity } from "@/lib/activity";
 import {
-  TRIGGER_DESCRIPTIONS,
   describeConfig,
   normalizeConfig,
   type AutomationRow,
@@ -39,11 +39,12 @@ import {
 import { formatDate } from "@/lib/contacts";
 import { useOrg } from "@/lib/org-context";
 import { cn } from "@/lib/utils";
+import { automationsCopy as t } from "./copy";
 
-const GROUPS: Array<{ type: TriggerType; title: string; icon: typeof Sparkles }> = [
-  { type: "welcome", title: "Welcome message", icon: Sparkles },
-  { type: "keyword", title: "Keyword replies", icon: MessageSquareReply },
-  { type: "away", title: "Off-hours", icon: Clock },
+const GROUPS: Array<{ type: TriggerType; title: string; line: string; icon: typeof Sparkles }> = [
+  { type: "welcome", ...t.groups.welcome, icon: Sparkles },
+  { type: "keyword", ...t.groups.keyword, icon: MessageSquareReply },
+  { type: "away", ...t.groups.away, icon: Clock },
 ];
 
 /**
@@ -59,25 +60,20 @@ export function NewAutomationsPage() {
   const { active } = useOrg();
   const { can } = usePermissions();
   const organizationId = active?.organization.id ?? null;
-  const description =
-    "Welcome messages, keyword replies and off-hours cover: one reply per message, always.";
+  const description = t.description;
 
   if (loading || !active || !organizationId) return <PageSkeleton />;
   if (!enabled) {
     return (
       <>
-        <PageHeader title="Automations" description={description} />
-        <EmptyState
-          icon={Lock}
-          title="Automations are turned off"
-          description="This feature isn't enabled for your workspace yet. Reach out to your administrator to switch it on."
-        />
+        <PageHeader title={t.title} description={description} />
+        <EmptyState icon={Lock} title={t.notOn.title} description={t.notOn.description} />
       </>
     );
   }
   return (
     <>
-      <PageHeader title="Automations" description={description} />
+      <PageHeader title={t.title} description={description} />
       <AutomationsV2 organizationId={organizationId} canManage={can("automations.manage")} />
     </>
   );
@@ -106,7 +102,7 @@ export function AutomationsV2({
       .order("priority", { ascending: true })
       .order("created_at", { ascending: true });
     if (qErr) {
-      setError("We couldn't load your automations. Please try again.");
+      setError(t.loadError);
       setRows([]);
       return;
     }
@@ -168,16 +164,16 @@ export function AutomationsV2({
     setDrawerOpen(true);
   };
 
-  if (error) return <ErrorState message={error} />;
+  if (error) return <ErrorState message={error} onRetry={() => void load()} />;
   if (rows === null) {
     return (
-      <div className="flex flex-col gap-3">
-        {[0, 1, 2].map((i) => (
-          <div
-            key={i}
-            className="h-28 animate-pulse rounded-[18px] bg-bubble-in motion-reduce:animate-none"
-          />
-        ))}
+      <div className="flex flex-col gap-3" aria-busy="true" aria-label={t.loading}>
+        <Skeleton className="ml-auto h-[39px] w-44 rounded-[11px]" />
+        <div className="grid gap-3 wide:grid-cols-2">
+          {[0, 1].map((i) => (
+            <Skeleton key={i} className="h-44 rounded-[18px]" />
+          ))}
+        </div>
       </div>
     );
   }
@@ -185,34 +181,44 @@ export function AutomationsV2({
   return (
     <>
       <div className="mb-6 flex justify-end">
-        <Button disabled={!canManage} onClick={openNew}>
-          <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
-          New automation
-        </Button>
+        {canManage ? (
+          <StickyAction>
+            <Button className="phone:h-11" onClick={openNew}>
+              <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
+              {t.newAutomation}
+            </Button>
+          </StickyAction>
+        ) : (
+          <Button disabled onClick={openNew}>
+            <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
+            {t.newAutomation}
+          </Button>
+        )}
       </div>
 
       {rows.length === 0 ? (
         <EmptyState
           icon={Workflow}
-          title="No automations yet"
-          description="Greet new customers, answer common questions by keyword and cover your off-hours, automatically."
+          title={t.empty.title}
+          description={t.empty.description}
           action={
-            <Button disabled={!canManage} onClick={openNew}>
+            <Button className="phone:h-11" disabled={!canManage} onClick={openNew}>
               <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
-              Create your first automation
+              {t.empty.action}
             </Button>
           }
         />
       ) : (
         <div className="flex flex-col gap-10">
-          {GROUPS.map((g) => {
+          {GROUPS.map((g, gi) => {
             const mine = rows.filter((r) => r.trigger_type === g.type);
             if (!mine.length) return null;
             return (
               <section
                 key={g.type}
                 aria-labelledby={`auto-${g.type}`}
-                className="flex flex-col gap-3"
+                style={{ "--d": gi } as CSSProperties}
+                className="nd-rise flex flex-col gap-3"
               >
                 <div className="flex items-center gap-3">
                   <span
@@ -228,9 +234,7 @@ export function AutomationsV2({
                     >
                       {g.title}
                     </h2>
-                    <p className="m-0 text-sm text-muted-foreground">
-                      {TRIGGER_DESCRIPTIONS[g.type]}
-                    </p>
+                    <p className="m-0 text-sm text-muted-foreground">{g.line}</p>
                   </div>
                 </div>
                 <ul className="m-0 grid list-none gap-3 p-0 wide:grid-cols-2">
@@ -247,7 +251,7 @@ export function AutomationsV2({
                               setEditing(row);
                               setDrawerOpen(true);
                             }}
-                            className="block max-w-full truncate rounded-md text-left text-body font-semibold text-foreground transition-colors duration-200 hover:text-aiden-deep focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aiden"
+                            className="block max-w-full truncate rounded-md text-left text-body font-semibold text-foreground transition-[color] duration-200 hover:text-aiden-deep phone:py-2.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aiden"
                           >
                             {row.name}
                           </button>
@@ -262,13 +266,13 @@ export function AutomationsV2({
                               row.is_active ? "text-aiden-deep" : "text-muted-foreground",
                             )}
                           >
-                            {row.is_active ? "Running" : "Paused"}
+                            {row.is_active ? t.on : t.off}
                           </span>
                           <Switch
                             checked={row.is_active}
                             disabled={!canManage}
                             onCheckedChange={(v) => void toggle(row, v)}
-                            aria-label={`${row.is_active ? "Pause" : "Activate"} ${row.name}`}
+                            aria-label={t.switchLabel(row.is_active, row.name)}
                           />
                         </div>
                       </div>
@@ -276,7 +280,7 @@ export function AutomationsV2({
                         <div className="nd-wall flex flex-col rounded-[14px] p-3">
                           <WhatsAppBubble
                             from="out"
-                            sender="Your reply"
+                            sender={t.replyLabel}
                             className="text-sm wide:max-w-[85%]"
                           >
                             <span className="whitespace-pre-wrap">{row.message_body}</span>
@@ -286,30 +290,35 @@ export function AutomationsV2({
                       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3">
                         <p className="m-0 text-sm text-muted-foreground">
                           {lastFired[row.id]
-                            ? `Last sent ${formatDate(lastFired[row.id]!)}`
-                            : "Not sent yet"}
-                          , priority {row.priority}
+                            ? t.lastSent(formatDate(lastFired[row.id]!))
+                            : t.notSent}
+                          {t.priority(row.priority)}
                         </p>
                         <div className="flex items-center gap-1">
                           <Button
                             variant="ghost"
                             size="icon-sm"
+                            className="phone:h-11 phone:w-11"
                             onClick={() => {
                               setEditing(row);
                               setDrawerOpen(true);
                             }}
-                            aria-label={`Edit ${row.name}`}
+                            aria-label={t.edit(row.name)}
                           >
-                            <Pencil className="h-4 w-4" />
+                            <Pencil className="h-4 w-4" aria-hidden="true" />
                           </Button>
                           {canManage ? (
                             <Button
                               variant="ghost"
                               size="icon-sm"
+                              className="phone:h-11 phone:w-11"
                               onClick={() => setPendingDelete(row)}
-                              aria-label={`Delete ${row.name}`}
+                              aria-label={t.delete(row.name)}
                             >
-                              <Trash2 className="h-4 w-4 text-muted-foreground" />
+                              <Trash2
+                                className="h-4 w-4 text-muted-foreground"
+                                aria-hidden="true"
+                              />
                             </Button>
                           ) : null}
                         </div>
@@ -323,6 +332,9 @@ export function AutomationsV2({
         </div>
       )}
 
+      {/* Batch 57: room under the list for the pinned New automation button on a phone. */}
+      {canManage ? <div aria-hidden="true" className="hidden h-16 phone:block" /> : null}
+
       <AutomationDrawer
         open={drawerOpen}
         automation={editing}
@@ -335,15 +347,16 @@ export function AutomationsV2({
       <AlertDialog open={Boolean(pendingDelete)} onOpenChange={(v) => !v && setPendingDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete this automation?</AlertDialogTitle>
+            <AlertDialogTitle>{t.confirm.title}</AlertDialogTitle>
             <AlertDialogDescription>
-              “{pendingDelete?.name}” will stop replying immediately and its run history will be
-              removed. This can't be undone.
+              {t.confirm.body(pendingDelete?.name ?? "")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => void confirmDelete()}>Delete</AlertDialogAction>
+            <AlertDialogCancel>{t.confirm.cancel}</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void confirmDelete()}>
+              {t.confirm.delete}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

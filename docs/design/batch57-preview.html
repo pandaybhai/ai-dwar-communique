@@ -1,0 +1,480 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Aiden Workspace Polish</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Instrument+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: a guided tour — each band is one Aiden Workspace moment, mock on the left, what changes on the right. Single light theme by choice (the app is light-only). */
+:root{
+  --ground:#F3F7F6; --surface:#FFFFFF; --line:#DCE7E4; --text:#0D2B2A; --muted:#4F6663;
+  --aiden:#0F9D74; --aiden-deep:#0B7F5E; --aiden-soft:#E3F6EF; --aiden-glow:rgba(15,157,116,.30);
+  --gold-ink:#7A4800; --gold-bg:#FFF6E3; --gold:#F2B544; --gold-line:#F1DDB3;
+  --bubble-in:#EEF3F2; --bubble-out:#DDF6EA; --on-dark:#FFFFFF; --shadow:rgba(13,43,42,.16);
+  --red-bg:#FDECEC; --red-ink:#8A1C1C;
+  --av1:#FFE1D6; --av1-ink:#8A3210; --av2:#DBEAFE; --av2-ink:#1E3A8A; --av3:#EDE9FE; --av3-ink:#4C1D95;
+  --display:"Bricolage Grotesque",ui-sans-serif,system-ui,sans-serif;
+  --body:"Instrument Sans",ui-sans-serif,system-ui,sans-serif;
+  --ease:cubic-bezier(.2,.8,.2,1);
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+html,body{overflow-x:clip;background:var(--ground);color:var(--text)}
+body{font-family:var(--body);font-size:16px;line-height:1.5;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 56px}
+button{font:inherit;cursor:pointer;color:inherit}
+button:focus-visible,a:focus-visible{outline:2px solid var(--aiden);outline-offset:2px}
+.wrap{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:48px}
+h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance}
+h1{font-weight:800;font-size:clamp(34px,5vw,56px);line-height:1.02;letter-spacing:-1.6px}
+h2{font-weight:800;font-size:clamp(24px,3vw,32px);letter-spacing:-.8px;line-height:1.1}
+h3{font-weight:600;font-size:18px}
+p{margin:0}
+.muted{color:var(--muted)}
+
+/* Intro */
+.intro{display:flex;flex-direction:column;gap:16px}
+.intro .lede{font-size:18px;color:var(--muted);max-width:62ch}
+.controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.chip{display:inline-flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:7px 14px;font-weight:600;font-size:14px}
+.chip[aria-pressed="true"]{background:var(--text);color:var(--on-dark);border-color:var(--text)}
+.legend{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.legend div{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px 16px}
+.legend b{display:block;font-family:var(--display);font-size:17px}
+.legend span{color:var(--muted);font-size:15px}
+
+/* Bands */
+.band{display:grid;grid-template-columns:minmax(0,7fr) minmax(0,4fr);gap:36px;align-items:start}
+.band .why{display:flex;flex-direction:column;gap:12px;min-width:0}
+.why ul{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px;color:var(--muted)}
+.why li b{color:var(--text)}
+.tag{font-size:13px;font-weight:700;color:var(--aiden-deep);letter-spacing:.04em;text-transform:uppercase}
+.mock{background:var(--surface);border:1px solid var(--line);border-radius:22px;box-shadow:0 30px 60px -40px var(--shadow);overflow:hidden;min-width:0}
+.bar{display:flex;align-items:center;gap:16px;padding:12px 18px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.brand{font-family:var(--display);font-weight:800;font-size:19px;letter-spacing:-.4px}
+.nav{display:flex;gap:2px;flex-wrap:wrap;position:relative}
+.nav button{background:none;border:0;border-radius:999px;padding:6px 12px;font-weight:600;font-size:14px;color:var(--muted);position:relative;z-index:1;transition:color .25s var(--ease)}
+.nav button[aria-current="page"]{color:var(--text)}
+.pill{position:absolute;top:0;height:100%;border-radius:999px;background:var(--ground);box-shadow:inset 0 0 0 1px var(--line);transition:left .35s var(--ease),width .35s var(--ease)}
+.count{display:inline-grid;place-items:center;min-width:18px;height:18px;border-radius:999px;background:var(--gold);color:var(--gold-ink);font-size:11px;font-weight:700;margin-left:4px;padding:0 5px}
+.mbody{padding:24px;display:flex;flex-direction:column;gap:18px}
+
+/* Orb */
+.orb{position:relative;width:56px;height:56px;flex-shrink:0;display:grid;place-items:center}
+.orb .core{position:absolute;inset:11px;border-radius:50%;background:radial-gradient(circle at 36% 30%,var(--aiden-soft),var(--aiden) 50%,var(--aiden-deep));box-shadow:0 8px 24px var(--aiden-glow)}
+.orb .rip{position:absolute;inset:0;border-radius:50%;border:1.5px solid var(--aiden);opacity:0;animation:rip 2.4s ease-out infinite}
+.orb .rip:nth-child(2){animation-delay:.8s}.orb .rip:nth-child(3){animation-delay:1.6s}
+@keyframes rip{0%{transform:scale(.55);opacity:.7}100%{transform:scale(1.25);opacity:0}}
+.orb.sm{width:28px;height:28px}.orb.sm .core{inset:5px}
+
+/* Home */
+.greet{display:flex;gap:16px;align-items:center}
+.greet h3{font-family:var(--display);font-weight:800;font-size:clamp(24px,3vw,32px);letter-spacing:-.8px}
+.fade{animation:fade .5s var(--ease) both}
+@keyframes fade{from{opacity:0;filter:blur(6px);transform:translateY(8px)}to{opacity:1;filter:none;transform:none}}
+.now{position:relative;border-radius:18px;padding:2px;background:conic-gradient(from var(--beam),var(--gold-line) 0deg,var(--gold) 40deg,var(--gold-line) 90deg,var(--gold-line) 360deg);animation:beam 4s linear infinite}
+@property --beam{syntax:"<angle>";inherits:false;initial-value:0deg}
+@keyframes beam{to{--beam:360deg}}
+.now .in{background:var(--gold-bg);border-radius:16px;padding:16px 18px;display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+.now .in div{flex:1;min-width:200px}
+.now b{font-family:var(--display);font-size:18px}
+.btn{border:0;border-radius:12px;padding:10px 16px;font-weight:700;font-size:15px;transition:transform .15s var(--ease),box-shadow .2s var(--ease)}
+.btn:hover{transform:translateY(-1px);box-shadow:0 8px 18px -10px var(--shadow)}
+.btn:active{transform:scale(.97)}
+.dark{background:var(--text);color:var(--on-dark)}
+.gold{background:var(--gold);color:var(--gold-ink)}
+.line{background:var(--surface);border:1px solid var(--line)}
+.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.stat{border:1px solid var(--line);border-radius:16px;padding:14px}
+.stat span{color:var(--muted);font-size:14px}
+.stat b{display:block;font-family:var(--display);font-size:28px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.5px}
+.stat small{color:var(--aiden-deep);font-weight:600;font-size:13px}
+.feed{display:flex;flex-direction:column;gap:10px}
+.item{display:flex;gap:12px;align-items:flex-start;border:1px solid var(--line);border-radius:16px;padding:12px 14px;animation:slide .5s var(--ease) both}
+@keyframes slide{from{opacity:0;transform:translateY(-10px) scale(.98)}to{opacity:1;transform:none}}
+.av{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:13px;flex-shrink:0}
+.a1{background:var(--av1);color:var(--av1-ink)}.a2{background:var(--av2);color:var(--av2-ink)}.a3{background:var(--av3);color:var(--av3-ink)}
+.item .t{min-width:0;flex:1}
+.item .n{display:flex;justify-content:space-between;gap:8px;font-weight:700;font-size:15px}
+.item .n span{font-weight:500;color:var(--muted);font-size:13px}
+.item .q{color:var(--muted);font-size:14px}
+.rep{margin-top:6px;background:var(--bubble-out);border-radius:12px 12px 12px 4px;padding:8px 11px;font-size:14px}
+.rep small{display:block;font-size:12px;font-weight:700;color:var(--aiden-deep)}
+.dots{display:inline-flex;gap:4px;padding:4px 2px}
+.dots i{width:6px;height:6px;border-radius:50%;background:var(--aiden-deep);animation:dot 1.2s infinite}
+.dots i:nth-child(2){animation-delay:.15s}.dots i:nth-child(3){animation-delay:.3s}
+@keyframes dot{0%,60%,100%{opacity:.3;transform:none}30%{opacity:1;transform:translateY(-3px)}}
+/* skeleton */
+.sk{border-radius:12px;background:linear-gradient(90deg,var(--bubble-in) 0%,var(--surface) 50%,var(--bubble-in) 100%);background-size:200% 100%;animation:shim 1.2s linear infinite}
+@keyframes shim{to{background-position:-200% 0}}
+
+/* Inbox */
+.chat{display:grid;grid-template-columns:minmax(0,1fr);gap:10px;background:linear-gradient(var(--ground),var(--ground));border-radius:16px;padding:16px;min-height:300px}
+.msg{max-width:78%;padding:9px 12px;border-radius:14px;font-size:15px;animation:slide .4s var(--ease) both}
+.msg.in{background:var(--surface);border:1px solid var(--line);border-radius:14px 14px 14px 4px;justify-self:start}
+.msg.out{background:var(--bubble-out);border-radius:14px 14px 4px 14px;justify-self:end}
+.msg small{display:block;font-size:12px;font-weight:700;color:var(--aiden-deep)}
+.prod{display:flex;gap:10px;align-items:center;margin-top:6px;background:var(--surface);border-radius:10px;padding:8px}
+.prod i{width:44px;height:44px;border-radius:8px;background:radial-gradient(circle at 30% 30%,var(--gold),var(--gold-ink));flex-shrink:0}
+.sale{justify-self:center;display:inline-flex;align-items:center;gap:8px;background:var(--aiden-soft);color:var(--aiden-deep);font-weight:700;border-radius:999px;padding:6px 14px;font-size:14px;position:relative}
+.sale.pop{animation:popin .5s var(--ease) both}
+@keyframes popin{0%{transform:scale(.6);opacity:0}70%{transform:scale(1.06);opacity:1}100%{transform:none}}
+.spark{position:absolute;width:6px;height:6px;border-radius:50%;background:var(--gold);pointer-events:none;animation:spark .7s ease-out forwards}
+@keyframes spark{to{transform:translate(var(--dx),var(--dy)) scale(.2);opacity:0}}
+
+/* Campaign */
+.camp{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
+.sum{border:1px solid var(--line);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:8px}
+.row{display:flex;justify-content:space-between;gap:10px;font-size:15px}
+.row span{color:var(--muted)}
+.row b{font-variant-numeric:tabular-nums}
+.phonebub{background:var(--bubble-in);border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:8px}
+.wa{background:var(--surface);border-radius:12px 12px 12px 4px;padding:10px 12px;font-size:14px;box-shadow:0 1px 1px var(--shadow)}
+.wa .img{height:90px;border-radius:8px;background:linear-gradient(135deg,var(--gold-bg),var(--gold) 60%,var(--gold-ink));margin-bottom:8px}
+.wa .cta{margin-top:8px;border-top:1px solid var(--line);padding-top:6px;text-align:center;color:var(--aiden-deep);font-weight:700}
+.sendzone{display:flex;align-items:center;gap:14px;flex-wrap:wrap;position:relative}
+.ring svg{display:block}
+#confetti{position:absolute;inset:0;pointer-events:none;width:100%;height:100%}
+.done{color:var(--aiden-deep);font-weight:700}
+
+/* Empty */
+.empty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:12px;padding:40px 20px;border:1.5px dashed var(--line);border-radius:18px}
+.empty .orb{width:80px;height:80px}.empty .orb .core{inset:16px}
+.empty p{max-width:44ch;color:var(--muted)}
+.ghosts{display:flex}
+.ghosts span{width:34px;height:34px;border-radius:50%;border:2px solid var(--surface);margin-left:-8px;animation:float 3s ease-in-out infinite}
+.ghosts span:nth-child(1){background:var(--av1);margin-left:0}.ghosts span:nth-child(2){background:var(--av2);animation-delay:.3s}.ghosts span:nth-child(3){background:var(--av3);animation-delay:.6s}
+@keyframes float{50%{transform:translateY(-4px)}}
+
+/* Phone */
+.phonewrap{display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start}
+.phone{width:300px;max-width:100%;height:600px;border-radius:40px;background:var(--text);padding:12px;box-shadow:0 30px 60px -30px var(--shadow);flex-shrink:0}
+.screen{position:relative;height:100%;border-radius:30px;background:var(--ground);overflow:hidden;display:flex;flex-direction:column}
+.ptop{display:flex;justify-content:space-between;align-items:center;padding:16px 16px 8px}
+.pbody{flex:1;padding:4px 14px;display:flex;flex-direction:column;gap:10px;overflow:hidden}
+.pbody .stats{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
+.pbody .stat{padding:10px}.pbody .stat span{font-size:12px}
+.pbody .stat b{font-size:20px}
+.bnav{display:grid;grid-template-columns:repeat(5,1fr);background:var(--surface);border-top:1px solid var(--line);padding:8px 4px 14px}
+.bnav button{background:none;border:0;font-size:11px;font-weight:600;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:3px;padding:4px 0}
+.bnav button i{width:20px;height:20px;border-radius:6px;background:var(--line);display:block}
+.bnav button[aria-current="page"]{color:var(--text)}.bnav button[aria-current="page"] i{background:var(--aiden)}
+.scrim{position:absolute;inset:0;background:rgba(13,43,42,.35);opacity:0;pointer-events:none;transition:opacity .3s var(--ease)}
+.sheet{position:absolute;left:0;right:0;bottom:0;background:var(--surface);border-radius:22px 22px 0 0;padding:10px 16px 22px;transform:translateY(105%);transition:transform .42s cubic-bezier(.32,1.25,.5,1)}
+.sheet .grab{width:40px;height:4px;border-radius:4px;background:var(--line);margin:0 auto 12px}
+.sheet button{display:flex;width:100%;justify-content:space-between;background:none;border:0;border-bottom:1px solid var(--line);padding:12px 2px;font-weight:600}
+.open .scrim{opacity:1;pointer-events:auto}.open .sheet{transform:none}
+.sticky{position:absolute;left:14px;right:14px;bottom:72px}
+
+/* Copy table */
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:18px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:640px;font-size:15px}
+th,td{text-align:left;padding:12px 16px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:13px;color:var(--muted);font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+td.old{color:var(--muted);text-decoration:line-through;text-decoration-color:var(--line)}
+td.new{font-weight:600}
+tr:last-child td{border-bottom:0}
+.keep{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+.keep div{background:var(--aiden-soft);border-radius:16px;padding:14px 16px}
+.keep b{display:block;color:var(--aiden-deep)}
+.foot{text-align:center;color:var(--muted);font-size:14px}
+
+/* Reduced motion (toggle + OS) */
+.still *,.still *::before,.still *::after{animation:none!important;transition:none!important}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+
+@media (max-width:860px){
+  .band{grid-template-columns:minmax(0,1fr)}
+  .camp{grid-template-columns:minmax(0,1fr)}
+}
+@media (max-width:520px){
+  .stats{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  .mbody{padding:16px}
+  .bar .nav{display:none}
+}
+</style>
+
+<div class="wrap" id="root">
+
+<header class="intro">
+  <span class="tag">Batch 57 preview · for approval</span>
+  <h1>Aiden Workspace, made to impress in the first minute</h1>
+  <p class="lede">Same screens, same buttons, same data. What changes is how it feels: things move with purpose, every number counts up, Aiden feels alive, and every word reads like a helpful shop assistant wrote it. Classic stays exactly as it is.</p>
+  <div class="controls">
+    <button class="chip" id="replay" type="button">↻ Replay all motion</button>
+    <button class="chip" id="still" type="button" aria-pressed="false">Show without motion</button>
+  </div>
+  <div class="legend">
+    <div><b>Motion with a job</b><span>Every animation tells you something happened. Nothing loops for decoration.</span></div>
+    <div><b>One clear next step</b><span>Home opens with the single thing that needs you, not a wall of cards.</span></div>
+    <div><b>Words a shop owner uses</b><span>"Send to 240 customers", not "Submit". No jargon without a plain line.</span></div>
+  </div>
+</header>
+
+<!-- HOME -->
+<section class="band" aria-labelledby="h-home">
+  <div class="mock" id="home">
+    <div class="bar">
+      <span class="brand">AiDwar</span>
+      <nav class="nav" id="nav" aria-label="Main">
+        <span class="pill" id="pill"></span>
+        <button type="button" aria-current="page">Home</button>
+        <button type="button">Inbox<span class="count">3</span></button>
+        <button type="button">Campaigns</button>
+        <button type="button">Customers</button>
+        <button type="button">Automate</button>
+      </nav>
+    </div>
+    <div class="mbody" id="homebody"></div>
+  </div>
+  <div class="why">
+    <span class="tag">Home</span>
+    <h2 id="h-home">Opens like a person saying good morning</h2>
+    <ul>
+      <li><b>Loads with shimmer, not a spinner.</b> Content blur-fades in, top to bottom.</li>
+      <li><b>One gold card</b> with a moving border: the single thing that needs you now.</li>
+      <li><b>Numbers count up</b> on first load only, then stay still.</li>
+      <li><b>Live feed:</b> new chats slide in, and you can watch Aiden typing.</li>
+      <li><b>Sliding menu highlight.</b> Click the menu items to see it.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- INBOX -->
+<section class="band" aria-labelledby="h-inbox">
+  <div class="mock">
+    <div class="bar"><span class="orb sm" aria-hidden="true"><span class="core"></span></span><div style="min-width:0"><b>Priya Sharma</b><div class="muted" style="font-size:13px" id="status">online</div></div></div>
+    <div class="mbody"><div class="chat" id="chat" aria-live="polite"></div></div>
+  </div>
+  <div class="why">
+    <span class="tag">Inbox</span>
+    <h2 id="h-inbox">You can see Aiden working</h2>
+    <ul>
+      <li><b>"Aiden is typing…"</b> shows in the chat header and as bubbling dots while Aiden replies.</li>
+      <li><b>Product cards</b> slide in like real WhatsApp messages.</li>
+      <li><b>When a chat turns into a sale,</b> a small gold sparkle plays once. It never loops.</li>
+      <li>Replies are still written only by Aiden or your team. Nothing new is sent.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- CAMPAIGN -->
+<section class="band" aria-labelledby="h-camp">
+  <div class="mock">
+    <div class="mbody">
+      <h3>Diwali offer: 15% off gold earrings</h3>
+      <div class="camp">
+        <div class="sum">
+          <div class="row"><span>Who gets it</span><b>240 customers</b></div>
+          <div class="row"><span>Skipped (said no to offers)</span><b>18</b></div>
+          <div class="row"><span>Cost</span><b>₹211</b></div>
+          <div class="row"><span>Your wallet after this</span><b>₹1,789</b></div>
+          <div class="sendzone" id="sendzone">
+            <canvas id="confetti" aria-hidden="true"></canvas>
+            <button class="btn dark" id="send" type="button">Send to 240 customers</button>
+            <span class="ring" id="ring" hidden><svg width="44" height="44" viewBox="0 0 44 44" aria-hidden="true"><circle cx="22" cy="22" r="18" fill="none" stroke="var(--line)" stroke-width="4"/><circle id="arc" cx="22" cy="22" r="18" fill="none" stroke="var(--aiden)" stroke-width="4" stroke-linecap="round" stroke-dasharray="113" stroke-dashoffset="113" transform="rotate(-90 22 22)"/></svg></span>
+            <span id="sendtxt" class="muted" style="font-size:14px">You'll confirm once more before it goes.</span>
+          </div>
+        </div>
+        <div class="phonebub" aria-label="What customers will see">
+          <span class="muted" style="font-size:13px;font-weight:600">What customers will see</span>
+          <div class="wa"><div class="img"></div><b>Diwali is here, Priya ✨</b><br>Take 15% off all gold earrings till Sunday. Reply to this message and we'll keep a pair aside for you.<div class="cta">See earrings</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="why">
+    <span class="tag">Campaigns</span>
+    <h2 id="h-camp">Sending feels like a win</h2>
+    <ul>
+      <li><b>The button says exactly what happens:</b> "Send to 240 customers".</li>
+      <li><b>The summary uses plain words:</b> who gets it, who's skipped and why, the cost, and your wallet after.</li>
+      <li><b>A progress ring</b> while it sends, then <b>one burst of confetti</b> and "Sent". Try it below. In the app the real confirm step stays.</li>
+      <li>The live preview shows the exact WhatsApp message.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- EMPTY -->
+<section class="band" aria-labelledby="h-empty">
+  <div class="mock">
+    <div class="mbody">
+      <div class="empty">
+        <span class="orb" aria-hidden="true"><span class="rip"></span><span class="rip"></span><span class="rip"></span><span class="core"></span></span>
+        <div class="ghosts" aria-hidden="true"><span></span><span></span><span></span></div>
+        <h3 style="font-size:22px">Your customers will show up here</h3>
+        <p>Everyone who messages you on WhatsApp is added here automatically. Have an old list? Bring it in and I'll greet them for you.</p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center"><button class="btn dark" type="button">Import from Excel</button><button class="btn line" type="button">Connect Shopify</button></div>
+      </div>
+    </div>
+  </div>
+  <div class="why">
+    <span class="tag">Empty, loading and error states</span>
+    <h2 id="h-empty">No more blank screens</h2>
+    <ul>
+      <li><b>Every empty screen says</b> what will appear there, why it's empty, and the one step to fill it.</li>
+      <li><b>Aiden talks in first person</b> where it's Aiden helping: "I'll greet them for you".</li>
+      <li><b>Errors say what happened and how to fix it.</b> For example: "Couldn't load your chats. Check your internet and tap Try again."</li>
+    </ul>
+  </div>
+</section>
+
+<!-- PHONE -->
+<section class="band" aria-labelledby="h-phone">
+  <div class="phonewrap">
+    <div class="phone" aria-label="Phone preview">
+      <div class="screen" id="screen">
+        <div class="ptop"><span class="brand" style="font-size:17px">AiDwar</span><span class="orb sm" aria-hidden="true"><span class="rip"></span><span class="core"></span></span></div>
+        <div class="pbody">
+          <p style="font-family:var(--display);font-weight:800;font-size:22px;letter-spacing:-.5px;line-height:1.1">Good morning, Zoori</p>
+          <div class="now"><div class="in" style="padding:12px"><div style="min-width:0"><b style="font-size:15px">1 customer is waiting for you</b><br><span style="font-size:13px">Ravi asked for a custom size.</span></div></div></div>
+          <div class="stats"><div class="stat"><span>Sales from chats</span><b class="tick" data-to="18450" data-pre="₹">₹0</b></div><div class="stat"><span>Aiden replied</span><b class="tick" data-to="126">0</b></div></div>
+        </div>
+        <div class="sticky"><button class="btn dark" type="button" style="width:100%">Reply to Ravi</button></div>
+        <nav class="bnav" aria-label="Phone menu">
+          <button type="button" aria-current="page"><i></i>Home</button>
+          <button type="button"><i></i>Inbox</button>
+          <button type="button"><i></i>Campaigns</button>
+          <button type="button"><i></i>Customers</button>
+          <button type="button" id="more"><i></i>More</button>
+        </nav>
+        <div class="scrim" id="scrim"></div>
+        <div class="sheet" role="dialog" aria-label="More">
+          <div class="grab"></div>
+          <button type="button">Automate <span class="muted">Aiden, flows</span></button>
+          <button type="button">Shop <span class="muted">Catalogue</span></button>
+          <button type="button">Settings</button>
+          <button type="button">Billing and wallet</button>
+          <button type="button" style="border:0">Switch to Classic</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="why">
+    <span class="tag">Phone</span>
+    <h2 id="h-phone">Feels like a native app</h2>
+    <ul>
+      <li><b>The main action sits by your thumb,</b> above the bottom menu.</li>
+      <li><b>More opens a sheet with a soft spring.</b> Tap "More" on the phone to try it.</li>
+      <li><b>"Switch to Classic"</b> is always one tap away.</li>
+      <li>Safe areas respected, no sideways scrolling, and big tap targets.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- COPY -->
+<section style="display:flex;flex-direction:column;gap:16px" aria-labelledby="h-copy">
+  <span class="tag">Copywriting</span>
+  <h2 id="h-copy">Words, before and after (sample)</h2>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Where</th><th>Today</th><th>After</th></tr></thead>
+      <tbody>
+        <tr><td>Home heading</td><td class="old">Dashboard</td><td class="new">Good morning, Zoori. Here's your shop today.</td></tr>
+        <tr><td>Needs-you card</td><td class="old">1 pending gap</td><td class="new">1 customer is waiting for you</td></tr>
+        <tr><td>Campaign button</td><td class="old">Submit</td><td class="new">Send to 240 customers</td></tr>
+        <tr><td>Opt-out line</td><td class="old">18 contacts not opted in</td><td class="new">18 skipped. They said no to offers, so we won't message them.</td></tr>
+        <tr><td>Segments tab</td><td class="old">Segments</td><td class="new">Groups <span class="muted">(customers sorted by what they bought or asked)</span></td></tr>
+        <tr><td>Templates</td><td class="old">Templates</td><td class="new">Message designs <span class="muted">(WhatsApp approves these before you can send)</span></td></tr>
+        <tr><td>Aiden in Draft</td><td class="old">Draft mode enabled</td><td class="new">I'll write replies and you send them. You're always in control.</td></tr>
+        <tr><td>Empty Inbox</td><td class="old">No conversations</td><td class="new">All caught up. New WhatsApp chats will appear here.</td></tr>
+        <tr><td>Error</td><td class="old">Something went wrong</td><td class="new">Couldn't load your chats. Check your internet and tap Try again.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="muted" style="font-size:14px">Mode names Off, Draft and Replying stay. Legal, WhatsApp policy and billing text don't change. All strings sit in one file per screen, ready for a Hindi version later.</p>
+</section>
+
+<section style="display:flex;flex-direction:column;gap:16px" aria-labelledby="h-keep">
+  <h2 id="h-keep">What does not change</h2>
+  <div class="keep">
+    <div><b>Classic</b>Pixel-for-pixel the same. Zoori stays on it until they switch.</div>
+    <div><b>Every button's job</b>Each action calls the same code as today. Tests prove it.</div>
+    <div><b>Data, billing, sending</b>No change to messages, wallet, prices, Aiden's logic or who can do what.</div>
+    <div><b>Speed and access</b>No slower than today. Works with reduced motion, by keyboard and on a 390px phone.</div>
+  </div>
+</section>
+
+<p class="foot">This page is a preview. Sample data is shown for Zoori and its customers.</p>
+</div>
+
+<script>
+(function(){
+  var root=document.getElementById('root');
+  var reduce=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function still(){return reduce||root.classList.contains('still');}
+
+  /* sliding nav pill */
+  var nav=document.getElementById('nav'),pill=document.getElementById('pill');
+  function place(b){pill.style.left=b.offsetLeft+'px';pill.style.width=b.offsetWidth+'px';}
+  nav.querySelectorAll('button').forEach(function(b){b.addEventListener('click',function(){nav.querySelectorAll('button').forEach(function(x){x.removeAttribute('aria-current')});b.setAttribute('aria-current','page');place(b);});});
+  function placeCur(){var c=nav.querySelector('[aria-current]');if(c)place(c);}
+  window.addEventListener('resize',placeCur);
+
+  /* number ticker */
+  function tick(el){var to=+el.dataset.to,pre=el.dataset.pre||'';if(still()){el.textContent=pre+to.toLocaleString('en-IN');return;}
+    var t0=performance.now(),d=1100;function f(t){var p=Math.min(1,(t-t0)/d),e=1-Math.pow(1-p,3);el.textContent=pre+Math.round(to*e).toLocaleString('en-IN');if(p<1)requestAnimationFrame(f);}requestAnimationFrame(f);}
+
+  /* HOME */
+  var hb=document.getElementById('homebody');var timers=[];
+  function later(fn,ms){timers.push(setTimeout(fn,still()?0:ms));}
+  function home(){
+    hb.innerHTML='<div class="sk" style="height:56px;width:60%"></div><div class="sk" style="height:76px"></div><div class="stats"><div class="sk" style="height:84px"></div><div class="sk" style="height:84px"></div><div class="sk" style="height:84px"></div></div><div class="sk" style="height:64px"></div><div class="sk" style="height:64px"></div>';
+    later(function(){
+      hb.innerHTML=
+      '<div class="greet fade"><span class="orb" aria-hidden="true"><span class="rip"></span><span class="rip"></span><span class="rip"></span><span class="core"></span></span><div style="min-width:0"><h3>Good morning, Zoori</h3><p class="muted">Aiden is replying. I answered 14 customers since you last looked.</p></div></div>'+
+      '<div class="now fade" style="animation-delay:.08s"><div class="in"><div><b>1 customer is waiting for you</b><p style="font-size:15px">Ravi wants the Kundan set in a custom size. I wasn\'t sure, so I asked you first.</p></div><button class="btn gold" type="button">Answer Ravi</button></div></div>'+
+      '<div class="stats fade" style="animation-delay:.16s"><div class="stat"><span>Sales from chats</span><b class="tick" data-to="18450" data-pre="₹">₹0</b><small>this week</small></div><div class="stat"><span>Replied by Aiden</span><b class="tick" data-to="126">0</b><small>in under a minute</small></div><div class="stat"><span>Wallet</span><b class="tick" data-to="2000" data-pre="₹">₹0</b><small>enough for ~2,200 msgs</small></div></div>'+
+      '<div class="feed" id="feed"></div>';
+      hb.querySelectorAll('.tick').forEach(tick);
+      var feed=document.getElementById('feed');
+      var rows=[['a1','AK','Anjali K','now','Do you deliver to Pune?','typing'],['a2','MS','Meera S','2 min','Is the jhumka in stock?','Yes, 4 left in gold. Shall I keep one for you?'],['a3','RP','Rohit P','6 min','Price for the bridal set?','The Rani set is ₹48,500. Want photos?']];
+      rows.slice().reverse().forEach(function(r,i){later(function(){
+        var d=document.createElement('div');d.className='item';
+        var rep=r[5]==='typing'?'<div class="rep"><small>Aiden</small><span class="dots" aria-label="Aiden is typing"><i></i><i></i><i></i></span></div>':'<div class="rep"><small>Aiden replied</small>'+r[5]+'</div>';
+        d.innerHTML='<span class="av '+r[0]+'">'+r[1]+'</span><div class="t"><div class="n">'+r[2]+'<span>'+r[3]+'</span></div><div class="q">'+r[4]+'</div>'+rep+'</div>';
+        feed.prepend(d);
+        if(r[5]==='typing')later(function(){var x=d.querySelector('.rep');x.innerHTML='<small>Aiden replied</small>Yes! Pune delivery takes 2 days and it\'s free above ₹2,000.';},1600);
+      },400+i*550);});
+    },900);
+  }
+
+  /* INBOX */
+  var chat=document.getElementById('chat'),status=document.getElementById('status');
+  function add(cls,html){var m=document.createElement('div');m.className=cls;m.innerHTML=html;chat.appendChild(m);return m;}
+  function inbox(){
+    chat.innerHTML='';status.textContent='online';
+    add('msg in','Hi! Looking for gold earrings under ₹5,000 for Diwali');
+    later(function(){status.innerHTML='<span style="color:var(--aiden-deep);font-weight:700">Aiden is typing…</span>';var t=add('msg out','<small>Aiden</small><span class="dots"><i></i><i></i><i></i></span>');
+      later(function(){t.innerHTML='<small>Aiden</small>Lovely choice! These are our best-sellers this week:<div class="prod"><i></i><div><b>Lakshmi jhumka</b><br><span class="muted">₹4,200 · 22k gold-plated</span></div></div>';status.textContent='online';},1500);},700);
+    later(function(){add('msg in','Perfect, I\'ll take it. Sending payment now 🙏');},3000);
+    later(function(){var s=add('sale pop','₹4,200 sale from this chat');sparkle(s);},3900);
+  }
+  function sparkle(el){if(still())return;for(var i=0;i<10;i++){var p=document.createElement('span');p.className='spark';var a=Math.PI*2*i/10;p.style.setProperty('--dx',Math.cos(a)*44+'px');p.style.setProperty('--dy',Math.sin(a)*24+'px');p.style.left='50%';p.style.top='50%';el.appendChild(p);setTimeout(function(x){x.remove()},800,p);}}
+
+  /* CAMPAIGN */
+  var send=document.getElementById('send'),ring=document.getElementById('ring'),arc=document.getElementById('arc'),txt=document.getElementById('sendtxt'),cv=document.getElementById('confetti');
+  function resetSend(){send.hidden=false;ring.hidden=true;arc.style.strokeDashoffset=113;txt.className='muted';txt.textContent="You'll confirm once more before it goes.";}
+  send.addEventListener('click',function(){
+    send.hidden=true;ring.hidden=false;txt.className='muted';txt.textContent='Sending… 0 of 240';
+    var t0=performance.now(),d=still()?1:1800;
+    function f(t){var p=Math.min(1,(t-t0)/d);arc.style.strokeDashoffset=113*(1-p);txt.textContent='Sending… '+Math.round(240*p)+' of 240';if(p<1)requestAnimationFrame(f);else{txt.className='done';txt.textContent='Sent to 240 customers. I\'ll tell you who replies.';confetti();}}
+    requestAnimationFrame(f);
+  });
+  function confetti(){if(still())return;var z=document.getElementById('sendzone');var w=cv.width=z.offsetWidth,h=cv.height=z.offsetHeight+120;cv.style.top='-120px';cv.style.height=h+'px';var c=cv.getContext('2d');var cols=['#F2B544','#0F9D74','#0D2B2A','#FFE1D6','#DBEAFE'];var ps=[];for(var i=0;i<70;i++)ps.push({x:60,y:h-30,vx:(Math.random()*6+1),vy:-(Math.random()*7+4),r:Math.random()*4+2,c:cols[i%5],a:1});
+    var t0=performance.now();function f(t){c.clearRect(0,0,w,h);var alive=false;ps.forEach(function(p){p.x+=p.vx;p.y+=p.vy;p.vy+=.25;p.a-=.012;if(p.a>0){alive=true;c.globalAlpha=Math.max(0,p.a);c.fillStyle=p.c;c.fillRect(p.x,p.y,p.r,p.r*1.6);}});if(alive&&t-t0<2500)requestAnimationFrame(f);else c.clearRect(0,0,w,h);}requestAnimationFrame(f);}
+
+  /* PHONE */
+  var screen=document.getElementById('screen');
+  document.getElementById('more').addEventListener('click',function(){screen.classList.add('open');});
+  document.getElementById('scrim').addEventListener('click',function(){screen.classList.remove('open');});
+  screen.querySelectorAll('.sheet button').forEach(function(b){b.addEventListener('click',function(){screen.classList.remove('open');});});
+
+  function all(){timers.forEach(clearTimeout);timers=[];home();inbox();resetSend();screen.querySelectorAll('.tick').forEach(tick);requestAnimationFrame(placeCur);}
+  document.getElementById('replay').addEventListener('click',all);
+  var st=document.getElementById('still');
+  st.addEventListener('click',function(){var on=st.getAttribute('aria-pressed')!=='true';st.setAttribute('aria-pressed',String(on));root.classList.toggle('still',on);all();});
+  all();
+  if(document.fonts&&document.fonts.ready)document.fonts.ready.then(placeCur);
+})();
+</script>
+
+</body></html>
