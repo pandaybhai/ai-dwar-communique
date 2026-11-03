@@ -104,7 +104,7 @@ export function NewBillingPage() {
         <PageSkeleton />
       ) : !active || !org ? (
         <EmptyState icon={Wallet} title={C.noWorkspace.title} description={C.noWorkspace.body} />
-      ) : noPlan || locked ? (
+      ) : noPlan || locked || org?.plan_status === "trial" ? (
         <div className="flex flex-col gap-10">
           {note ? <StateNote note={note} /> : null}
           <div id="plans" className="scroll-mt-4">
