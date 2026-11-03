@@ -129,6 +129,10 @@ export async function apiMessageStatus(
       created_at: row.created_at,
       ...times,
       updated_at: row.status_updated_at ?? row.created_at,
+      // Batch 61: a copy says whose copy it is (nothing changes for any other message).
+      ...(meta["copy"] === true && typeof meta["cc_of"] === "string"
+        ? { cc_of: meta["cc_of"] }
+        : {}),
     },
   };
 }

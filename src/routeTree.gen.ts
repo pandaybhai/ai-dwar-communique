@@ -111,6 +111,7 @@ import { Route as ApiContactsEvaluateSegmentRouteImport } from './routes/api/con
 import { Route as ApiContactsImportRouteImport } from './routes/api/contacts/import'
 import { Route as ApiContactsOptInRouteImport } from './routes/api/contacts/opt-in'
 import { Route as ApiDeveloperConsoleRouteImport } from './routes/api/developer/console'
+import { Route as ApiDeveloperCopiesRouteImport } from './routes/api/developer/copies'
 import { Route as ApiDeveloperKeysRouteImport } from './routes/api/developer/keys'
 import { Route as ApiDeveloperWebhookRouteImport } from './routes/api/developer/webhook'
 import { Route as ApiFlowsResponsesRouteImport } from './routes/api/flows/responses'
@@ -721,6 +722,11 @@ const ApiContactsOptInRoute = ApiContactsOptInRouteImport.update({
 const ApiDeveloperConsoleRoute = ApiDeveloperConsoleRouteImport.update({
   id: '/api/developer/console',
   path: '/api/developer/console',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiDeveloperCopiesRoute = ApiDeveloperCopiesRouteImport.update({
+  id: '/api/developer/copies',
+  path: '/api/developer/copies',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiDeveloperKeysRoute = ApiDeveloperKeysRouteImport.update({
@@ -1340,6 +1346,7 @@ export interface FileRoutesByFullPath {
   '/api/contacts/import': typeof ApiContactsImportRoute
   '/api/contacts/opt-in': typeof ApiContactsOptInRoute
   '/api/developer/console': typeof ApiDeveloperConsoleRoute
+  '/api/developer/copies': typeof ApiDeveloperCopiesRoute
   '/api/developer/keys': typeof ApiDeveloperKeysRoute
   '/api/developer/webhook': typeof ApiDeveloperWebhookRoute
   '/api/flows/responses': typeof ApiFlowsResponsesRoute
@@ -1536,6 +1543,7 @@ export interface FileRoutesByTo {
   '/api/contacts/import': typeof ApiContactsImportRoute
   '/api/contacts/opt-in': typeof ApiContactsOptInRoute
   '/api/developer/console': typeof ApiDeveloperConsoleRoute
+  '/api/developer/copies': typeof ApiDeveloperCopiesRoute
   '/api/developer/keys': typeof ApiDeveloperKeysRoute
   '/api/developer/webhook': typeof ApiDeveloperWebhookRoute
   '/api/flows/responses': typeof ApiFlowsResponsesRoute
@@ -1736,6 +1744,7 @@ export interface FileRoutesById {
   '/api/contacts/import': typeof ApiContactsImportRoute
   '/api/contacts/opt-in': typeof ApiContactsOptInRoute
   '/api/developer/console': typeof ApiDeveloperConsoleRoute
+  '/api/developer/copies': typeof ApiDeveloperCopiesRoute
   '/api/developer/keys': typeof ApiDeveloperKeysRoute
   '/api/developer/webhook': typeof ApiDeveloperWebhookRoute
   '/api/flows/responses': typeof ApiFlowsResponsesRoute
@@ -1937,6 +1946,7 @@ export interface FileRouteTypes {
     | '/api/contacts/import'
     | '/api/contacts/opt-in'
     | '/api/developer/console'
+    | '/api/developer/copies'
     | '/api/developer/keys'
     | '/api/developer/webhook'
     | '/api/flows/responses'
@@ -2133,6 +2143,7 @@ export interface FileRouteTypes {
     | '/api/contacts/import'
     | '/api/contacts/opt-in'
     | '/api/developer/console'
+    | '/api/developer/copies'
     | '/api/developer/keys'
     | '/api/developer/webhook'
     | '/api/flows/responses'
@@ -2332,6 +2343,7 @@ export interface FileRouteTypes {
     | '/api/contacts/import'
     | '/api/contacts/opt-in'
     | '/api/developer/console'
+    | '/api/developer/copies'
     | '/api/developer/keys'
     | '/api/developer/webhook'
     | '/api/flows/responses'
@@ -2492,6 +2504,7 @@ export interface RootRouteChildren {
   ApiContactsImportRoute: typeof ApiContactsImportRoute
   ApiContactsOptInRoute: typeof ApiContactsOptInRoute
   ApiDeveloperConsoleRoute: typeof ApiDeveloperConsoleRoute
+  ApiDeveloperCopiesRoute: typeof ApiDeveloperCopiesRoute
   ApiDeveloperKeysRoute: typeof ApiDeveloperKeysRoute
   ApiDeveloperWebhookRoute: typeof ApiDeveloperWebhookRoute
   ApiFlowsResponsesRoute: typeof ApiFlowsResponsesRoute
@@ -3287,6 +3300,13 @@ declare module '@tanstack/react-router' {
       path: '/api/developer/console'
       fullPath: '/api/developer/console'
       preLoaderRoute: typeof ApiDeveloperConsoleRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/developer/copies': {
+      id: '/api/developer/copies'
+      path: '/api/developer/copies'
+      fullPath: '/api/developer/copies'
+      preLoaderRoute: typeof ApiDeveloperCopiesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/developer/keys': {
@@ -4218,6 +4238,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiContactsImportRoute: ApiContactsImportRoute,
   ApiContactsOptInRoute: ApiContactsOptInRoute,
   ApiDeveloperConsoleRoute: ApiDeveloperConsoleRoute,
+  ApiDeveloperCopiesRoute: ApiDeveloperCopiesRoute,
   ApiDeveloperKeysRoute: ApiDeveloperKeysRoute,
   ApiDeveloperWebhookRoute: ApiDeveloperWebhookRoute,
   ApiFlowsResponsesRoute: ApiFlowsResponsesRoute,

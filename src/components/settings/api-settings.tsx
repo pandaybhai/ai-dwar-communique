@@ -12,6 +12,7 @@ import { useOrg } from "@/lib/org-context";
 import { aidwar } from "@/integrations/aidwar/client";
 import { DOCS_PATH, apiReadyTemplates, curlExample } from "@/lib/public-api";
 import { POSTMAN_PATH, WEBHOOK_EVENTS } from "@/lib/public-api-spec";
+import { ApiCopiesCard } from "@/components/settings/api-copies-card";
 
 type KeyRow = {
   id: string;
@@ -59,6 +60,7 @@ export function ApiSettingsTab() {
     <div className="space-y-6">
       <ApiQuickstartCard />
       <ApiKeysCard />
+      <ApiCopiesCard />
       <WebhookCard />
     </div>
   );

@@ -4,6 +4,7 @@ import type { ApiCaller } from "@/lib/public-api.server";
 import { MAX_DOCUMENT_MB } from "@/lib/public-api";
 import type { TemplateComponent } from "@/lib/templates";
 import { parseMediaInput, type MediaInput } from "@/lib/public-api-media.server";
+import { copyIdempotencyKey, parseCcNumbers, type CopyResult } from "@/lib/public-api-cc";
 
 /**
  * POST /api/v1/messages/template — one approved template to one customer,
@@ -87,6 +88,12 @@ export type SendRequest = {
   idempotencyKey: string | null;
   /** Only Batch 34 fields were used: the idempotency fingerprint is Batch 34's. */
   legacy: boolean;
+  /**
+   * Batch 61: the request's own copy numbers (E.164, without duplicates or the
+   * `to` number). Null when the request has no `cc` (the workspace default
+   * applies); an empty array when it says "no copies".
+   */
+  cc: string[] | null;
 };
 
 /** One template value, checked as WhatsApp checks it. Null when fine, else why not. */
@@ -302,6 +309,14 @@ export function parseSendRequest(raw: unknown, headerKey: string | null): SendRe
     offerExpiresAt = new Date(at).toISOString();
   }
 
+  // ---- Batch 61: copies ----
+  let cc: string[] | null = null;
+  if (body["cc"] !== undefined && body["cc"] !== null) {
+    const parsedCc = parseCcNumbers(body["cc"], { to });
+    if (!parsedCc.ok) return fail(400, "invalid_cc", `${parsedCc.error} Nothing was sent.`);
+    cc = parsedCc.numbers;
+  }
+
   const keyRaw = body["idempotency_key"] ?? headerKey;
   let idempotencyKey: string | null = null;
   if (keyRaw !== undefined && keyRaw !== null && keyRaw !== "") {
@@ -326,6 +341,7 @@ export function parseSendRequest(raw: unknown, headerKey: string | null): SendRe
     offerExpiresAt,
     idempotencyKey,
     legacy: Boolean(document) && V11_FIELDS.every((k) => body[k] === undefined || body[k] === null),
+    cc,
   };
 }
 
@@ -709,6 +725,8 @@ async function sendFingerprint(parsed: SendRequest, waId: string): Promise<strin
         ? createHash("sha256").update(parsed.document.base64).digest("hex")
         : null,
       filename: parsed.document.filename,
+      // Batch 61: only a request that has `cc` carries it (a Batch 34 request is unchanged).
+      ...(parsed.cc !== null ? { cc: parsed.cc } : {}),
     });
   }
   const { mediaFingerprint } = await import("@/lib/public-api-media.server");
@@ -737,6 +755,7 @@ async function sendFingerprint(parsed: SendRequest, waId: string): Promise<strin
           : { type: header.type, media: mediaFingerprint(header.media) },
     buttons: [...parsed.buttons].sort((a, b) => a.index - b.index),
     offer_expires_at: parsed.offerExpiresAt,
+    ...(parsed.cc !== null ? { cc: parsed.cc } : {}),
   });
 }
 
@@ -769,10 +788,12 @@ export async function sendTemplateViaApi(
   // whatever changed since (a template paused, a plan lapsed) ----
   const lib = await import("@/lib/public-api.server");
   let requestId: string | null = null;
+  let requestHash: string | null = null;
   if (parsed.idempotencyKey) {
+    requestHash = await sendFingerprint(parsed, waId);
     const reserved = await lib.reserveIdempotency(supabase, caller, {
       key: parsed.idempotencyKey,
-      requestHash: await sendFingerprint(parsed, waId),
+      requestHash,
     });
     if ("status" in reserved) return reserved;
     requestId = reserved.id;
@@ -801,6 +822,18 @@ export async function sendTemplateViaApi(
           "This workspace is locked — choose a plan in AiDwar to send again.",
         ),
       );
+    }
+
+    // ---- Batch 61: the copies — the request's own `cc` (even an empty one),
+    // else the workspace default — each counted against the rate limits ----
+    let copyNumbers: string[] = parsed.cc ?? [];
+    if (parsed.cc === null) {
+      const { loadApiCcDefault } = await import("@/lib/public-api-cc.server");
+      copyNumbers = await loadApiCcDefault(supabase, orgId, phone);
+    }
+    if (copyNumbers.length) {
+      const limited = await lib.takeRateUnits(supabase, caller, copyNumbers.length);
+      if (limited) return refuse(limited);
     }
 
     const { getWhatsAppConnection } = await import("@/lib/whatsapp-numbers.server");
@@ -850,27 +883,29 @@ export async function sendTemplateViaApi(
 
     // ---- credits: the same sum a campaign hold checks, at this customer's rate ----
     const billing = await import("@/lib/billing.server");
-    if (await billing.billingEnabled(supabase, orgId)) {
-      const country = await countryForPhone(supabase, waId);
+    const billingOn = await billing.billingEnabled(supabase, orgId);
+    const creditsFor = async (digits: string): Promise<boolean> => {
+      const country = await countryForPhone(supabase, digits);
       const { rate } = await billing.rateFor(
         supabase,
         orgId,
         category as import("@/lib/billing").MessageCategory,
         country,
       );
-      const cover = await billing.creditsCover(supabase, orgId, rate);
-      if (!cover.covers) {
-        return refuse(
-          fail(
-            402,
-            "insufficient_credits",
-            "There aren't enough credits in this workspace's AiDwar wallet to send this message. Top up and send again. Nothing was sent.",
-          ),
-        );
-      }
+      return (await billing.creditsCover(supabase, orgId, rate)).covers;
+    };
+    if (billingOn && !(await creditsFor(waId))) {
+      return refuse(
+        fail(
+          402,
+          "insufficient_credits",
+          "There aren't enough credits in this workspace's AiDwar wallet to send this message. Top up and send again. Nothing was sent.",
+        ),
+      );
     }
 
-    // ---- the header's file, then Meta's copy of it, by media id ----
+    // ---- the header's file, then Meta's copy of it, by media id (once:
+    // Batch 61's copies send the same media id) ----
     let file: import("@/lib/public-api-media.server").MediaFile | null = null;
     let headerMediaId: string | null = null;
     if (resolved.headerMedia) {
@@ -907,95 +942,94 @@ export async function sendTemplateViaApi(
     }
     const isDocument = resolved.headerMedia?.kind === "document";
 
-    // ---- the contact (first touch: source "api"; an existing contact keeps its own) ----
-    await supabase
-      .from("contacts")
-      .upsert(
-        { organization_id: orgId, phone, wa_id: waId, source: "api" },
-        { onConflict: "organization_id,phone", ignoreDuplicates: true },
-      );
-    const { data: contact } = await supabase
-      .from("contacts")
-      .select("id")
-      .eq("organization_id", orgId)
-      .eq("phone", phone)
-      .maybeSingle();
-    const contactId = (contact as { id?: string } | null)?.id ?? null;
-
-    // ---- the send: the one-message template sender ----
-    const metadata = {
-      // "api_console" for the Try-it console (Batch 38): charged and shown like any API send.
-      source: caller.source ?? "api",
-      api_key_id: caller.keyId,
-      idempotency_key: parsed.idempotencyKey,
-      ...(requestId ? { api_request_id: requestId } : {}),
-      ...(isDocument && file ? { document_filename: file.filename } : {}),
-      to: phone,
-    };
-    const { sendCampaignTemplate } = await import("@/lib/campaigns.server");
-    sendStarted = true;
-    const outcome = await sendCampaignTemplate(
-      supabase,
-      orgId,
-      {
-        accountId: connection.accountId,
-        wabaId: connection.wabaId,
-        phoneNumberId: connection.phoneNumberId,
-        accessToken: connection.accessToken,
-      },
-      { contactId, phone: waId, variables: resolved.variables(parsed.bodyParams) },
-      {
-        name: template.name,
-        language: template.language,
-        variableOrder: [],
-        components: (template.components ?? null) as TemplateComponent[] | null,
-      },
-      {
-        campaignId: null,
-        category,
-        ...(headerMediaId
-          ? {
-              headerMediaId,
-              ...(isDocument && file ? { headerFileName: file.filename } : {}),
-            }
-          : {}),
-        ...(resolved.headerLocation ? { headerLocation: resolved.headerLocation } : {}),
-        ...(resolved.headerValues ? { headerValues: resolved.headerValues } : {}),
-        ...(Object.keys(resolved.buttonParams).length
-          ? { buttonParams: resolved.buttonParams }
-          : {}),
-        ...(Object.keys(resolved.quickReplyPayloads).length
-          ? { quickReplyPayloads: resolved.quickReplyPayloads }
-          : {}),
-        ...(resolved.couponCode ? { couponCode: resolved.couponCode } : {}),
-        ...(parsed.offerExpiresAt ? { offerExpiresAt: parsed.offerExpiresAt } : {}),
-        messageMetadata: metadata,
-      },
-    );
-
-    const messageId = outcome.messageId;
-    let wamid: string | null = null;
-    if (messageId && file) {
-      const { keepMediaCopy } = await import("@/lib/public-api-media.server");
-      ({ wamid } = await keepMediaCopy(supabase, {
-        organizationId: orgId,
-        messageId,
-        bytes: file.bytes,
-        mime: file.mime,
-      }));
-    } else if (messageId) {
-      const { data: sentRow } = await supabase
-        .from("messages")
-        .select("meta_message_id")
-        .eq("id", messageId)
+    /**
+     * One message of this request to one number: the contact (first touch:
+     * source "api"; an existing contact keeps its own), the one-message
+     * template sender, the file kept for the inbox, and message.failed for the
+     * merchant's webhook when Meta refuses it at once. The customer's send and
+     * every copy go through here — the same template, values, file and buttons.
+     */
+    const sendOne = async (
+      target: { phone: string; waId: string },
+      metadata: Record<string, unknown>,
+    ): Promise<{ messageId: string | null; wamid: string | null; error: string | null }> => {
+      await supabase
+        .from("contacts")
+        .upsert(
+          { organization_id: orgId, phone: target.phone, wa_id: target.waId, source: "api" },
+          { onConflict: "organization_id,phone", ignoreDuplicates: true },
+        );
+      const { data: contact } = await supabase
+        .from("contacts")
+        .select("id")
+        .eq("organization_id", orgId)
+        .eq("phone", target.phone)
         .maybeSingle();
-      wamid = (sentRow as { meta_message_id?: string | null } | null)?.meta_message_id ?? null;
-    }
+      const contactId = (contact as { id?: string } | null)?.id ?? null;
 
-    if (outcome.error) {
-      // Meta refused it at once: the merchant's webhook hears message.failed
-      // too, as for a failure Meta reports later.
-      if (messageId) {
+      const { sendCampaignTemplate } = await import("@/lib/campaigns.server");
+      sendStarted = true;
+      const outcome = await sendCampaignTemplate(
+        supabase,
+        orgId,
+        {
+          accountId: connection.accountId,
+          wabaId: connection.wabaId,
+          phoneNumberId: connection.phoneNumberId,
+          accessToken: connection.accessToken,
+        },
+        { contactId, phone: target.waId, variables: resolved.variables(parsed.bodyParams) },
+        {
+          name: template.name,
+          language: template.language,
+          variableOrder: [],
+          components: (template.components ?? null) as TemplateComponent[] | null,
+        },
+        {
+          campaignId: null,
+          category,
+          ...(headerMediaId
+            ? {
+                headerMediaId,
+                ...(isDocument && file ? { headerFileName: file.filename } : {}),
+              }
+            : {}),
+          ...(resolved.headerLocation ? { headerLocation: resolved.headerLocation } : {}),
+          ...(resolved.headerValues ? { headerValues: resolved.headerValues } : {}),
+          ...(Object.keys(resolved.buttonParams).length
+            ? { buttonParams: resolved.buttonParams }
+            : {}),
+          ...(Object.keys(resolved.quickReplyPayloads).length
+            ? { quickReplyPayloads: resolved.quickReplyPayloads }
+            : {}),
+          ...(resolved.couponCode ? { couponCode: resolved.couponCode } : {}),
+          ...(parsed.offerExpiresAt ? { offerExpiresAt: parsed.offerExpiresAt } : {}),
+          messageMetadata: metadata,
+        },
+      );
+
+      const messageId = outcome.messageId;
+      let wamid: string | null = null;
+      if (messageId && file) {
+        const { keepMediaCopy } = await import("@/lib/public-api-media.server");
+        ({ wamid } = await keepMediaCopy(supabase, {
+          organizationId: orgId,
+          messageId,
+          bytes: file.bytes,
+          mime: file.mime,
+        }));
+      } else if (messageId) {
+        const { data: sentRow } = await supabase
+          .from("messages")
+          .select("meta_message_id")
+          .eq("id", messageId)
+          .maybeSingle();
+        wamid = (sentRow as { meta_message_id?: string | null } | null)?.meta_message_id ?? null;
+      }
+
+      if (outcome.error && messageId) {
+        // Meta refused it at once: the merchant's webhook hears message.failed
+        // too, as for a failure Meta reports later.
         const { enqueueApiWebhookEvent } = await import("@/lib/public-api-webhooks.server");
         const { data: failedRow } = await supabase
           .from("messages")
@@ -1012,10 +1046,28 @@ export async function sendTemplateViaApi(
             (failedRow as { error_detail?: string | null } | null)?.error_detail ?? outcome.error,
         });
       }
+      return { messageId, wamid, error: outcome.error ?? null };
+    };
+
+    // ---- the send: the one-message template sender ----
+    const metadata = {
+      // "api_console" for the Try-it console (Batch 38): charged and shown like any API send.
+      source: caller.source ?? "api",
+      api_key_id: caller.keyId,
+      idempotency_key: parsed.idempotencyKey,
+      ...(requestId ? { api_request_id: requestId } : {}),
+      ...(isDocument && file ? { document_filename: file.filename } : {}),
+      to: phone,
+    };
+    const main = await sendOne({ phone, waId }, metadata);
+    const messageId = main.messageId;
+
+    if (main.error) {
+      // The customer's send failed: no copies are sent.
       const answer: ApiAnswer = {
         status: 502,
         body: {
-          error: `WhatsApp rejected the message: ${outcome.error}`,
+          error: `WhatsApp rejected the message: ${main.error}`,
           code: "whatsapp_rejected",
           message_id: messageId,
           status: "failed",
@@ -1043,10 +1095,48 @@ export async function sendTemplateViaApi(
       body: {
         message_id: messageId,
         status: "queued",
-        wamid,
+        wamid: main.wamid,
         idempotency_key: parsed.idempotencyKey,
       },
     };
+
+    // ---- Batch 61: the copies, only now that WhatsApp accepted the customer's
+    // send. A copy never changes the customer's answer: each is tried on its
+    // own and reports in `copies` (and in its own message's status). ----
+    if (parsed.cc !== null || copyNumbers.length) {
+      const copies: CopyResult[] = [];
+      for (const number of copyNumbers) {
+        copies.push(
+          await sendCopy(number, {
+            supabase,
+            caller,
+            lib,
+            mainMessageId: messageId,
+            mainKey: parsed.idempotencyKey,
+            mainHash: requestHash,
+            baseMetadata: metadata,
+            optedOutMayReceive,
+            contactOptedOut,
+            credits: billingOn ? creditsFor : null,
+            templateCategory: template.category,
+            send: sendOne,
+            log: (copyId) =>
+              logServerActivity(supabase, orgId, null, "message_sent", {
+                message_type: "template",
+                source: caller.source ?? "api",
+                api_key_id: caller.keyId,
+                template_name: template.name,
+                whatsapp_account_id: connection.accountId,
+                copy: true,
+                cc_of: messageId,
+                message_id: copyId,
+              }),
+          }),
+        );
+      }
+      answer.body["copies"] = copies;
+    }
+
     if (requestId)
       await lib.finishIdempotency(supabase, requestId, {
         status: answer.status,
@@ -1057,5 +1147,136 @@ export async function sendTemplateViaApi(
   } catch (error) {
     if (requestId && !sendStarted) await lib.releaseIdempotency(supabase, requestId);
     throw error;
+  }
+}
+
+/**
+ * Batch 61: one copy of an accepted API send to one more number, through the
+ * request's own sendOne (same template, values, Meta media id and buttons).
+ * Its own idempotency key `<key>:cc:<E.164>` (none when the request has
+ * none) is reserved first, so a copy is never sent twice; the inbox's opt-out
+ * rule and the credit check apply to each copy as to the customer's send. A
+ * copy's row is an ordinary API message with metadata.copy = true and
+ * metadata.cc_of = the customer's message id. Never throws.
+ */
+async function sendCopy(
+  number: string,
+  ctx: {
+    supabase: SupabaseClient;
+    caller: ApiCaller;
+    lib: typeof import("@/lib/public-api.server");
+    mainMessageId: string | null;
+    mainKey: string | null;
+    mainHash: string | null;
+    baseMetadata: Record<string, unknown>;
+    contactOptedOut: typeof import("@/lib/opt-out.server").contactOptedOut;
+    optedOutMayReceive: typeof import("@/lib/opt-out.server").optedOutMayReceive;
+    credits: ((digits: string) => Promise<boolean>) | null;
+    templateCategory: string | null;
+    send: (
+      target: { phone: string; waId: string },
+      metadata: Record<string, unknown>,
+    ) => Promise<{ messageId: string | null; wamid: string | null; error: string | null }>;
+    log: (copyMessageId: string | null) => Promise<unknown>;
+  },
+): Promise<CopyResult> {
+  const { supabase, caller, lib } = ctx;
+  const digits = number.replace(/\D/g, "");
+  const notSent = (code: string, error: string): CopyResult => ({
+    to: number,
+    message_id: null,
+    status: "not_sent",
+    code,
+    error,
+  });
+  let copyRequestId: string | null = null;
+  let started = false;
+  try {
+    const key = ctx.mainKey ? copyIdempotencyKey(ctx.mainKey, number) : null;
+    if (key) {
+      const reserved = await lib.reserveIdempotency(supabase, caller, {
+        key,
+        requestHash: lib.requestFingerprint({ cc_of: ctx.mainHash, to: number }),
+      });
+      if ("status" in reserved) {
+        // Already sent under this key: its first answer, never a second message.
+        const body = reserved.body as Partial<CopyResult>;
+        if (reserved.headers?.["Idempotent-Replayed"] && typeof body.to === "string")
+          return body as CopyResult;
+        return notSent(
+          String(reserved.body["code"] ?? "unavailable"),
+          String(reserved.body["error"] ?? "This copy couldn't be reserved."),
+        );
+      }
+      copyRequestId = reserved.id;
+    }
+    const refuse = async (code: string, error: string): Promise<CopyResult> => {
+      if (copyRequestId) await lib.releaseIdempotency(supabase, copyRequestId);
+      return notSent(code, error);
+    };
+
+    const optOut = await ctx.contactOptedOut(supabase, caller.organizationId, { phone: number });
+    if (optOut.error) return refuse("unavailable", "We couldn't confirm this number's opt-in.");
+    if (optOut.optedOut && !ctx.optedOutMayReceive(ctx.templateCategory))
+      return refuse(
+        "contact_opted_out",
+        "This number has opted out of marketing messages from this business.",
+      );
+    if (ctx.credits && !(await ctx.credits(digits)))
+      return refuse(
+        "insufficient_credits",
+        "There aren't enough credits in this workspace's AiDwar wallet for this copy.",
+      );
+
+    const metadata: Record<string, unknown> = {
+      ...ctx.baseMetadata,
+      idempotency_key: key,
+      to: number,
+      copy: true,
+      cc_of: ctx.mainMessageId,
+    };
+    delete metadata["api_request_id"];
+    if (copyRequestId) metadata["api_request_id"] = copyRequestId;
+
+    started = true;
+    const sent = await ctx.send({ phone: number, waId: digits }, metadata);
+    const result: CopyResult = sent.error
+      ? {
+          to: number,
+          message_id: sent.messageId,
+          status: "failed",
+          code: "whatsapp_rejected",
+          error: `WhatsApp rejected the copy: ${sent.error}`,
+        }
+      : { to: number, message_id: sent.messageId, status: "queued" };
+    if (!sent.error) await ctx.log(sent.messageId);
+    if (copyRequestId)
+      await lib.finishIdempotency(supabase, copyRequestId, {
+        status: sent.error ? 502 : 202,
+        body: result as unknown as Record<string, unknown>,
+        messageId: sent.messageId,
+      });
+    return result;
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        scope: "public_api",
+        step: "send_copy",
+        organization_id: caller.organizationId,
+        key_id: caller.keyId,
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
+    // Before the send the copy's key is free again; once started it stays reserved.
+    if (copyRequestId && !started) await lib.releaseIdempotency(supabase, copyRequestId);
+    return started
+      ? {
+          to: number,
+          message_id: null,
+          status: "failed",
+          code: "internal_error",
+          error: "Something went wrong sending this copy; its message status says whether it left.",
+        }
+      : notSent("internal_error", "Something went wrong before this copy was sent.");
   }
 }
