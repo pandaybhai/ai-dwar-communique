@@ -113,6 +113,19 @@ const SENT = {
   idempotency_key: "ord-1042-shipped",
 };
 
+/** Batch 61: the staff numbers in the copies (cc) example. */
+const STAFF = ["+918000000001", "+918000000002"];
+const SENT_WITH_COPIES = {
+  message_id: MESSAGE_ID,
+  status: "queued",
+  wamid: "wamid.HBgM…",
+  idempotency_key: "inv-1001",
+  copies: [
+    { to: STAFF[0], message_id: "0b7e4c2a-1d3f-4a5b-8c6d-7e8f9a0b1c2d", status: "queued" },
+    { to: STAFF[1], message_id: "3c9a1e5f-7b2d-4c6e-9f8a-1b2c3d4e5f6a", status: "queued" },
+  ],
+};
+
 export const API_ENDPOINTS: ApiEndpoint[] = [
   {
     id: "send-template",
@@ -121,7 +134,7 @@ export const API_ENDPOINTS: ApiEndpoint[] = [
     path: "/api/v1/messages/template",
     title: "Send a template",
     summary:
-      "Any approved template, at any time: its header (none, text values, an image, a video, a document or a map pin), its body values and its buttons' values, all checked against the template before anything is sent. The original invoice request ({ document, body_params }) still works exactly as it did.",
+      "Any approved template, at any time: its header (none, text values, an image, a video, a document or a map pin), its body values and its buttons' values, all checked against the template before anything is sent. The original invoice request ({ document, body_params }) still works exactly as it did. Add `cc` (up to 3 numbers) to send the same message to your own staff too: each copy goes once the customer's message is accepted, and is a separate WhatsApp message Meta charges at the template's category rate.",
     body: {
       to: CUSTOMER,
       template_name: "order_shipped",
@@ -139,6 +152,17 @@ export const API_ENDPOINTS: ApiEndpoint[] = [
           template_name: "invoice_document",
           document: { url: "https://billing.example.com/INV-1001.pdf", filename: "INV-1001.pdf" },
           body_params: ["Asha", "INV-1001", "2,500.00"],
+          idempotency_key: "inv-1001",
+        },
+      },
+      {
+        label: "an invoice PDF with copies to two staff numbers (cc)",
+        body: {
+          to: CUSTOMER,
+          template_name: "invoice_document",
+          document: { url: "https://billing.example.com/INV-1001.pdf", filename: "INV-1001.pdf" },
+          body_params: ["Asha", "INV-1001", "2,500.00"],
+          cc: STAFF,
           idempotency_key: "inv-1001",
         },
       },
@@ -170,6 +194,7 @@ export const API_ENDPOINTS: ApiEndpoint[] = [
       "param_count_mismatch",
       "invalid_buttons",
       "invalid_offer",
+      "invalid_cc",
       "media_too_large",
       "contact_opted_out",
       "insufficient_credits",
@@ -1414,7 +1439,7 @@ const ENDPOINT_DETAILS: Record<string, Partial<ApiEndpoint>> = {
         "body",
         "object",
         false,
-        "The invoice shortcut: { url | base64, filename } for a document header (PDF up to 16 MB).",
+        "The invoice shortcut: { url | base64, filename } for a document header (PDF up to 16 MB). The document url must be publicly reachable over https, no login.",
       ),
       f(
         "body_params",
@@ -1438,9 +1463,22 @@ const ENDPOINT_DETAILS: Record<string, Partial<ApiEndpoint>> = {
         false,
         "When a limited-time offer ends (ISO 8601), for a template with an offer countdown.",
       ),
+      f(
+        "cc",
+        "body",
+        "string[]",
+        false,
+        "Up to 3 more WhatsApp numbers (with country code) that get a copy: the same template, values, file and buttons, sent only after the customer's message is accepted. Duplicates and the `to` number are removed. Leave it out to use your workspace's default (Settings → API & webhooks → \"Also send every API template message to\"); send [] for no copies. Each copy is a separate WhatsApp message charged by Meta at the template's category rate, and counts as one more request against the rate limits. With an idempotency_key each copy gets its own key, <key>:cc:<number>, so a retry never sends a copy twice. A copy that fails never changes the customer's answer.",
+        '["+918000000001", "+918000000002"]',
+      ),
       IDEMPOTENCY,
     ],
     responses: [
+      {
+        status: 202,
+        label: "With copies (cc, or the workspace default): one entry per copy",
+        body: SENT_WITH_COPIES,
+      },
       {
         status: 409,
         label: "The customer opted out (a marketing template)",

@@ -17,7 +17,7 @@
 -- query_to_xml only when to_regclass('cron.job') finds it, so the query
 -- still runs where pg_cron is absent (every cron job is then listed).
 --
--- Expected objects: table 96, column 1127, view 2, function 121, index 171, trigger 70, cron_job 14.
+-- Expected objects: table 96, column 1128, view 2, function 122, index 171, trigger 71, cron_job 14.
 WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, introduced_in_file) AS (
   VALUES
     ('table', 'aidwar_private', 'mcp_db_proof', NULL, NULL, NULL, '20261300_batch56_mcp_hardening.sql'),
@@ -946,6 +946,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('column', 'public', 'organization_send_settings', 'updated_at', NULL, 'timestamp with time zone', '20260825_flows.sql'),
     ('column', 'public', 'organization_send_settings', 'winback_after_days', NULL, 'integer', '20260901_timebased_flows.sql'),
     ('column', 'public', 'organizations', 'aiden_workspace_unlocked_at', NULL, 'timestamp with time zone', '20261270_batch53_aiden_workspace.sql'),
+    ('column', 'public', 'organizations', 'api_cc_numbers', NULL, 'text[]', '20261330_batch61.sql'),
     ('column', 'public', 'pending_owner_replies', 'notify', NULL, 'text', '20260918_silent_gaps.sql'),
     ('column', 'public', 'pending_owner_replies', 'reminded_at', NULL, 'timestamp with time zone', '20260908_teaching_guards.sql'),
     ('column', 'public', 'pending_owner_replies', 'selected_at', NULL, 'timestamp with time zone', '20260908_pending_owner_reply_selection.sql'),
@@ -1353,6 +1354,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('function', 'public', 'trg_ai_agent_mode_guard', NULL, '{}'::text[], 'public.trg_ai_agent_mode_guard()', '20261066_live_only_billing.sql'),
     ('function', 'public', 'trg_ai_runs_billing', NULL, '{}'::text[], 'public.trg_ai_runs_billing()', '20261066_live_only_billing.sql'),
     ('function', 'public', 'trg_ai_runs_welcome_credits', NULL, '{}'::text[], 'public.trg_ai_runs_welcome_credits()', '20261066_live_only_billing.sql'),
+    ('function', 'public', 'trg_guard_api_cc_numbers', NULL, '{}'::text[], 'public.trg_guard_api_cc_numbers()', '20261330_batch61.sql'),
     ('function', 'public', 'trg_guard_campaign_privileged_columns', NULL, '{}'::text[], 'public.trg_guard_campaign_privileged_columns()', '20261008_security_guards.sql'),
     ('function', 'public', 'trg_guard_org_privileged_columns', NULL, '{}'::text[], 'public.trg_guard_org_privileged_columns()', '20261008_security_guards.sql'),
     ('function', 'public', 'trg_guard_plan_status', NULL, '{}'::text[], 'public.trg_guard_plan_status()', '20261066_live_only_billing.sql'),
@@ -1591,6 +1593,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('trigger', 'public', 'organization_members', 'guard_member_role_assignment_trg', NULL, 'on public.organization_members', '20260816_permissions.sql'),
     ('trigger', 'public', 'organization_send_settings', 'update_send_settings_updated_at', NULL, 'on public.organization_send_settings', '20260825_flows.sql'),
     ('trigger', 'public', 'organizations', 'aaa_guard_org_privileged_columns', NULL, 'on public.organizations', '20261008_security_guards.sql'),
+    ('trigger', 'public', 'organizations', 'guard_api_cc_numbers', NULL, 'on public.organizations', '20261330_batch61.sql'),
     ('trigger', 'public', 'organizations', 'guard_plan_status', NULL, 'on public.organizations', '20261066_live_only_billing.sql'),
     ('trigger', 'public', 'organizations', 'org_plan_assigned_before', NULL, 'on public.organizations', '20261066_live_only_billing.sql'),
     ('trigger', 'public', 'organizations', 'org_plan_assigned_billing_on', NULL, 'on public.organizations', '20261066_live_only_billing.sql'),

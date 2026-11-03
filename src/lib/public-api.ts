@@ -146,6 +146,7 @@ export const API_ERRORS: Array<{ status: string; codes: string[]; meaning: strin
       "header_mismatch",
       "invalid_buttons",
       "invalid_offer",
+      "invalid_cc",
       "invalid_media",
       "media_url_not_https",
       "media_url_blocked",

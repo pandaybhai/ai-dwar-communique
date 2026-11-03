@@ -272,6 +272,27 @@ export async function takeRateLimit(
   supabase: SupabaseClient,
   caller: ApiCaller,
 ): Promise<Response | null> {
+  const refused = await takeRateUnits(supabase, caller, 1);
+  return refused
+    ? apiError(
+        refused.status,
+        String(refused.body["code"]),
+        String(refused.body["error"]),
+        refused.headers ?? {},
+      )
+    : null;
+}
+
+/**
+ * `units` more calls against the same per-key and per-workspace windows
+ * (Batch 61: a template send with copies counts as 1 + its copies; the route
+ * took the 1). Null when allowed, else the same 429 / 503 takeRateLimit gives.
+ */
+export async function takeRateUnits(
+  supabase: SupabaseClient,
+  caller: ApiCaller,
+  units: number,
+): Promise<ApiReply | null> {
   const buckets: Array<[string, number, string]> = [
     [
       `key:${caller.keyId}`,
@@ -285,32 +306,36 @@ export async function takeRateLimit(
     ],
   ];
   for (const [bucket, limit, label] of buckets) {
-    const { data, error } = await supabase.rpc("api_rate_take", {
-      p_bucket: bucket,
-      p_limit: limit,
-      p_window_seconds: 60,
-    });
-    const row = (Array.isArray(data) ? data[0] : data) as {
-      allowed?: boolean;
-      retry_after?: number;
-    } | null;
-    if (error || !row || typeof row.allowed !== "boolean") {
-      return apiError(
-        503,
-        "unavailable",
-        "We couldn't check the rate limit. Please try again in a moment.",
-      );
-    }
-    if (!row.allowed) {
-      const retryAfter = Math.max(1, Math.ceil(Number(row.retry_after ?? 60)));
-      return apiError(
-        429,
-        "rate_limited",
-        `Too many requests: the limit is ${label}. Try again in ${retryAfter} s.`,
-        {
-          "Retry-After": String(retryAfter),
-        },
-      );
+    for (let unit = 0; unit < units; unit += 1) {
+      const { data, error } = await supabase.rpc("api_rate_take", {
+        p_bucket: bucket,
+        p_limit: limit,
+        p_window_seconds: 60,
+      });
+      const row = (Array.isArray(data) ? data[0] : data) as {
+        allowed?: boolean;
+        retry_after?: number;
+      } | null;
+      if (error || !row || typeof row.allowed !== "boolean") {
+        return {
+          status: 503,
+          body: {
+            error: "We couldn't check the rate limit. Please try again in a moment.",
+            code: "unavailable",
+          },
+        };
+      }
+      if (!row.allowed) {
+        const retryAfter = Math.max(1, Math.ceil(Number(row.retry_after ?? 60)));
+        return {
+          status: 429,
+          body: {
+            error: `Too many requests: the limit is ${label}. Try again in ${retryAfter} s.`,
+            code: "rate_limited",
+          },
+          headers: { "Retry-After": String(retryAfter) },
+        };
+      }
     }
   }
   return null;
