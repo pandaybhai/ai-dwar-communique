@@ -195,14 +195,19 @@ describe("M11: a policy sentence the check couldn't decide is not sent as fact",
   const SHIPPING: Case = {
     id: "b27-m11",
     ask: "how do you send orders?",
-    model: () => ({ text: 'We ship every order with our own courier partner.\n{"needs_owner": false}' }),
+    // Batch 60: a claim states a value (a sentence with none is not checked);
+    // "20" is in the instructions (20-day returns), so the number guard lets
+    // it pass, but not next to shipping — only the model check can decide.
+    model: () => ({ text: 'We ship every order within 20 days.\n{"needs_owner": false}' }),
   };
   const failCheck = (system: string) =>
-    system.startsWith("You check whether sentences") || system.startsWith("You edit a shop assistant") ? badRequest() : undefined;
+    system.startsWith("You check whether sentences") ? badRequest() : undefined;
 
-  it("the check failed: the claim goes (the configured promise line), the question is filed", async () => {
+  const WARM = "You can see our full range with the latest details here: https://myzoori.com 😊 Happy to help with anything else!";
+
+  it("the check failed: the claim goes (Batch 60: the warm line, no promise line), the question is filed", async () => {
     const { r } = await replay(SHIPPING, { intercept: failCheck });
-    expect(r.sent.map((s) => s.text)).toEqual(["Let me confirm that for you."]);
+    expect(r.sent.map((s) => s.text)).toEqual([WARM]);
     expect(r.gapFiled).toBe(true);
   });
 
@@ -211,11 +216,9 @@ describe("M11: a policy sentence the check couldn't decide is not sent as fact",
       intercept: (system) =>
         system.startsWith("You check whether sentences")
           ? new Response(JSON.stringify({ choices: [{ message: { content: '{"answers": []}' } }] }))
-          : system.startsWith("You edit a shop assistant")
-            ? badRequest()
-            : undefined,
+          : undefined,
     });
-    expect(r.sent.map((s) => s.text)).toEqual(["Let me confirm that for you."]);
+    expect(r.sent.map((s) => s.text)).toEqual([WARM]);
   });
 
   it("unchanged: a sentence the check says yes to goes as written", async () => {
@@ -225,6 +228,6 @@ describe("M11: a policy sentence the check couldn't decide is not sent as fact",
           ? new Response(JSON.stringify({ choices: [{ message: { content: '{"answers": ["yes"]}' } }] }))
           : undefined,
     });
-    expect(r.sent.map((s) => s.text)).toEqual(["We ship every order with our own courier partner."]);
+    expect(r.sent.map((s) => s.text)).toEqual(["We ship every order within 20 days."]);
   });
 });

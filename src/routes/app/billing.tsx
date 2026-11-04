@@ -58,7 +58,7 @@ function BillingPage() {
           title="No workspace selected"
           description="Pick a workspace from the switcher to see its billing."
         />
-      ) : noPlan || locked ? (
+      ) : noPlan || locked || org?.plan_status === "trial" ? (
         // Trial and locked workspaces choose (or re-buy) a plan here. This
         // path runs before the billing flag, which the plan itself turns on.
         <div className="space-y-10">

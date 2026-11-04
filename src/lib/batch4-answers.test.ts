@@ -302,10 +302,11 @@ describe("end to end through executeRun (the live replies, replayed)", () => {
     expect(out.needsOwner).toBe(true);
   });
 
-  it("(3) unchanged: a price the material never mentions is still stripped with the confirm line", async () => {
+  it("(3) unchanged: a price the material never mentions is still stripped (Batch 60: the warm line, not the confirm line)", async () => {
     stubModel('The Petal Band is ₹9,999.\n{"needs_owner": false}');
     const out = await run(runWorld({ chunks: ["Petal Band — handcrafted ring."] }), "price of petal band?", false);
-    expect(out.output).toBe("Let me confirm that for you.");
+    // No instructions (so no shop link) in this world: the team's help.
+    expect(out.output).toBe("Our team will help you with this 😊 Meanwhile, happy to help with anything else!");
     expect(out.needsOwner).toBe(true);
     // Batch 16: nothing but the promise → filed for the merchant (whose
     // answer reaches the customer), never a hand-off that silences Aiden.

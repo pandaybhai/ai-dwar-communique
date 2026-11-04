@@ -1,0 +1,580 @@
+[
+  {
+    "shop": "link-only",
+    "key": "hi",
+    "ask": "Hi",
+    "reply": "Hi! 😊 Welcome to Zoori. Looking for something special today?",
+    "status": "ok",
+    "aiCalls": 1,
+    "calls": [
+      "reply"
+    ],
+    "outputTokens": 22,
+    "latencySeconds": 1.4,
+    "systemPromptTokens": 1110,
+    "stripped": false,
+    "cold": false,
+    "foreignLinks": [],
+    "inventedAmounts": []
+  },
+  {
+    "shop": "link-only",
+    "key": "ring-price",
+    "ask": "diamond ring price?",
+    "reply": "Great choice 💍 You can see every design with its latest price right here: https://myzoori.com",
+    "status": "ok",
+    "aiCalls": 1,
+    "calls": [
+      "reply"
+    ],
+    "outputTokens": 30,
+    "latencySeconds": 1.6,
+    "systemPromptTokens": 1110,
+    "stripped": false,
+    "cold": false,
+    "foreignLinks": [],
+    "inventedAmounts": []
+  },
+  {
+    "shop": "link-only",
+    "key": "gold-rate",
+    "ask": "today's gold rate?",
+    "reply": "Want to see our gold pieces?",
+    "status": "ok",
+    "aiCalls": 1,
+    "calls": [
+      "reply"
+    ],
+    "outputTokens": 24,
+    "latencySeconds": 1.4,
+    "systemPromptTokens": 1110,
+    "stripped": true,
+    "cold": false,
+    "foreignLinks": [],
+    "inventedAmounts": []
+  },
+  {
+    "shop": "link-only",
+    "key": "ring-under-50k",
+    "ask": "Diamond ring under 50000 dikhao",
+    "reply": "Haan ji! 50000 ke andar ke diamond rings yahan dekhiye: https://myzoori.com 💍 Koi khaas design pasand hai?",
+    "status": "ok",
+    "aiCalls": 1,
+    "calls": [
+      "reply"
+    ],
+    "outputTokens": 33,
+    "latencySeconds": 1.6,
+    "systemPromptTokens": 1110,
+    "stripped": false,
+    "cold": false,
+    "foreignLinks": [],
+    "inventedAmounts": []
+  },
+  {
+    "shop": "link-only",
+    "key": "offer",
+    "ask": "any discount or offer?",
+    "reply": "All current offers are on our website: https://myzoori.com 😊 Website prices are the price to pay — no showroom markup.",
+    "status": "ok",
+    "aiCalls": 1,
+    "calls": [
+      "reply"
+    ],
+    "outputTokens": 36,
+    "latencySeconds": 1.7,
+    "systemPromptTokens": 1110,
+    "stripped": false,
+    "cold": false,
+    "foreignLinks": [],
+    "inventedAmounts": []
+  },
+  {
+    "shop": "link-only",
+    "key": "emi",
+    "ask": "EMI milega?",
+    "reply": "EMI ke options aap checkout par dekh sakte hain: https://myzoori.com 😊",
+    "status": "ok",
+    "aiCalls": 1,
+    "calls": [
+      "reply"
+    ],
+    "outputTokens": 24,
+    "latencySeconds": 1.4,
+    "systemPromptTokens": 1110,
+    "stripped": false,
+    "cold": false,
+    "foreignLinks": [],
+    "inventedAmounts": []
+  },
+  {
+    "shop": "link-only",
+    "key": "showroom",
+    "ask": "showroom kahan hai aur timings?",
+    "reply": "We have two showrooms — Somajiguda (GF 1, Olbee Centre, Rajbhavan Road) and Bolarum, Secunderabad (GF06 Fairmount Square).",
+    "status": "ok",
+    "aiCalls": 1,
+    "calls": [
+      "reply"
+    ],
+    "outputTokens": 48,
+    "latencySeconds": 2,
+    "systemPromptTokens": 1110,
+    "stripped": true,
+    "cold": false,
+    "foreignLinks": [],
+    "inventedAmounts": []
+  },
+  {
+    "shop": "link-only",
+    "key": "manager-number",
+    "ask": "store manager number?",
+    "reply": "You can call our Somajiguda showroom on +91 98000 00011 😊",
+    "status": "ok",
+    "aiCalls": 1,
+    "calls": [
+      "reply"
+    ],
+    "outputTokens": 21,
+    "latencySeconds": 1.3,
+    "systemPromptTokens": 1223,
+    "stripped": false,
+    "cold": false,
+    "foreignLinks": [],
+    "inventedAmounts": []
+  },
+  {
+    "shop": "link-only",
+    "key": "ring-size",
+    "ask": "how do I know my ring size?",
+    "reply": "Our size guide makes it easy: myzoori.com/size-guide 😊 You can also choose your size at checkout.",
+    "status": "ok",
+    "aiCalls": 1,
+    "calls": [
+      "reply"
+    ],
+    "outputTokens": 31,
+    "latencySeconds": 1.6,
+    "systemPromptTokens": 1110,
+    "stripped": false,
+    "cold": false,
+    "foreignLinks": [],
+    "inventedAmounts": []
+  },
+  {
+    "shop": "link-only",
+    "key": "delivery-bangalore",
+    "ask": "delivery to Bangalore kitne din mein?",
+    "reply": "You can see our full range with the latest details here: https://myzoori.com 😊 Happy to help with anything else!",
+    "status": "ok",
+    "aiCalls": 1,
+    "calls": [
+      "reply"
+    ],
+    "outputTokens": 17,
+    "latencySeconds": 1.2,
+    "systemPromptTokens": 1262,
+    "stripped": true,
+    "cold": false,
+    "foreignLinks": [],
+    "inventedAmounts": []
+  },
+  {
+    "shop": "link-only",
+    "key": "returns",
+    "ask": "what is your return policy?",
+    "reply": "We offer 20-day no-questions returns, plus lifelong free maintenance 💍",
+    "status": "ok",
+    "aiCalls": 1,
+    "calls": [
+      "reply"
+    ],
+    "outputTokens": 24,
+    "latencySeconds": 1.4,
+    "systemPromptTokens": 1262,
+    "stripped": false,
+    "cold": false,
+    "foreignLinks": [],
+    "inventedAmounts": []
+  },
+  {
+    "shop": "link-only",
+    "key": "custom-ring",
+    "ask": "can you make a custom engagement ring?",
+    "reply": "Yes! Our team designs custom engagement rings 💍 Share your idea and they'll take it from here.",
+    "status": "ok",
+    "aiCalls": 1,
+    "calls": [
+      "reply"
+    ],
+    "outputTokens": 30,
+    "latencySeconds": 1.6,
+    "systemPromptTokens": 1110,
+    "stripped": false,
+    "cold": false,
+    "foreignLinks": [],
+    "inventedAmounts": []
+  },
+  {
+    "shop": "link-only",
+    "key": "mangalsutra-price",
+    "ask": "Mujhe mangalsutra chahiye, kitne ka hai?",
+    "reply": "Hamare mangalsutra designs aur unki latest prices yahan dekhiye: https://myzoori.com 😊 Aapka budget kya hai?",
+    "status": "ok",
+    "aiCalls": 1,
+    "calls": [
+      "reply"
+    ],
+    "outputTokens": 34,
+    "latencySeconds": 1.7,
+    "systemPromptTokens": 1110,
+    "stripped": false,
+    "cold": false,
+    "foreignLinks": [],
+    "inventedAmounts": []
+  },
+  {
+    "shop": "link-only",
+    "key": "stone-fell-refund",
+    "ask": "my earring stone fell off, I want a refund",
+    "reply": "Let me get someone from the team to help — they'll reply here shortly.",
+    "status": "escalated",
+    "aiCalls": 1,
+    "calls": [
+      "reply"
+    ],
+    "outputTokens": 31,
+    "latencySeconds": 1.6,
+    "systemPromptTokens": 1262,
+    "stripped": true,
+    "cold": false,
+    "foreignLinks": [],
+    "inventedAmounts": []
+  },
+  {
+    "shop": "link-only",
+    "key": "vs-tanishq",
+    "ask": "are you better than Tanishq?",
+    "reply": "I can't compare with other jewellers, but every Zoori piece has certified stones, real gold and lifelong free maintenance 😊",
+    "status": "ok",
+    "aiCalls": 1,
+    "calls": [
+      "reply"
+    ],
+    "outputTokens": 38,
+    "latencySeconds": 1.8,
+    "systemPromptTokens": 1110,
+    "stripped": false,
+    "cold": false,
+    "foreignLinks": [],
+    "inventedAmounts": []
+  },
+  {
+    "shop": "link-only",
+    "key": "certified-lab",
+    "ask": "is the diamond certified? which lab?",
+    "reply": "Yes, every Zoori diamond is certified 💎 For the lab on a particular piece, our team can share its certificate.",
+    "status": "ok",
+    "aiCalls": 1,
+    "calls": [
+      "reply"
+    ],
+    "outputTokens": 34,
+    "latencySeconds": 1.7,
+    "systemPromptTokens": 1110,
+    "stripped": false,
+    "cold": false,
+    "foreignLinks": [],
+    "inventedAmounts": []
+  },
+  {
+    "shop": "catalogue",
+    "key": "hi",
+    "ask": "Hi",
+    "reply": "Hi! 😊 Welcome to Zoori. Looking for something special today?",
+    "status": "ok",
+    "aiCalls": 1,
+    "calls": [
+      "reply"
+    ],
+    "outputTokens": 22,
+    "latencySeconds": 1.4,
+    "systemPromptTokens": 1205,
+    "stripped": false,
+    "cold": false,
+    "foreignLinks": [],
+    "inventedAmounts": []
+  },
+  {
+    "shop": "catalogue",
+    "key": "ring-price",
+    "ask": "diamond ring price?",
+    "reply": "🖼 The Gilded Chevron — ₹19,604\nhttps://myzoori.com/product-detail/a17c9b39-247c-451a-8063-09d9da502d9a ‖ 🖼 Industrial Sparkle/ The Urban Edge — ₹18,326\nhttps://myzoori.com/product-detail/a23fb400-da45-43fa-85da-b03f120a90a6 ‖ Want a different budget?",
+    "status": "ok",
+    "aiCalls": 2,
+    "calls": [
+      "reply",
+      "reply"
+    ],
+    "outputTokens": 189,
+    "latencySeconds": 6.3,
+    "systemPromptTokens": 1205,
+    "stripped": true,
+    "cold": false,
+    "foreignLinks": [],
+    "inventedAmounts": []
+  },
+  {
+    "shop": "catalogue",
+    "key": "gold-rate",
+    "ask": "today's gold rate?",
+    "reply": "Want to see our gold pieces?",
+    "status": "ok",
+    "aiCalls": 1,
+    "calls": [
+      "reply"
+    ],
+    "outputTokens": 24,
+    "latencySeconds": 1.4,
+    "systemPromptTokens": 1205,
+    "stripped": true,
+    "cold": false,
+    "foreignLinks": [],
+    "inventedAmounts": []
+  },
+  {
+    "shop": "catalogue",
+    "key": "ring-under-50k",
+    "ask": "Diamond ring under 50000 dikhao",
+    "reply": "Ye rahe 50000 ke andar diamond rings 💍 ‖ 🖼 The Gilded Chevron — ₹19,604\nhttps://myzoori.com/product-detail/a17c9b39-247c-451a-8063-09d9da502d9a ‖ 🖼 Industrial Sparkle/ The Urban Edge — ₹18,326\nhttps://myzoori.com/product-detail/a23fb400-da45-43fa-85da-b03f120a90a6 ‖ Koi khaas design pasand hai?",
+    "status": "ok",
+    "aiCalls": 2,
+    "calls": [
+      "reply",
+      "reply"
+    ],
+    "outputTokens": 185,
+    "latencySeconds": 6.2,
+    "systemPromptTokens": 1205,
+    "stripped": false,
+    "cold": false,
+    "foreignLinks": [],
+    "inventedAmounts": []
+  },
+  {
+    "shop": "catalogue",
+    "key": "offer",
+    "ask": "any discount or offer?",
+    "reply": "Website prices are the price to pay — no showroom markup 😊",
+    "status": "ok",
+    "aiCalls": 1,
+    "calls": [
+      "reply"
+    ],
+    "outputTokens": 34,
+    "latencySeconds": 1.7,
+    "systemPromptTokens": 1205,
+    "stripped": true,
+    "cold": false,
+    "foreignLinks": [],
+    "inventedAmounts": []
+  },
+  {
+    "shop": "catalogue",
+    "key": "emi",
+    "ask": "EMI milega?",
+    "reply": "You can see our full range with the latest details here: https://myzoori.com 😊 Happy to help with anything else!",
+    "status": "ok",
+    "aiCalls": 1,
+    "calls": [
+      "reply"
+    ],
+    "outputTokens": 14,
+    "latencySeconds": 1.2,
+    "systemPromptTokens": 1331,
+    "stripped": true,
+    "cold": false,
+    "foreignLinks": [],
+    "inventedAmounts": []
+  },
+  {
+    "shop": "catalogue",
+    "key": "showroom",
+    "ask": "showroom kahan hai aur timings?",
+    "reply": "We have two showrooms — Somajiguda (GF 1, Olbee Centre, Rajbhavan Road) and Bolarum, Secunderabad (GF06 Fairmount Square).",
+    "status": "ok",
+    "aiCalls": 1,
+    "calls": [
+      "reply"
+    ],
+    "outputTokens": 47,
+    "latencySeconds": 2,
+    "systemPromptTokens": 1205,
+    "stripped": true,
+    "cold": false,
+    "foreignLinks": [],
+    "inventedAmounts": []
+  },
+  {
+    "shop": "catalogue",
+    "key": "manager-number",
+    "ask": "store manager number?",
+    "reply": "You can call our Somajiguda showroom on +91 98000 00011 😊",
+    "status": "ok",
+    "aiCalls": 1,
+    "calls": [
+      "reply"
+    ],
+    "outputTokens": 21,
+    "latencySeconds": 1.3,
+    "systemPromptTokens": 1318,
+    "stripped": false,
+    "cold": false,
+    "foreignLinks": [],
+    "inventedAmounts": []
+  },
+  {
+    "shop": "catalogue",
+    "key": "ring-size",
+    "ask": "how do I know my ring size?",
+    "reply": "Our size guide makes it easy: myzoori.com/size-guide 😊 You can also choose your size at checkout.",
+    "status": "ok",
+    "aiCalls": 1,
+    "calls": [
+      "reply"
+    ],
+    "outputTokens": 31,
+    "latencySeconds": 1.6,
+    "systemPromptTokens": 1205,
+    "stripped": false,
+    "cold": false,
+    "foreignLinks": [],
+    "inventedAmounts": []
+  },
+  {
+    "shop": "catalogue",
+    "key": "delivery-bangalore",
+    "ask": "delivery to Bangalore kitne din mein?",
+    "reply": "You can see our full range with the latest details here: https://myzoori.com 😊 Happy to help with anything else!",
+    "status": "ok",
+    "aiCalls": 1,
+    "calls": [
+      "reply"
+    ],
+    "outputTokens": 17,
+    "latencySeconds": 1.2,
+    "systemPromptTokens": 1427,
+    "stripped": true,
+    "cold": false,
+    "foreignLinks": [],
+    "inventedAmounts": []
+  },
+  {
+    "shop": "catalogue",
+    "key": "returns",
+    "ask": "what is your return policy?",
+    "reply": "We offer 20-day no-questions returns, plus lifelong free maintenance 💍",
+    "status": "ok",
+    "aiCalls": 1,
+    "calls": [
+      "reply"
+    ],
+    "outputTokens": 24,
+    "latencySeconds": 1.4,
+    "systemPromptTokens": 1427,
+    "stripped": false,
+    "cold": false,
+    "foreignLinks": [],
+    "inventedAmounts": []
+  },
+  {
+    "shop": "catalogue",
+    "key": "custom-ring",
+    "ask": "can you make a custom engagement ring?",
+    "reply": "Yes! Our team designs custom engagement rings 💍 Share your idea and they'll take it from here.",
+    "status": "ok",
+    "aiCalls": 1,
+    "calls": [
+      "reply"
+    ],
+    "outputTokens": 30,
+    "latencySeconds": 1.6,
+    "systemPromptTokens": 1205,
+    "stripped": false,
+    "cold": false,
+    "foreignLinks": [],
+    "inventedAmounts": []
+  },
+  {
+    "shop": "catalogue",
+    "key": "mangalsutra-price",
+    "ask": "Mujhe mangalsutra chahiye, kitne ka hai?",
+    "reply": "Ye rahe hamare mangalsutra: ‖ 🖼 Gold, Blue Sap Round & Diamond Tanmaniya — ₹33,419\nhttps://www.myzoori.com/product-detail/a2d714f5-9e82-4407-a07a-3d75b8c3d766 ‖ 🖼 Gold, Diamond & Emerald Marquise Tanmaniya — ₹58,626\nhttps://www.myzoori.com/product-detail/a2e679cb-ac13-402a-8f61-1ec4838de41c ‖ Aapka budget kya hai?",
+    "status": "ok",
+    "aiCalls": 1,
+    "calls": [
+      "reply"
+    ],
+    "outputTokens": 152,
+    "latencySeconds": 4.6,
+    "systemPromptTokens": 1205,
+    "stripped": false,
+    "cold": false,
+    "foreignLinks": [],
+    "inventedAmounts": []
+  },
+  {
+    "shop": "catalogue",
+    "key": "stone-fell-refund",
+    "ask": "my earring stone fell off, I want a refund",
+    "reply": "Let me get someone from the team to help — they'll reply here shortly.",
+    "status": "escalated",
+    "aiCalls": 1,
+    "calls": [
+      "reply"
+    ],
+    "outputTokens": 31,
+    "latencySeconds": 1.6,
+    "systemPromptTokens": 1357,
+    "stripped": true,
+    "cold": false,
+    "foreignLinks": [],
+    "inventedAmounts": []
+  },
+  {
+    "shop": "catalogue",
+    "key": "vs-tanishq",
+    "ask": "are you better than Tanishq?",
+    "reply": "I can't compare with other jewellers, but every Zoori piece has certified stones, real gold and lifelong free maintenance 😊",
+    "status": "ok",
+    "aiCalls": 1,
+    "calls": [
+      "reply"
+    ],
+    "outputTokens": 38,
+    "latencySeconds": 1.8,
+    "systemPromptTokens": 1205,
+    "stripped": false,
+    "cold": false,
+    "foreignLinks": [],
+    "inventedAmounts": []
+  },
+  {
+    "shop": "catalogue",
+    "key": "certified-lab",
+    "ask": "is the diamond certified? which lab?",
+    "reply": "Yes, every Zoori diamond is certified 💎 For the lab on a particular piece, our team can share its certificate.",
+    "status": "ok",
+    "aiCalls": 1,
+    "calls": [
+      "reply"
+    ],
+    "outputTokens": 34,
+    "latencySeconds": 1.7,
+    "systemPromptTokens": 1205,
+    "stripped": false,
+    "cold": false,
+    "foreignLinks": [],
+    "inventedAmounts": []
+  }
+]

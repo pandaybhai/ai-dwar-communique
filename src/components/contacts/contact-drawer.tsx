@@ -29,6 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { UnreachableBadge } from "@/components/contacts/unreachable-badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 type AttrPair = { key: string; value: string };
@@ -359,6 +360,7 @@ export function ContactDrawer({
                     {w.addedPrefix}
                     {formatDate(contact.created_at)}
                   </p>
+                  <UnreachableBadge contactId={contact.id} className="mt-1" />
                 </div>
               </div>
             </SheetHeader>

@@ -170,8 +170,11 @@ describe("flag off: today's Campaigns, Templates and Cards, unchanged", () => {
         "4b0f6a7e6b6025d3ff81c27fbf1c1593ec5778de81e2d915f7dd4fcd8da9d088",
       "components/campaigns/campaign-test-send.tsx":
         "2af36ad445bd8d000627055cfa29d03748176e0f2e09ff6593ca1cc554df95ef",
+      // Re-pinned in Batch 63: each template card gained one new row, a "Sent"
+      // button that opens the template's Sent report (and the report sheet
+      // itself); nothing else in the file changed (batch63-template-sent.test.ts).
       "components/templates/templates-view.tsx":
-        "9def6fe4a2feba7c92e602f5d9d61d0d298af780ffea8ba5e40c68532445ba21",
+        "dd2b8d35e352e9aaf86faffb16f06ccee194a1250726f01c23d7aff1a48da7c9",
       "components/templates/template-preview.tsx":
         "963895bfb149639b57875696703bab2c0a59b9e3ffcf94f7a05cc664b0b97c6f",
       "components/templates/format-toolbar.tsx":

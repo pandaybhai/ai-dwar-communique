@@ -147,6 +147,29 @@ function onThisNumber(rows: unknown[] | null, accountId: string | null | undefin
   });
 }
 
+/**
+ * Batch 63 (D): the enabled keyword trigger whose keyword this text IS
+ * (normalized: case, spaces), whatever the trigger's own match mode — only
+ * an exact keyword ends a run that waits for the customer's reply. The same
+ * number rule and priority order as dispatchInboundTriggers, so the trigger
+ * found here is the one that starts once the run has ended.
+ */
+export function exactKeywordTrigger(
+  rows: unknown[] | null,
+  body: string,
+  accountId: string | null | undefined,
+  onlyAccountId: string | null | undefined,
+): InboundTrigger | null {
+  const text = norm(body);
+  if (!text) return null;
+  const all = onThisNumber(rows, accountId, onlyAccountId);
+  return (
+    keywordCandidates(all, body).find((t) =>
+      ((t.config["keywords"] as string[] | undefined) ?? []).some((k) => norm(String(k)) === text),
+    ) ?? null
+  );
+}
+
 /** Keyword triggers this text matches, highest priority first. */
 function keywordCandidates(all: InboundTrigger[], body: string): InboundTrigger[] {
   return all

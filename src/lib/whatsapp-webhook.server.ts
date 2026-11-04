@@ -900,6 +900,9 @@ async function flowsV2Inbound(
       body: args.body || (loc ? `${loc["latitude"]},${loc["longitude"]}` : ""),
       replyId,
       ...(args.firstLook ? { firstLook: args.firstLook as NonNullable<Parameters<typeof handleInboundForRuns>[1]["firstLook"]> } : {}),
+      // Batch 63: an exact trigger keyword may end a run waiting for this reply.
+      ...(args.triggers ? { triggers: args.triggers } : {}),
+      onlyAccountId: args.onlyAccountId,
       ...extras,
     });
     if (taken.consumed) return true;
@@ -2714,6 +2717,28 @@ export async function processWebhookPayload(
             {
               const hookError = await queueApiStatusOf(supabase, orgId, existing, nextStatus, at, nextStatus === "failed" ? detail : null);
               if (hookError) failures.push(failureNote(`status ${metaId}`, hookError));
+            }
+
+            // Batch 63: a template that can't reach the number marks the
+            // contact "Not on WhatsApp"; a delivery clears it. Off the reply
+            // path, never retried with the event, never touches the message.
+            if (nextStatus === "failed" || nextStatus === "delivered" || nextStatus === "read") {
+              const row = existing;
+              later(
+                import("@/lib/wa-reachability.server").then(({ noteSendStatus }) =>
+                  noteSendStatus(supabase, {
+                    organizationId: orgId,
+                    messageId: row.id,
+                    contactId: row.conversations?.contact_id ?? null,
+                    conversationId: row.conversation_id ?? null,
+                    type: row.type ?? null,
+                    templateName: row.template_name ?? null,
+                    status: nextStatus,
+                    errors: errs,
+                    at,
+                  }),
+                ),
+              );
             }
 
             // Every per-message event carries the same dimensions as the send.

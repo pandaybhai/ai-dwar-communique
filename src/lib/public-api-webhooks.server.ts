@@ -82,6 +82,8 @@ export function webhookBody(input: {
   to: string | null;
   error: { code: string | null; message: string } | null;
   occurredAt: string;
+  /** Batch 61: a copy's customer message id (only on a copy: every other body is unchanged). */
+  ccOf?: string | null;
 }): Record<string, unknown> {
   return {
     event: input.event,
@@ -91,6 +93,7 @@ export function webhookBody(input: {
     status: STATUS_OF[input.event] ?? null,
     error: input.error,
     timestamp: input.occurredAt,
+    ...(input.ccOf ? { cc_of: input.ccOf } : {}),
   };
 }
 
@@ -136,6 +139,10 @@ export async function enqueueApiWebhookEvent(
       to: typeof input.metadata["to"] === "string" ? (input.metadata["to"] as string) : null,
       error,
       occurredAt: input.occurredAt,
+      ccOf:
+        input.metadata["copy"] === true && typeof input.metadata["cc_of"] === "string"
+          ? (input.metadata["cc_of"] as string)
+          : null,
     });
     const { error: writeError } = await supabase.from("api_webhook_deliveries").upsert(
       {

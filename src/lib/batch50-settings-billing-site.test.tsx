@@ -404,8 +404,10 @@ describe("flag off: today's Settings, Billing and journey", () => {
     expect(sha(from(src("routes/app/settings.tsx"), "function SettingsPage()"))).toBe(
       "df2551925c43daf5c72cdd73e731e50a33c748fcc2074d775532539f5d76d57f",
     );
+    // Re-pinned in Batch 61 after Lovable c1ee4bd ("Fixed trial plan picker", asked for by
+    // the founder): a trial workspace now gets the plan picker (`|| org?.plan_status === "trial"`).
     expect(sha(from(src("routes/app/billing.tsx"), "function BillingPage()"))).toBe(
-      "77898688546d747ed4244dafe45769bf4553bc6ccf0fdd6748ecfed9aa128609",
+      "48d656410d4d3d9456752e15be859df4573250ceaf3bbb837f09b012f65df50d",
     );
     expect(sha(withoutNd(src("components/billing/billing-view.tsx")))).toBe(
       "89aa2f5973575c215bba742c2646bcb4fbac4cd2a92aa1d1ecac79d5b830e038",
