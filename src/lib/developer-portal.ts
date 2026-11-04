@@ -1104,27 +1104,42 @@ export const FAILED_STATUS_EXAMPLE = {
 /** What `to` does with the numbers integrators send (batch64-docs.test.ts runs each through the check). */
 export const PHONE_EXAMPLES: Array<{ input: string; sentTo: string | null; note: Inline }> = [
   { input: "+919812345678", sentTo: "+919812345678", note: "Right: `+`, country code, number." },
-  { input: "919812345678", sentTo: "+919812345678", note: "Also right: the `+` is optional." },
+  {
+    input: "919812345678",
+    sentTo: "+919812345678",
+    note: "Also right: 11–15 digits are read as already having their country code.",
+  },
+  {
+    input: "00919812345678",
+    sentTo: "+919812345678",
+    note: "Also right: `00` is the international prefix.",
+  },
   {
     input: "+91 98123-45678",
     sentTo: "+919812345678",
     note: "Accepted: spaces, dashes, dots and brackets are removed.",
   },
+  { input: "+6591234567", sentTo: "+6591234567", note: "Accepted: Singapore, with its `+`." },
   {
     input: "9812345678",
-    sentTo: "+9812345678",
-    note: "**Not refused, but wrong.** Without its country code the number is read as if it started with one (here +98), so it goes to someone else or fails. Add `91`.",
+    sentTo: null,
+    note: "Refused, `400 invalid_phone`: 10 digits without `+` could be any country's number. Add `91`.",
   },
   {
     input: "09812345678",
-    sentTo: "+09812345678",
-    note: "**Not refused, but it can't be delivered** (no country code starts with 0): you get `502 whatsapp_rejected` or `message.failed`. Drop the 0 and add `91`.",
+    sentTo: null,
+    note: "Refused, `400 invalid_phone`: a leading 0 means no country code. Drop the 0 and add `91`.",
   },
-  { input: "+91 98123", sentTo: null, note: "Refused, `400 invalid_to`: fewer than 8 digits." },
+  {
+    input: "6591234567",
+    sentTo: null,
+    note: "Refused, `400 invalid_phone`, even though it is Singapore with its code: 10 digits without `+` can't be told from a local number. Send `+6591234567`.",
+  },
+  { input: "+91 98123", sentTo: null, note: "Refused, `400 invalid_phone`: fewer than 8 digits." },
   {
     input: "+91981234567812345",
     sentTo: null,
-    note: "Refused, `400 invalid_to`: more than 15 digits.",
+    note: "Refused, `400 invalid_phone`: more than 15 digits.",
   },
 ];
 
@@ -1312,6 +1327,7 @@ function integrator(): { recipe: Page; rest: Page[] } {
             items: [
               "An approved template with a **document header** (for example `invoice_document`) and its values in `body_params`, in order.",
               `The PDF as a public https \`document.url\`, or the file itself as \`document.base64\` ([file rules](${guidePath("numbers-values-and-files")}#files)).`,
+              `**The customer's number with its country code**, as your billing app should store it: \`+91…\` or \`91…\` (12 digits). A 10-digit number is refused with \`400 invalid_phone\` ([number rules](${guidePath("numbers-values-and-files")}#numbers)).`,
               `**The invoice number as the key:** \`idempotency_key: "${INVOICE_KEY}"\`. A retry can then never send it twice.`,
               `**Copies to staff:** add \`cc\` (up to ${MAX_CC} numbers) to this request, or leave it out and set default copy numbers once in Settings → API & webhooks → "Also send every API template message to". \`"cc": []\` sends no copies.`,
             ],
@@ -1499,7 +1515,7 @@ function integrator(): { recipe: Page; rest: Page[] } {
         blocks: [
           {
             kind: "p",
-            text: `AiDwar's own errors are words (\`invalid_to\`) and come back on the call — see [Errors](${DOCS_ROOT}/errors). WhatsApp's errors are numbers and come in \`error.code\` of [\`message.failed\`](${eventPath("message.failed")}) and of ${ref("message-status")}, and in a \`502 whatsapp_rejected\`. The full list is on [Meta's error codes page](${META_ERROR_CODES_URL}).`,
+            text: `AiDwar's own errors are words (\`invalid_phone\`) and come back on the call — see [Errors](${DOCS_ROOT}/errors). WhatsApp's errors are numbers and come in \`error.code\` of [\`message.failed\`](${eventPath("message.failed")}) and of ${ref("message-status")}, and in a \`502 whatsapp_rejected\`. The full list is on [Meta's error codes page](${META_ERROR_CODES_URL}).`,
           },
         ],
         code: { title: "message.failed", samples: [failedJson] },
@@ -1534,7 +1550,7 @@ function integrator(): { recipe: Page; rest: Page[] } {
         blocks: [
           {
             kind: "p",
-            text: "Always send the full number **with its country code**: `+919812345678`. AiDwar removes everything that isn't a digit and refuses only numbers with fewer than 8 or more than 15 digits — it can't tell a 10-digit Indian number from a foreign one, so add the country code in your own system.",
+            text: "Always send the full number **with its country code**: `+919812345678`. Spaces, dashes, dots and brackets are removed. A number that starts with `+` or `00` needs 8–15 digits after it; digits only need 11–15 (already with their country code, like `919812345678`). Anything shorter, or starting with 0, is **400 invalid_phone** — for `to` and for every `cc` number — and nothing is sent. AiDwar never adds a country code: a 10-digit number could be any country's.",
           },
           {
             kind: "table",
@@ -1546,19 +1562,40 @@ function integrator(): { recipe: Page; rest: Page[] } {
             ]),
           },
           {
+            kind: "p",
+            text: "A refused number names its field, so you know which to fix; fix it and send again with the same idempotency key — nothing was stored.",
+          },
+          {
             kind: "callout",
             tone: "warn",
             title: "Never test with the numbers in these docs",
             text: "`+919812345678` is not a real customer of yours, and neither are the other sample numbers — a real person may own them. Test with your own WhatsApp number first.",
           },
         ],
+        aside: {
+          title: "A number without its country code",
+          status: 400,
+          samples: [
+            code(
+              "json",
+              "Response",
+              json({
+                error:
+                  "`cc[1]` isn't a WhatsApp number with its country code. Add the country code, e.g. +919876543210. Nothing was sent.",
+                code: "invalid_phone",
+                field: "cc[1]",
+              }),
+            ),
+          ],
+        },
         code: {
           title: "Fix numbers before you send (India)",
           samples: [
             code(
               "node",
               "Node.js",
-              `// "098123 45678", "98123-45678", "+91 98123 45678" → "+919812345678"
+              `// Only when every customer of yours is in India: a 10-digit number can be another country's.
+// "098123 45678", "98123-45678", "+91 98123 45678" → "+919812345678"
 function toWhatsAppNumber(raw) {
   let digits = String(raw).replace(/\\D/g, "");
   if (digits.length === 11 && digits.startsWith("0")) digits = digits.slice(1); // drop a leading 0
@@ -2121,6 +2158,18 @@ function conceptPages(): Page[] {
       "What changed in each version of the AiDwar API.",
       [
         {
+          id: "2026-11-phone",
+          title: "November 2026 — numbers need their country code",
+          blocks: [
+            {
+              kind: "list",
+              items: [
+                `\`to\` (template and free-form sends) and \`cc\` refuse a number without its country code — 10 digits or fewer without \`+\`, or a leading 0 — with **400 invalid_phone** naming the field. Nothing is sent and the idempotency key stays free. \`+…\`, \`00…\` and 11–15 digits work as before. [Number rules](${guidePath("numbers-values-and-files")}#numbers).`,
+              ],
+            },
+          ],
+        },
+        {
           id: "v1-2",
           title: "v1.2 — October 2026",
           blocks: [
@@ -2173,7 +2222,10 @@ function conceptPages(): Page[] {
 /** What each error code means, in plain words (the group rows in API_ERRORS say the rest). */
 export const ERROR_MEANINGS: Record<string, string> = {
   invalid_json: "The body isn't valid JSON.",
-  invalid_to: "`to` isn't a WhatsApp number with its country code.",
+  invalid_to:
+    "`to` is missing, or (on a price lookup) isn't a WhatsApp number with its country code.",
+  invalid_phone:
+    "A number in `to` or `cc` has no country code (for example `9876543210` or `09876543210`), or isn't a phone number at all. `field` says which one (`to`, `cc[1]`). Nothing was sent.",
   invalid_template_name: "`template_name` is missing or not a template name.",
   invalid_document: "`document` needs a `url` or `base64`, and a `filename`.",
   invalid_body_params: "`body_params` must be a list of strings.",
@@ -2296,6 +2348,8 @@ export function whatToDo(status: string, codeName: string): string {
       "Wait for WhatsApp to approve the template (Templates in AiDwar shows its status).",
     template_not_found: "Check the template's name and language in Templates.",
     language_required: "Say which language with `language`.",
+    invalid_phone:
+      "Send the number with its country code — `+919876543210` or `919876543210` — and send again; the same idempotency key works, nothing was stored. AiDwar never guesses the country.",
     no_whatsapp_number: "Connect a WhatsApp number in AiDwar first.",
     media_link_expired: "Ask for a new download link.",
     not_found: "Check the id or phone — another workspace's items are never visible.",

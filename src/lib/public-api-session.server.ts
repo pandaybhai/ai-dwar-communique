@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ApiCaller, ApiReply } from "@/lib/public-api.server";
 import { parseMediaInput, mediaFingerprint, type MediaInput } from "@/lib/public-api-media.server";
 import { SEND_PATH, SESSION_PATH } from "@/lib/public-api";
+import { apiPhoneError, apiPhoneNumber } from "@/lib/public-api-cc";
 
 /**
  * Batch 37 item 2: POST /api/v1/messages/session — a free-form message to a
@@ -65,6 +66,8 @@ export function parseSessionRequest(raw: unknown, headerKey: string | null): Ses
       "invalid_to",
       "`to` is required: the customer's WhatsApp number with its country code.",
     );
+  // Batch 65: a number without its country code is refused before anything else.
+  if (!apiPhoneNumber(to)) return { status: 400, body: apiPhoneError("to") };
 
   const keyRaw = body["idempotency_key"] ?? headerKey;
   let idempotencyKey: string | null = null;
@@ -245,16 +248,11 @@ export async function sendSessionViaApi(
   const parsed = parseSessionRequest(raw, options.idempotencyHeader ?? null);
   if ("status" in parsed) return parsed;
   const orgId = caller.organizationId;
-  const { normalizePhone, toWaId, logServerActivity } = await import("@/lib/whatsapp-api.server");
-  const phone = normalizePhone(parsed.to);
+  const { toWaId, logServerActivity } = await import("@/lib/whatsapp-api.server");
+  // Batch 65: the request's own rule, as the template send.
+  const phone = apiPhoneNumber(parsed.to);
+  if (!phone) return { status: 400, body: apiPhoneError("to") };
   const waId = toWaId(phone);
-  if (waId.length < 8 || waId.length > 15) {
-    return fail(
-      400,
-      "invalid_to",
-      "`to` isn't a valid WhatsApp number. Include the country code, e.g. +919812345678.",
-    );
-  }
 
   const lib = await import("@/lib/public-api.server");
   let requestId: string | null = null;

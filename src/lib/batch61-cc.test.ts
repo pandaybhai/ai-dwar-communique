@@ -306,10 +306,16 @@ describe("cc on the request", () => {
     expect(sends()).toHaveLength(1);
   });
 
-  it("an invalid cc number: 400 invalid_cc naming it, nothing sent or reserved", async () => {
-    for (const cc of [["+91 12"], [STAFF_1, "hello"], TOO_MANY, "+918121310333"]) {
+  it("an invalid cc number: 400 naming it, nothing sent or reserved", async () => {
+    // Batch 65: a bad number in the list is invalid_phone naming cc[n]; a bad list stays invalid_cc.
+    for (const [cc, code] of [
+      [["+91 12"], "invalid_phone"],
+      [[STAFF_1, "hello"], "invalid_phone"],
+      [TOO_MANY, "invalid_cc"],
+      ["+918121310333", "invalid_cc"],
+    ] as const) {
       const res = await send(invoice({ cc, idempotency_key: "inv-bad" }));
-      expect([res.status, res.body["code"]], JSON.stringify(cc)).toEqual([400, "invalid_cc"]);
+      expect([res.status, res.body["code"]], JSON.stringify(cc)).toEqual([400, code]);
       expect(String(res.body["error"])).toMatch(/cc|WhatsApp number/);
     }
     expect(metaCalls()).toEqual([]);
