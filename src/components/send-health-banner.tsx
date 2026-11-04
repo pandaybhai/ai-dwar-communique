@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { AlertOctagon } from "lucide-react";
 import { aidwar } from "@/integrations/aidwar/client";
+import { SendFailuresAttention } from "@/components/send-failures-attention";
 
 /**
  * Red banner when a connected number keeps failing to send because Meta is
@@ -41,10 +42,15 @@ export function SendHealthBanner({
     };
   }, [organizationId]);
 
-  if (numbers.length === 0) return null;
+  // Batch 63: where the banner links out (both Homes), failed template sends
+  // of the last 24 hours show as a "Needs attention" item too.
+  const attention = showLink ? <SendFailuresAttention organizationId={organizationId} className={className} /> : null;
+  if (numbers.length === 0) return attention;
 
   return (
-    <div
+    <>
+      {attention}
+      <div
       role="alert"
       className={[
         "flex items-start gap-3 rounded-2xl border border-destructive/30 bg-destructive/10 p-4 text-destructive shadow-sm",
@@ -69,6 +75,7 @@ export function SendHealthBanner({
           ) : null}
         </p>
       </div>
-    </div>
+      </div>
+    </>
   );
 }

@@ -176,6 +176,11 @@ export async function emailNoticeContent(
 ): Promise<Content | null> {
   const payload = (row["payload"] ?? {}) as Record<string, unknown>;
   const kind = String(row["kind"] ?? "");
+  // Batch 63: the daily "couldn't be delivered" summary (send-failure-digest.server.ts).
+  if (kind === "send_failures") {
+    const { sendFailuresEmail } = await import("@/lib/send-failure-digest.server");
+    return sendFailuresEmail(payload);
+  }
   if (kind !== "invoice_issued") return null;
 
   const { data: org } = row["organization_id"]

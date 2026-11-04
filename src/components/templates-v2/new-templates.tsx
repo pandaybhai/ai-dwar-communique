@@ -6,6 +6,7 @@ import {
   MoreHorizontal,
   RefreshCw,
   Search,
+  Send,
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -38,6 +39,7 @@ import { templateBodyText, type TemplateRow } from "@/lib/templates";
 import { numberLabel } from "@/lib/whatsapp-numbers";
 import { cn } from "@/lib/utils";
 import { TemplateMessage } from "./template-phone";
+import { TemplateSentReport } from "@/components/templates/template-sent-report";
 import {
   isDeletedTemplate,
   reviewStateOf,
@@ -76,6 +78,8 @@ export function NewTemplates() {
   const [start, setStart] = useState<{ kind: "blank" | "invoice"; at: number } | null>(null);
   // Batch 51: the template whose Delete dialog is open.
   const [deleting, setDeleting] = useState<TemplateRow | null>(null);
+  // Batch 63: the template whose Sent report is open.
+  const [sentFor, setSentFor] = useState<string | null>(null);
   const autoSynced = useRef<string | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
   usePageShortcut("/", () => searchRef.current?.focus());
@@ -337,6 +341,7 @@ export function NewTemplates() {
                       template={t}
                       owner={multiple ? ownerOf(t.waba_id) : null}
                       index={i}
+                      onSent={() => setSentFor(t.name)}
                       {...(canManage ? { onDelete: () => setDeleting(t) } : {})}
                     />
                   ))}
@@ -357,6 +362,16 @@ export function NewTemplates() {
           onDeleted={() => void load()}
         />
       ) : null}
+      {orgId ? (
+        <TemplateSentReport
+          organizationId={orgId}
+          templateName={sentFor}
+          open={sentFor !== null}
+          onOpenChange={(open) => {
+            if (!open) setSentFor(null);
+          }}
+        />
+      ) : null}
     </>
   );
 }
@@ -374,10 +389,13 @@ function TemplateTile({
   owner,
   index,
   onDelete,
+  onSent,
 }: {
   template: TemplateRow;
   owner: string | null;
   index: number;
+  /** Batch 63: opens the template's Sent report. */
+  onSent?: () => void;
   /** Batch 51: with templates.manage, the tile's menu has "Delete template". */
   onDelete?: () => void;
 }) {
@@ -444,6 +462,12 @@ function TemplateTile({
           <TemplateMessage model={componentsToPreview(t.components)} />
         </div>
       </figure>
+      {onSent ? (
+        <Button variant="outline" size="sm" className="self-start rounded-full phone:h-11" onClick={onSent}>
+          <Send className="h-4 w-4" aria-hidden="true" />
+          Sent
+        </Button>
+      ) : null}
     </li>
   );
 }

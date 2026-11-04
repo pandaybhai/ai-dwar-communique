@@ -1463,21 +1463,15 @@ export async function planChangePreview(
   const overrides = (settings["limits_override"] ?? {}) as Record<string, unknown>;
   const manual = (overrides["_manual_flags"] ?? {}) as Record<string, boolean>;
 
-  const { data: overrideRows } = await supabase
-    .from("organization_feature_overrides")
-    .select("flag_key, enabled")
-    .eq("organization_id", input.organizationId);
-  const current = new Map(
-    ((overrideRows ?? []) as Record<string, unknown>[]).map((r) => [
-      String(r["flag_key"]),
-      r["enabled"] === true,
-    ]),
-  );
+  // Batch 63: switches a person set stay as they are, so they're not "going off".
+  const { manualOverrideKeys } = await import("@/lib/feature-ownership.server");
+  const { rows: overrideRows, manual: handSet } = await manualOverrideKeys(supabase, input.organizationId, manual);
+  const current = new Map(overrideRows.map((r) => [r.flag_key, r.enabled]));
 
   const featuresOff: PlanChangePreview["features_off"] = [];
   if (planFeatures.length > 0) {
     for (const feature of FEATURES) {
-      if (feature.key === "billing" || feature.key in manual) continue;
+      if (feature.key === "billing" || feature.key in manual || handSet.has(feature.flag_key)) continue;
       const willBeOn =
         planFeatures.includes(feature.key) || planFeatures.includes(feature.flag_key);
       if (willBeOn) continue;
@@ -1800,16 +1794,11 @@ async function applyPlanFeatures(
   const turnedOff: string[] = [];
   if (input.planFeatures.length === 0) return { on, off, kept_manual: keptManual, turned_off: turnedOff };
 
-  const { data: existingRows } = await supabase
-    .from("organization_feature_overrides")
-    .select("flag_key, enabled")
-    .eq("organization_id", input.organizationId);
-  const existing = new Map(
-    ((existingRows ?? []) as Record<string, unknown>[]).map((r) => [
-      String(r["flag_key"]),
-      r["enabled"] === true,
-    ]),
-  );
+  // Batch 63: a switch a person set (source 'manual', or _manual_flags) is
+  // never written by the plan; a failed read writes nothing (throws).
+  const { manualOverrideKeys } = await import("@/lib/feature-ownership.server");
+  const owned = await manualOverrideKeys(supabase, input.organizationId, manual);
+  const existing = new Map(owned.rows.map((r) => [r.flag_key, r.enabled]));
 
   for (const feature of FEATURES) {
     if (feature.key === "billing") {
@@ -1821,7 +1810,7 @@ async function applyPlanFeatures(
         );
       continue;
     }
-    if (feature.key in manual) {
+    if (feature.key in manual || owned.manual.has(feature.flag_key)) {
       keptManual.push(feature.key);
       continue;
     }

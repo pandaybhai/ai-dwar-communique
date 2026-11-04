@@ -263,6 +263,7 @@ export async function startRun(
     await failSafe(supabase, run, error);
   }
   if (fireWrite) await fireWrite;
+  await settleCardPrefetch(run.id);
   // The run exists either way, so the trigger counts as consumed.
   return { runId: run.id, reason: null };
 }
@@ -317,8 +318,12 @@ export async function handleInboundForRuns(
     firstLook?: Promise<Run | null | undefined>;
     /** The number the message came in on, already resolved by the webhook. */
     connection?: Conn;
+    /** Batch 63: readInboundTriggers() started by the webhook (a keyword may end a waiting run). */
+    triggers?: Promise<{ data: unknown[] | null }>;
+    /** Batch 63: only flows pinned to this number may start (the onboarding number). */
+    onlyAccountId?: string | null;
   } & InboundExtras,
-): Promise<{ consumed: boolean; runActive?: boolean }> {
+): Promise<{ consumed: boolean; runActive?: boolean; superseded?: { flowId: string; triggerId: string } }> {
   const deadline = Date.now() + HOLD_MS;
   if (args.connection && args.whatsappAccountId) primeConnection(args.organizationId, args.whatsappAccountId, args.connection);
   let firstLook = args.firstLook;
@@ -357,6 +362,17 @@ export async function handleInboundForRuns(
       return { consumed: true };
     }
     if (route === "release") return release(run, { status: run.status, waiting_for: run.waiting_for }, active);
+
+    // Batch 63 (D): a typed message that is exactly a trigger keyword ends a
+    // run waiting for the customer's reply (end_reason superseded_by_trigger)
+    // and goes back to the webhook, whose trigger dispatch then starts the
+    // keyword's flow (the same flow again starts from its start). A tap
+    // (button/list id) never does, nor typed text that answers the waiting
+    // buttons/list step.
+    if (route === "take") {
+      const superseded = await supersedeForKeyword(supabase, run, args);
+      if (superseded) return { consumed: false, runActive: false, superseded };
+    }
 
     if (route === "take") {
       const conversationId = run.conversation_id ?? args.conversationId;
@@ -410,6 +426,7 @@ export async function handleInboundForRuns(
         } catch (error) {
           await failSafe(supabase, run, error);
         }
+        await settleCardPrefetch(run.id);
         return { consumed: true };
       }
       // Lost the claim — the run is busy again; hold and retry.
@@ -421,6 +438,77 @@ export async function handleInboundForRuns(
     }
     if (Date.now() > deadline) return release(run, { reason: "flow_busy" }, true);
     await new Promise((r) => setTimeout(r, 300));
+  }
+}
+
+/**
+ * Batch 63 (D): when the inbound text is exactly an enabled trigger keyword
+ * (exactKeywordTrigger) and isn't an answer for the step the run waits at,
+ * end the run — conditionally, only while it still waits for this reply —
+ * and say which trigger will start. Null (the run takes the reply as
+ * always) for a tap, a non-keyword, a flow that couldn't start (not
+ * published, a teammate owns the chat), or any failed read or write.
+ */
+export async function supersedeForKeyword(
+  supabase: SupabaseClient,
+  run: Run,
+  args: {
+    organizationId: string;
+    contactId: string;
+    conversationId: string;
+    whatsappAccountId?: string | null;
+    body: string;
+    replyId: string | null;
+    triggers?: Promise<{ data: unknown[] | null }>;
+    onlyAccountId?: string | null;
+  },
+): Promise<{ flowId: string; triggerId: string } | null> {
+  if (args.replyId || !args.body.trim()) return null;
+  try {
+    const { exactKeywordTrigger, readInboundTriggers, humanOwnsConversation } = await import("@/lib/flow-triggers.server");
+    const { data: rows } = await (args.triggers ?? readInboundTriggers(supabase, args.organizationId));
+    const trigger = exactKeywordTrigger(rows, args.body, args.whatsappAccountId ?? null, args.onlyAccountId ?? null);
+    if (!trigger) return null;
+
+    // Typed text that answers the waiting buttons/list step is that answer.
+    const graph = await loadGraph(supabase, run.version_id);
+    const node = graph?.nodes.find((n) => n.id === run.current_node_id) ?? null;
+    if (node && (node.type === "buttons" || node.type === "list") && matchReply(node, { body: args.body, replyId: null }).ok) return null;
+
+    // Only end the run when the keyword's flow will really start.
+    const [version, owned] = await Promise.all([
+      readPublishedVersion(supabase, args.organizationId, trigger.flow_id),
+      humanOwnsConversation(supabase, args.organizationId, args.contactId, args.conversationId),
+    ]);
+    if (!version || version.graph.meta?.legacy || owned) return null;
+
+    const { data: ended, error } = await supabase
+      .from("flow_runs")
+      .update({
+        status: "ended",
+        end_reason: "superseded_by_trigger",
+        ended_at: new Date().toISOString(),
+        waiting_for: null,
+        wake_at: null,
+        claimed_at: null,
+      })
+      .eq("id", run.id)
+      .eq("status", "waiting")
+      .eq("waiting_for", "reply")
+      .select("id");
+    if (error || !ended || ended.length === 0) return null;
+    await logEvent(
+      supabase,
+      run,
+      run.current_node_id,
+      "ended",
+      { reason: "superseded_by_trigger", trigger_id: trigger.id, flow_id: trigger.flow_id, same_flow: trigger.flow_id === run.flow_id },
+      `superseded:${run.id}`,
+    ).catch(() => false);
+    return { flowId: trigger.flow_id, triggerId: trigger.id };
+  } catch (error) {
+    console.warn("[flows-v2] keyword supersede skipped", error instanceof Error ? error.message : String(error));
+    return null;
   }
 }
 
@@ -733,6 +821,41 @@ async function advance(
   } finally {
     if (own) await flushEvents(supabase, run.id);
   }
+  // Batch 63: a card drawn while the customer reads the buttons (the prompt is out).
+  if (own) await settleCardPrefetch(run.id);
+}
+
+/**
+ * Batch 63 (E): the run now waits at a buttons/list step — draw the cards
+ * its options lead straight to (card-prefetch.server.ts). Held for the
+ * request and awaited after the step's prompt went out; never delays it.
+ */
+function startCardPrefetch(supabase: SupabaseClient, run: Run, graph: FlowGraph, node: FlowNode, env: Env, vars: Record<string, unknown>) {
+  if (node.type !== "buttons" && node.type !== "list") return;
+  const work = import("@/lib/card-prefetch.server").then(({ prefetchCardsAfter, holdPrefetch }) => {
+    const drawing = prefetchCardsAfter(supabase, {
+      organizationId: run.organization_id,
+      graph,
+      node,
+      ctx: { ...env.ctx, vars: { ...vars } },
+      windowOpen: env.windowOpen,
+      connected: Boolean(env.conn),
+    });
+    holdPrefetch(run.id, drawing);
+    return drawing;
+  });
+  prefetchStarts.set(run.id, work.catch(() => 0));
+}
+
+const prefetchStarts = new Map<string, Promise<unknown>>();
+
+async function settleCardPrefetch(runId: string): Promise<void> {
+  const started = prefetchStarts.get(runId);
+  if (!started) return;
+  prefetchStarts.delete(runId);
+  await started;
+  const { settlePrefetch } = await import("@/lib/card-prefetch.server");
+  await settlePrefetch(runId);
 }
 
 async function advanceInner(
@@ -871,6 +994,7 @@ async function advanceInner(
           return;
         }
         await waitFor("reply", nudgeMin > 0 && nudgeText && nudgeMin < timeoutMin ? nudgeMin : timeoutMin);
+        startCardPrefetch(supabase, run, graph, node, env, vars);
         return;
       }
       // Quiet customer: one reminder, then wait out the rest before the timeout path.
@@ -939,6 +1063,7 @@ async function advanceInner(
         return;
       }
       await waitFor("reply", timeoutMin);
+      startCardPrefetch(supabase, run, graph, node, env, vars);
       return;
     }
 

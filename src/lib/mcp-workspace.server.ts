@@ -191,13 +191,20 @@ export async function setMcpAccess(
       error: "AiDwar support switched AI assistants off for this workspace. Write to support to switch it back on.",
     };
   }
-  const { error } = await service
-    .from("organization_feature_overrides")
-    .upsert(
-      { organization_id: args.organizationId, flag_key: MCP_FLAG, enabled: args.enabled },
-      { onConflict: "organization_id,flag_key" },
-    );
-  if (error) return { ok: false, status: 400, error: "We couldn't change that. Please try again." };
+  // Batch 63: the workspace's own choice is a person's switch (source
+  // 'manual'), so a plan change keeps it. Not _manual_flags: there, mcp
+  // false means AiDwar support switched it off (supportSwitchedOff).
+  const { writeManualOverride } = await import("@/lib/feature-ownership.server");
+  const written = await writeManualOverride(service, {
+    organizationId: args.organizationId,
+    flagKey: MCP_FLAG,
+    enabled: args.enabled,
+    actorId: args.userId,
+    recordManualFlag: false,
+    via: "ai_assistants_page",
+    quiet: true,
+  });
+  if (!written.ok) return { ok: false, status: 400, error: "We couldn't change that. Please try again." };
   const { logServerActivity } = await import("@/lib/whatsapp-api.server");
   await logServerActivity(service, args.organizationId, args.userId, "mcp_access_changed", {
     enabled: args.enabled,

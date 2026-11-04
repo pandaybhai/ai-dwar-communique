@@ -8,6 +8,7 @@ import {
   Plus,
   RefreshCw,
   Search,
+  Send,
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -34,6 +35,7 @@ import { runAppCommand } from "@/lib/app-commands";
 import { cn } from "@/lib/utils";
 import { useWhatsAppNumbers } from "@/hooks/use-whatsapp-numbers";
 import { numberLabel, type WhatsAppNumber } from "@/lib/whatsapp-numbers";
+import { TemplateSentReport } from "@/components/templates/template-sent-report";
 
 const SYNC_KEY = "aidwar.templates.last_sync";
 const TEN_MINUTES = 10 * 60 * 1000;
@@ -67,7 +69,16 @@ const STATUS_ICON: Record<string, typeof CheckCircle2> = {
   REJECTED: XCircle,
 };
 
-function TemplateCard({ template, owner }: { template: TemplateRow; owner: string }) {
+function TemplateCard({
+  template,
+  owner,
+  onSent,
+}: {
+  template: TemplateRow;
+  owner: string;
+  /** Batch 63: opens the template's Sent report. */
+  onSent?: (name: string) => void;
+}) {
   const preview = componentsToPreview(template.components);
   const StatusIcon = STATUS_ICON[template.status];
   return (
@@ -111,6 +122,19 @@ function TemplateCard({ template, owner }: { template: TemplateRow; owner: strin
           Created {new Date(template.created_at).toLocaleDateString()}
         </span>
       </div>
+      {onSent ? (
+        <div className="border-t border-border/70 px-2 py-1.5">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 w-full justify-start text-xs"
+            onClick={() => onSent(template.name)}
+          >
+            <Send className="mr-2 h-3.5 w-3.5" aria-hidden="true" />
+            Sent
+          </Button>
+        </div>
+      ) : null}
     </article>
   );
 }
@@ -137,6 +161,7 @@ export function TemplatesView() {
   const [query, setQuery] = useState("");
   const [numberFilter, setNumberFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<(typeof STATUS_FILTERS)[number]["key"]>("all");
+  const [sentFor, setSentFor] = useState<string | null>(null);
   const autoSynced = useRef<string | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
   // Batch 41: / jumps to the search box.
@@ -394,13 +419,23 @@ export function TemplatesView() {
               </div>
               <div className="grid items-start gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 {group.rows.map((t) => (
-                  <TemplateCard key={t.id} template={t} owner={group.label} />
+                  <TemplateCard key={t.id} template={t} owner={group.label} onSent={setSentFor} />
                 ))}
               </div>
             </section>
           ))}
         </div>
       )}
+      {orgId ? (
+        <TemplateSentReport
+          organizationId={orgId}
+          templateName={sentFor}
+          open={sentFor !== null}
+          onOpenChange={(open) => {
+            if (!open) setSentFor(null);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

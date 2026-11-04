@@ -433,10 +433,12 @@ describe("permissions on the server", () => {
       enabled: false,
     });
     expect(r).toEqual({ ok: true, enabled: false });
+    // Batch 63: the owner's choice is marked as a person's switch, so a plan change keeps it.
     expect(calls.find((c) => c.op === "upsert")?.args[0]).toEqual({
       organization_id: "org-1",
       flag_key: "mcp_access",
       enabled: false,
+      source: "manual",
     });
     expect(
       calls.find((c) => c.table === "activity_log" && c.op === "insert")?.args[0],

@@ -1059,6 +1059,12 @@ export async function sendTemplateViaApi(
       ...(isDocument && file ? { document_filename: file.filename } : {}),
       to: phone,
     };
+    // Batch 63: read alongside the send, as the number stood before it — a
+    // number WhatsApp recently said can't receive still gets the send (no
+    // behaviour change); the 202 only carries a warning.
+    const unreachableWarning = import("@/lib/wa-reachability.server")
+      .then(({ apiUnreachableWarning }) => apiUnreachableWarning(supabase, orgId, phone))
+      .catch(() => null);
     const main = await sendOne({ phone, waId }, metadata);
     const messageId = main.messageId;
 
@@ -1099,6 +1105,8 @@ export async function sendTemplateViaApi(
         idempotency_key: parsed.idempotencyKey,
       },
     };
+    const warning = await unreachableWarning;
+    if (warning) answer.body["warning"] = warning;
 
     // ---- Batch 61: the copies, only now that WhatsApp accepted the customer's
     // send. A copy never changes the customer's answer: each is tried on its

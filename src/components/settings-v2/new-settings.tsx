@@ -25,6 +25,7 @@ import { SendSettingsTab } from "@/components/settings/send-settings";
 import { ApiSettingsTab } from "@/components/settings/api-settings";
 import { ApiConsoleCard } from "@/components/settings/api-console";
 import { HandoffAlertsCard } from "@/components/employee/handoff-alerts-card";
+import { SendFailureSummarySwitch } from "@/components/templates/send-failure-summary-switch";
 import { ConnectedAiApps } from "@/components/settings-v2/connected-ai-apps";
 import {
   NUMBER_COLUMNS,
@@ -255,6 +256,7 @@ function SectionBody({
       return (
         <>
           <HandoffAlertsCard organizationId={orgId} canConfigure={can("ai.configure")} />
+          <SendFailureSummarySwitch organizationId={orgId} />
           <p className="text-sm text-muted-foreground">{SETTINGS_COPY.billingNote}</p>
         </>
       );

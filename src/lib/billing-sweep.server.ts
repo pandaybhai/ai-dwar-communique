@@ -51,6 +51,8 @@ export type SweepCounts = {
   cashfree_settled: number;
   /** Batch 38: Try-it console credentials expired over a day ago, removed. */
   api_console_credentials_removed: number;
+  /** Batch 63: daily failed-send summaries queued. */
+  send_failure_summaries: number;
 } & MediaSweepCounts &
   ApiCleanupCounts;
 
@@ -173,7 +175,19 @@ export async function runBillingSweep(supabase: SupabaseClient): Promise<SweepCo
     api_requests_removed: 0,
     api_deliveries_removed: 0,
     api_console_credentials_removed: 0,
+    send_failure_summaries: 0,
   };
+
+  // ---- Batch 63: the daily summary of template sends that couldn't be
+  // delivered (once per workspace per India day, from 09:00 IST). Never
+  // fails the sweep.
+  try {
+    const { runSendFailureDigest } = await import("@/lib/send-failure-digest.server");
+    const digest = await runSendFailureDigest(supabase);
+    counts.send_failure_summaries = digest.queued;
+  } catch (error) {
+    console.warn(JSON.stringify({ at: "send_failure_digest_failed", error: error instanceof Error ? error.message : String(error) }));
+  }
 
   // ---- messages already sent whose debit failed: charge them now if we can
   const debits = await retryFailedDebits(supabase);

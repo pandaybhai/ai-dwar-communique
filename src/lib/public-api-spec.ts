@@ -1480,6 +1480,12 @@ const ENDPOINT_DETAILS: Record<string, Partial<ApiEndpoint>> = {
         body: SENT_WITH_COPIES,
       },
       {
+        status: 202,
+        label:
+          'Sent, with a warning: in the last 30 days WhatsApp said this number can\'t receive messages (error 131026 — not on WhatsApp). The message is still sent, exactly as without the warning; the warning goes once a message to the number is delivered',
+        body: { ...SENT, warning: "number_not_on_whatsapp_recently" },
+      },
+      {
         status: 409,
         label: "The customer opted out (a marketing template)",
         body: {
