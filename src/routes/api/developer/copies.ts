@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 
 /**
  * Settings → API & webhooks (Batch 61): "Also send every API template message
- * to" — the workspace's default copy numbers (up to 3), used by every API
+ * to" — the workspace's default copy numbers (up to MAX_CC, 10), used by every API
  * template send that has no `cc` of its own. GET reads them; POST saves them
  * (an empty list switches copies off). Needs public_api.manage (owner and
  * admin); each save is in the activity log as api_cc_default_saved.

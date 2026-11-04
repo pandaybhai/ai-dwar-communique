@@ -8,7 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorState } from "@/components/empty-state";
 import { callApi } from "@/lib/whatsapp-client";
 import { useOrg } from "@/lib/org-context";
-import { MAX_CC, ccNumber, parseCcNumbers } from "@/lib/public-api-cc";
+import { MAX_CC, ccNumber, copyCostNote, parseCcNumbers } from "@/lib/public-api-cc";
 
 type CopiesState = { available: boolean; max: number; numbers: string[] };
 
@@ -16,7 +16,7 @@ const blanks = (numbers: string[]) => Array.from({ length: MAX_CC }, (_, i) => n
 
 /**
  * Settings → API & webhooks (Batch 61): "Also send every API template message
- * to" — up to 3 of the shop's own numbers that get a copy of every template
+ * to" — up to MAX_CC (10) of the shop's own numbers that get a copy of every template
  * the API sends (unless the request has its own `cc`). Reads and saves through
  * /api/developer/copies (public_api.manage: owner and admin; audit-logged).
  * Both designs show it: ApiSettingsTab renders it.
@@ -84,6 +84,9 @@ export function ApiCopiesCard() {
     toast.success(r.data.numbers.length ? "Copy numbers saved" : "Copies switched off");
   };
 
+  // The note counts the boxes filled in (a duplicate is still a box; the save removes it).
+  const copyCount = values.filter((v) => v.trim() !== "").length;
+
   if (error) return <ErrorState message={error} />;
   if (!state) return <Skeleton className="h-56 w-full rounded-2xl" />;
 
@@ -115,7 +118,7 @@ export function ApiCopiesCard() {
             <legend className="text-sm font-medium text-foreground">
               Also send every API template message to
             </legend>
-            <div className="grid gap-2 sm:grid-cols-3">
+            <div className="grid gap-2 sm:grid-cols-2">
               {values.map((value, i) => (
                 <div key={i} className="space-y-1">
                   <Label htmlFor={`api-cc-${i}`} className="sr-only">
@@ -143,12 +146,15 @@ export function ApiCopiesCard() {
               {problem}
             </p>
           ) : null}
+          <p
+            id="api-cc-cost"
+            className="rounded-xl border border-border/70 bg-muted/40 p-3 text-xs text-muted-foreground"
+          >
+            <span className="font-medium text-foreground">Cost per invoice: </span>
+            {copyCostNote(copyCount)}
+          </p>
           <ul className="list-disc space-y-1 pl-5 text-xs text-muted-foreground">
-            <li>Up to {MAX_CC} numbers, each with its country code (+91…).</li>
-            <li>
-              Each copy is a separate WhatsApp message, charged by Meta at the template's category
-              rate (utility, marketing or authentication) — like any other message.
-            </li>
+            <li>Up to {MAX_CC} numbers, each with its country code (+91…, +1…).</li>
             <li>
               Used for every API template message unless the request sends its own{" "}
               <code className="font-mono">cc</code> (an empty <code className="font-mono">cc</code>{" "}

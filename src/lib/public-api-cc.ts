@@ -2,14 +2,15 @@ import { normalizePhone, toWaId } from "@/lib/phone";
 
 /**
  * Batch 61: copies ("cc") of an API template send — the same template, values,
- * file and buttons sent to up to 3 more numbers (a shop's own staff), each as
+ * file and buttons sent to up to MAX_CC (10) more numbers (a shop's own staff), each as
  * its own WhatsApp message. Pure: the API request (`cc`), the workspace
  * default (Settings → API & webhooks, organizations.api_cc_numbers) and the
  * settings screen all check numbers here, the same way `to` is checked
  * (normalizePhone / toWaId, 8–15 digits with the country code).
  */
 
-export const MAX_CC = 3;
+/** Batch 62: 10 (was 3), e.g. a shop's 7 staff numbers. 20261340's CHECK says the same. */
+export const MAX_CC = 10;
 
 export type CcNumbers = { ok: true; numbers: string[] } | { ok: false; error: string };
 
@@ -58,6 +59,19 @@ export function parseCcNumbers(
 /** A copy's own idempotency key, derived from the request's: `<key>:cc:<E.164>`. */
 export function copyIdempotencyKey(key: string, number: string): string {
   return `${key}:cc:${number}`;
+}
+
+/**
+ * Batch 62: the Settings card's per-invoice cost note for `copies` numbers.
+ * Words only: what is charged is unchanged (each copy is its own message).
+ */
+export function copyCostNote(copies: number): string {
+  const n = Math.max(0, Math.floor(copies));
+  const count =
+    n === 0
+      ? "1 WhatsApp message (the customer's), no copies."
+      : `${n + 1} WhatsApp messages: the customer's and ${n} ${n === 1 ? "copy" : "copies"}.`;
+  return `${count} Each copy is a separate WhatsApp message charged by Meta at the template's category rate (utility, marketing or authentication); international numbers cost more.`;
 }
 
 /** The stored default, read leniently: only valid numbers, at most MAX_CC, no duplicates. */

@@ -16,6 +16,7 @@ import {
   MEDIA_LIMITS,
   WEBHOOK_BODY_EXAMPLE,
 } from "@/lib/public-api";
+import { MAX_CC } from "@/lib/public-api-cc";
 
 export type ApiVersion = "v1.0" | "v1.1" | "v1.2";
 
@@ -133,8 +134,7 @@ export const API_ENDPOINTS: ApiEndpoint[] = [
     method: "POST",
     path: "/api/v1/messages/template",
     title: "Send a template",
-    summary:
-      "Any approved template, at any time: its header (none, text values, an image, a video, a document or a map pin), its body values and its buttons' values, all checked against the template before anything is sent. The original invoice request ({ document, body_params }) still works exactly as it did. Add `cc` (up to 3 numbers) to send the same message to your own staff too: each copy goes once the customer's message is accepted, and is a separate WhatsApp message Meta charges at the template's category rate.",
+    summary: `Any approved template, at any time: its header (none, text values, an image, a video, a document or a map pin), its body values and its buttons' values, all checked against the template before anything is sent. The original invoice request ({ document, body_params }) still works exactly as it did. Add \`cc\` (up to ${MAX_CC} numbers) to send the same message to your own staff too: each copy goes once the customer's message is accepted, and is a separate WhatsApp message Meta charges at the template's category rate.`,
     body: {
       to: CUSTOMER,
       template_name: "order_shipped",
@@ -1468,7 +1468,7 @@ const ENDPOINT_DETAILS: Record<string, Partial<ApiEndpoint>> = {
         "body",
         "string[]",
         false,
-        "Up to 3 more WhatsApp numbers (with country code) that get a copy: the same template, values, file and buttons, sent only after the customer's message is accepted. Duplicates and the `to` number are removed. Leave it out to use your workspace's default (Settings → API & webhooks → \"Also send every API template message to\"); send [] for no copies. Each copy is a separate WhatsApp message charged by Meta at the template's category rate, and counts as one more request against the rate limits. With an idempotency_key each copy gets its own key, <key>:cc:<number>, so a retry never sends a copy twice. A copy that fails never changes the customer's answer.",
+        `Up to ${MAX_CC} more WhatsApp numbers (with country code) that get a copy: the same template, values, file and buttons, sent only after the customer's message is accepted. Duplicates and the \`to\` number are removed. Leave it out to use your workspace's default (Settings → API & webhooks → "Also send every API template message to"); send [] for no copies. Each copy is a separate WhatsApp message charged by Meta at the template's category rate, and counts as one more request against the rate limits (a request with ${MAX_CC} copies counts as ${MAX_CC + 1}). With an idempotency_key each copy gets its own key, <key>:cc:<number>, so a retry never sends a copy twice. A copy that fails never changes the customer's answer.`,
         '["+918000000001", "+918000000002"]',
       ),
       IDEMPOTENCY,
