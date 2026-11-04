@@ -130,7 +130,8 @@ export function McpSection() {
         </div>
         <p className="text-[14.5px] text-[var(--d-muted)]">
           When your assistant drafts a campaign, AiDwar answers with who it reaches (opted-in customers only), what it
-          costs and your wallet balance, and a confirm code. It sends only after you say yes. Templates, tags, changes
+          costs and your wallet balance, and a confirm code. It sends only after you say yes. A code lasts 15 minutes;
+          answer later and your assistant calls refresh_confirm_code for the same draft instead of drafting it again. Templates, tags, changes
           to a scheduled campaign and answers to Aiden work the same way: a preview first, then your yes. An answer to
           Aiden is always your own words.
         </p>

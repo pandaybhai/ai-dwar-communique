@@ -91,7 +91,7 @@ describe("the prompt library: one source, only prompts today's tools can do", ()
     // Batch 54: the server's tools are Batch 52's 16 plus round 2's 10.
     const { ALL_MCP_TOOLS } = await import("./mcp-server.server");
     const names = new Set(ALL_MCP_TOOLS.map((t) => t.name));
-    expect(names.size).toBe(26);
+    expect(names.size).toBe(27); // + Batch 58's refresh_confirm_code
     expect(PROMPT_GROUPS.map((g) => g.title)).toEqual([
       "Grow sales",
       "Know your numbers",

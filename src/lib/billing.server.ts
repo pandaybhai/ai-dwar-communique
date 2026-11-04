@@ -1292,6 +1292,20 @@ export async function notify(
   },
 ): Promise<void> {
   try {
+    // Batch 58: an internal workspace (Super Admin "don't bill") is never told
+    // it owes money. A failed read keeps today's behaviour (the notice goes).
+    if (input.audience === "client" && input.organizationId) {
+      const { INTERNAL_SKIPPED_NOTICE_KINDS, isInternalWorkspace } = await import(
+        "@/lib/internal-workspace.server"
+      );
+      if (
+        INTERNAL_SKIPPED_NOTICE_KINDS.has(input.kind) &&
+        (await isInternalWorkspace(supabase, input.organizationId).catch(() => false))
+      ) {
+        return;
+      }
+    }
+
     if (STANDING_NOTICE_KINDS.has(input.kind) && input.organizationId) {
       const since = new Date(Date.now() - STANDING_NOTICE_REPEAT_MS).toISOString();
       const { data: recent, error } = await supabase
@@ -1727,6 +1741,11 @@ export async function assignPlan(
     })
     .eq("id", input.organizationId);
   if (error) return { error: "We couldn't change the plan. Please try again." };
+
+  // Batch 58: the plan-assigned trigger stamped billing_enabled_at again; an
+  // internal workspace stays unbilled (a no-op for every other workspace).
+  const { reapplyInternalWorkspace } = await import("@/lib/internal-workspace.server");
+  await reapplyInternalWorkspace(supabase, input.organizationId);
 
   // A plan carries a set of features. Manual super-admin decisions are kept,
   // and billing itself is always on once a plan exists.

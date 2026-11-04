@@ -43,7 +43,9 @@ export const INSTRUCTIONS =
   "create_flow_draft, show the steps, and call activate_flow only after they confirm. The same for templates (create_template_draft, " +
   "then submit_template), scheduled campaigns (preview_campaign_change, then update_scheduled_campaign or cancel_scheduled_campaign), " +
   "tags (tag_contacts without, then with its confirm_code) and Aiden's questions (answer_aiden_question): a confirm_code is used only " +
-  "after the user clearly confirms what the preview showed. An answer to Aiden must be the user's own words, passed exactly. " +
+  "after the user clearly confirms what the preview showed. If a campaign or flow draft's confirm_code has expired (15 minutes), " +
+  "call refresh_confirm_code with that draft's campaign_id or flow_id — never draft it again. " +
+  "An answer to Aiden must be the user's own words, passed exactly. " +
   "Never invent figures: if a tool says there is no data, say so. You cannot message individual customers yourself, " +
   "change Aiden's mode, billing, team, keys or settings, or delete anything — point the user to the AiDwar link instead.";
 

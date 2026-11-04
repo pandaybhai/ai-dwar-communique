@@ -412,8 +412,11 @@ describe("flag off: today's Settings, Billing and journey", () => {
     expect(sha(withoutNd(src("components/billing/billing-view.tsx")))).toBe(
       "89aa2f5973575c215bba742c2646bcb4fbac4cd2a92aa1d1ecac79d5b830e038",
     );
+    // Batch 58: re-pinned — an unpaid invoice whose credit notes cover its
+    // total reads "Cancelled (credit note CN/…)" with no Pay button
+    // (cancelled_by from /api/billing/invoices); every other row as before.
     expect(sha(withoutNd(src("components/billing/invoices-panel.tsx")))).toBe(
-      "d9f4f77b1d8359e7a517439d9838170ecc7416a2960c1cce6d8917f781d03a62",
+      "90b30bb59543583110587e708dc393c5892a12c60f53039edaf85fefd88044e0",
     );
     expect(sha(withoutNd(src("components/onboarding/journey-shell.tsx")))).toBe(
       "52d4f39fde47c7aae269757fcfeab40630d97dc81f95d595909079ee96aec933",

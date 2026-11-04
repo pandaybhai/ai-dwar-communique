@@ -237,7 +237,7 @@ describe("(2) one invoice_issued notice per invoice and channel", () => {
     await notify(byNumber.supabase, {
       organizationId: ORG, audience: "client", kind: "invoice_issued", payload: { invoice_number: "AD/2026-27/00013" },
     });
-    const read2 = byNumber.ops.find((o) => o.kind === "select")!;
+    const read2 = byNumber.ops.find((o) => o.table === "billing_notifications" && o.kind === "select")!;
     expect(byNumber.has(read2, "eq", "channel", "whatsapp")).toBe(true);
     expect(byNumber.has(read2, "eq", "payload->>invoice_number", "AD/2026-27/00013")).toBe(true);
   });

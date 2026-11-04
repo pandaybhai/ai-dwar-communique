@@ -31,11 +31,21 @@ export const Route = createFileRoute("/api/billing/invoices")({
               .limit(60),
             getAutoPay(auth.supabase, auth.organizationId),
           ]);
+          // Batch 58: credit notes read with the member's own client
+          // (credit_notes_select = billing.view); a cancelled invoice shows
+          // as cancelled and offers no payment link.
+          const found = (invoices ?? []) as Record<string, unknown>[];
+          const { loadCreditCover } = await import("@/lib/credit-notes.server");
+          const { cancellingNotes } = await import("@/lib/invoice-cancel");
+          const cover = await loadCreditCover(auth.supabase, found.map((r) => String(r["id"])));
           // Only the payment link leaves the `sent` blob — delivery internals stay server-side.
-          const rows = ((invoices ?? []) as Record<string, unknown>[]).map((row) => {
+          const rows = found.map((row) => {
             const { sent, ...rest } = row;
-            const payUrl = ((sent as Record<string, unknown> | null)?.["pay_url"] as string) ?? null;
-            return { ...rest, pay_url: payUrl };
+            const cancelledBy = cancellingNotes(row, cover.get(String(row["id"])));
+            const payUrl = cancelledBy
+              ? null
+              : (((sent as Record<string, unknown> | null)?.["pay_url"] as string) ?? null);
+            return { ...rest, pay_url: payUrl, cancelled_by: cancelledBy };
           });
           return Response.json({ invoices: rows, autopay });
         } catch (error) {

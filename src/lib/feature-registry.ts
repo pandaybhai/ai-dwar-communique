@@ -1073,6 +1073,11 @@ export const FEATURES: readonly FeatureManifest[] = [
       "dunning_advanced",
       "dunning_cleared",
       "credit_note_issued",
+      // Batch 58: Cancel invoice (a credit note, wallet off) and the Super
+      // Admin "Internal workspace - don't bill" switch.
+      "invoice_cancelled",
+      "internal_workspace_on",
+      "internal_workspace_off",
       // Batch 23: invoice actions by a super admin, with the actor.
       "invoice_resent",
       "invoice_pdf_regenerated",
@@ -1477,6 +1482,8 @@ export const FEATURES: readonly FeatureManifest[] = [
       "mcp_campaign_cancelled",
       "mcp_contacts_tagged",
       "mcp_question_answered",
+      // Batch 58: a fresh confirm code for an existing draft.
+      "mcp_confirm_code_refreshed",
     ],
     data_tables: [],
   },

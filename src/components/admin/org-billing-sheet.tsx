@@ -28,6 +28,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { callApi } from "@/lib/whatsapp-client";
 import { OrgFeatureControls } from "@/components/admin/org-feature-controls";
+import { InternalWorkspaceCard } from "@/components/admin/internal-workspace-card";
 import { MESSAGE_CATEGORIES, money, rateMoney, ledgerLabel } from "@/lib/billing";
 import { GST_STATES, gstinStateMismatch } from "@/lib/gst-states";
 
@@ -469,6 +470,13 @@ export function OrgBillingSheet({
                   </div>
                 </Section>
               ) : null}
+
+              <Section
+                title="Internal workspace"
+                description="Our own test and demo workspaces: no plan-fee invoices, dunning, billing notices or credit debits. Usage and AI cost are still recorded (shown as internal cost)."
+              >
+                <InternalWorkspaceCard organizationId={organizationId} onChanged={() => void load()} />
+              </Section>
             </TabsContent>
 
             {/* b) Features */}

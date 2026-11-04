@@ -202,7 +202,7 @@ export async function runDunning(
 
   const { data: invoices } = await supabase
     .from("invoices")
-    .select("id, organization_id, invoice_number, total, amount_paid, due_date")
+    .select("id, organization_id, invoice_number, status, total, amount_paid, due_date")
     .in("status", ["issued", "partially_paid"])
     .eq("purpose", "plan_fee")
     .in("kind", ["tax_invoice", "invoice"])
@@ -211,9 +211,27 @@ export async function runDunning(
     .order("due_date", { ascending: true })
     .limit(500);
 
+  // Batch 58: an invoice cancelled by credit notes is owed by nobody, and is
+  // never chased. When the notes can't be read, nobody is chased this run.
+  const overdueRows = (invoices ?? []) as Record<string, unknown>[];
+  let owed: Record<string, unknown>[];
+  try {
+    const { loadCreditCover } = await import("@/lib/credit-notes.server");
+    const { withoutCancelled } = await import("@/lib/invoice-cancel");
+    const cover = await loadCreditCover(
+      supabase,
+      overdueRows.map((r) => String(r["id"])),
+      { strict: true },
+    );
+    owed = withoutCancelled(overdueRows, cover);
+  } catch {
+    counts.skipped += overdueRows.length;
+    return counts;
+  }
+
   // One ladder per workspace, driven by its oldest overdue invoice.
   const oldest = new Map<string, Record<string, unknown>>();
-  for (const row of (invoices ?? []) as Record<string, unknown>[]) {
+  for (const row of owed) {
     const orgId = String(row["organization_id"]);
     if (!oldest.has(orgId)) oldest.set(orgId, row);
   }
@@ -227,6 +245,10 @@ export async function runDunning(
     .not("billing_enabled_at", "is", null)
     .neq("plan_status", "cancelled");
   const eligible = new Set(((eligibleOrgs ?? []) as { id: string }[]).map((o) => o.id));
+  // Batch 58: an internal workspace (Super Admin "don't bill") is never chased,
+  // even if a plan change stamped billing_enabled_at again.
+  const { internalWorkspaceIds } = await import("@/lib/internal-workspace.server");
+  for (const id of await internalWorkspaceIds(supabase, [...eligible])) eligible.delete(id);
 
   const { notify } = await import("@/lib/billing.server");
 

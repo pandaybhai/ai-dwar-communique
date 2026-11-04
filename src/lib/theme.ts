@@ -12,8 +12,17 @@ export const APP_THEME_KEY = "aidwar.theme";
 
 export type ThemeChoice = "light" | "dark" | "system";
 
-/** Applied in the document head before first paint, on /app pages only. */
-export const APP_THEME_SCRIPT = `try{if(location.pathname==="/app"||location.pathname.indexOf("/app/")===0){var d=document.documentElement,t=localStorage.getItem("${APP_THEME_KEY}");d.setAttribute("data-app","");if(t==="dark"||(t==="system"&&matchMedia("(prefers-color-scheme: dark)").matches))d.classList.add("dark")}}catch(e){}`;
+/**
+ * Applied before first paint, on /app pages only. Batch 58: when this browser
+ * last saw Aiden Workspace in the workspace it opens on (the very cache
+ * useDesignAnswer reads while flags load: aidwar.new_design.<org> for
+ * aidwar.active_org), its surface goes on now — data-design="new", no dark
+ * class — exactly what useDesignSurface(true) does a few seconds later, so the
+ * cold load isn't a blank Classic-dark page. data-design-boot marks the guess;
+ * useDesignSurface undoes it if the settled answer is Classic. Classic is
+ * untouched (that cache is never "1" for it).
+ */
+export const APP_THEME_SCRIPT = `try{if(location.pathname==="/app"||location.pathname.indexOf("/app/")===0){var d=document.documentElement,t=localStorage.getItem("${APP_THEME_KEY}"),o=localStorage.getItem("aidwar.active_org");d.setAttribute("data-app","");if(o&&localStorage.getItem("aidwar.new_design."+o)==="1"){d.setAttribute("data-design","new");d.setAttribute("data-design-boot","")}else if(t==="dark"||(t==="system"&&matchMedia("(prefers-color-scheme: dark)").matches))d.classList.add("dark")}}catch(e){}`;
 
 export function readThemeChoice(): ThemeChoice {
   try {

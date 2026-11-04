@@ -3,6 +3,7 @@ import { money } from "@/lib/billing";
 import { isEmailAddress, sendEmail, type EmailMessage, type EmailResult } from "@/lib/email.server";
 import {
   invoiceNoticeSentElsewhere,
+  noticeNoLongerOwed,
   noticeRetryDue,
   pendingNoticeFilter,
   writeNoticeOutcome,
@@ -61,6 +62,19 @@ export async function drainEmailNotices(
         const payload = (row["payload"] ?? {}) as Record<string, unknown>;
         // Out of tries, failed by hand, or still waiting out its backoff.
         if (!noticeRetryDue(row, now())) continue;
+
+        // Batch 58: its invoice was cancelled by credit notes, or its
+        // workspace marked internal, since it was queued: never sent.
+        const settledWhy = await noticeNoLongerOwed(supabase, row);
+        if (settledWhy) {
+          await writeNoticeOutcome(supabase, row["id"] as string, {
+            status: "skipped",
+            error: settledWhy,
+            sent_at: new Date(now()).toISOString(),
+          });
+          counts.skipped += 1;
+          continue;
+        }
 
         // This invoice was already emailed by another row: close this one
         // (Batch 28 — AD/2026-27/00013 was emailed six times). Can't tell →

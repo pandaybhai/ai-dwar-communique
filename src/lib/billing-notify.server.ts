@@ -2,7 +2,7 @@ import { outsideFetch } from "@/lib/outside-call.server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { money } from "@/lib/billing";
 import { normalizePhone } from "@/lib/phone";
-import { STAFF_HANDOFF_TEMPLATE } from "@/lib/handoff-alerts.server";
+import { BILLING_TEMPLATES, type BillingTemplateSpec } from "@/lib/platform-notice-templates";
 
 /**
  * Delivery for queued billing notices.
@@ -13,94 +13,10 @@ import { STAFF_HANDOFF_TEMPLATE } from "@/lib/handoff-alerts.server";
  * silently dropped, and the loop never throws.
  */
 
-export type BillingTemplateSpec = {
-  name: string;
-  body: string;
-  examples: string[];
-  /** Only the invoice notice carries a PDF header. */
-  headerFormat?: "DOCUMENT";
-};
-
-/**
- * The notices, all UTILITY, all with the same three variables so one
- * parameter builder covers every kind: who/what, an amount, and a link or
- * balance.
- */
-export const BILLING_TEMPLATES: BillingTemplateSpec[] = [
-  // Meta rejects a message that begins or ends with a variable, so every body
-  // is wrapped in words.
-  {
-    name: "admin_credit_purchased",
-    body: "Workspace {{1}} just bought {{2}} of credits. Their balance is now {{3}} — no action needed.",
-    examples: ["Sharma Textiles", "₹5,000", "₹6,200"],
-  },
-  {
-    name: "client_credit_purchased",
-    body: "We've added {{2}} of credits to {{1}}. Your balance is now {{3}} — thank you.",
-    examples: ["Sharma Textiles", "₹5,000", "₹6,200"],
-  },
-  {
-    name: "client_topup_requested",
-    body: "Hello {{1}} — a teammate has asked for more credits ({{2}}). You can add them here: {{3}} — thank you.",
-    examples: ["Sharma Textiles", "₹2,000", "https://aidwar.in/app/billing"],
-  },
-  {
-    name: "client_low_credits",
-    body: "Workspace {{1}} is running low on credits — {{2}} left. Top up here: {{3}} — thank you.",
-    examples: ["Sharma Textiles", "₹350", "https://aidwar.in/app/billing"],
-  },
-  {
-    name: "admin_float_low",
-    body: "The Meta float for {{1}} is down to {{2}}. The target is {{3}} — please top it up.",
-    examples: ["Sharma Textiles", "₹800", "₹5,000"],
-  },
-  {
-    name: "client_campaign_approval",
-    body: "A campaign on {{1}} is waiting for your approval. It will cost about {{2}}. Review it here: {{3}} — thank you.",
-    examples: ["Sharma Textiles", "₹4,500", "https://aidwar.in/app/campaigns"],
-  },
-  {
-    name: "admin_topup_due",
-    body: "Workspace {{1}} needs a Meta float top-up of {{2}}. Credits sold: {{3}} — please top it up.",
-    examples: ["Sharma Textiles", "₹4,200", "₹5,000"],
-  },
-  {
-    name: "admin_settle_failed",
-    body: "A payment for {{1}} of {{2}} could not be credited automatically. Please check it here: {{3}} — thank you.",
-    examples: ["Sharma Textiles", "₹2,000", "https://aidwar.in/admin/billing"],
-  },
-  {
-    name: "client_invoice_issued",
-    body: "Hello {{1}} — your invoice for {{2}} is ready. You can view and download it here: {{3}} — thank you.",
-    examples: ["Sharma Textiles", "₹2,950", "https://aidwar.in/app/billing"],
-    headerFormat: "DOCUMENT",
-  },
-  {
-    name: "client_invoice_overdue",
-    body: "Hello {{1}} — an invoice for {{2}} is still unpaid. Please settle it here to keep everything running: {{3}} — thank you.",
-    examples: ["Sharma Textiles", "₹2,950", "https://aidwar.in/app/billing"],
-  },
-  {
-    name: "client_payment_failed",
-    body: "Hello {{1}} — your auto-pay of {{2}} didn't go through. You can pay it here: {{3}} — thank you.",
-    examples: ["Sharma Textiles", "₹2,950", "https://aidwar.in/app/billing"],
-  },
-  {
-    name: "client_trial_ending",
-    body: "Your AiDwar trial for {{1}} ends in {{2}} days. Choose a plan at {{3}} to keep Aiden working — nothing is deleted.",
-    examples: ["Sharma Textiles", "3", "aidwar.in/app/billing"],
-  },
-  {
-    // AI provider trouble (credit/quota/outage, or the backup answering).
-    // Raised at most once an hour by ai-fallback.server.ts.
-    name: "admin_ai_provider_alert",
-    body: "AiDwar AI alert: {{1}}. Right now {{2}}. Details are here: {{3}} — please check.",
-    examples: ["Lovable AI gateway is out of credit or quota", "Aiden is answering on the anthropic backup", "https://aidwar.in/admin/ai"],
-  },
-  // Batch 21: staff hand-off alert outside the 24-hour window (sent by handoff-alerts.server.ts).
-  STAFF_HANDOFF_TEMPLATE,
-];
-
+// Batch 58: the notice templates live in platform-notice-templates.ts (no
+// server imports), so the campaign wizard and MCP's list_templates can leave
+// AiDwar's own notices out with the very same list.
+export { BILLING_TEMPLATES, type BillingTemplateSpec } from "@/lib/platform-notice-templates";
 /** audience:kind -> template name. Anything unmapped stays an in-app notice. */
 const TEMPLATE_FOR: Record<string, string> = {
   "admin:credits_added": "admin_credit_purchased",
@@ -744,6 +660,47 @@ async function topupText(
 const NOTICE_CLAIM_MS = 10 * 60_000;
 
 /** Sends up to `limit` pending notices. One bad notice never stops the rest. */
+/**
+ * Batch 58: why a queued client billing notice is no longer owed — its
+ * invoice is cancelled by credit notes ("invoice_cancelled"), or its
+ * workspace is internal ("internal_workspace") — else null. A failed read
+ * answers null: the notice goes as it would have before.
+ */
+export async function noticeNoLongerOwed(
+  supabase: SupabaseClient,
+  row: Record<string, unknown>,
+): Promise<string | null> {
+  if (row["audience"] !== "client") return null;
+  const kind = String(row["kind"] ?? "");
+  const orgId = (row["organization_id"] as string | null) ?? null;
+  try {
+    const { INTERNAL_SKIPPED_NOTICE_KINDS, isInternalWorkspace } = await import(
+      "@/lib/internal-workspace.server"
+    );
+    if (orgId && INTERNAL_SKIPPED_NOTICE_KINDS.has(kind) && (await isInternalWorkspace(supabase, orgId))) {
+      return "internal_workspace";
+    }
+    const invoiceId = (row["payload"] as Record<string, unknown> | null)?.["invoice_id"];
+    if ((kind === "invoice_issued" || kind === "invoice_overdue") && invoiceId) {
+      const { data: invoice, error } = await supabase
+        .from("invoices")
+        .select("id, status, total")
+        .eq("id", String(invoiceId))
+        .maybeSingle();
+      if (error || !invoice) return null;
+      const { loadCreditCover } = await import("@/lib/credit-notes.server");
+      const { cancellingNotes } = await import("@/lib/invoice-cancel");
+      const cover = await loadCreditCover(supabase, [String(invoiceId)], { strict: true });
+      if (cancellingNotes(invoice as Record<string, unknown>, cover.get(String(invoiceId)))) {
+        return "invoice_cancelled";
+      }
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 export async function drainBillingNotifications(
   supabase: SupabaseClient,
   limit = 50,
@@ -818,6 +775,14 @@ export async function drainBillingNotifications(
       }
 
       const kind = String(row["kind"]);
+      // Batch 58: a notice queued before its invoice was cancelled by credit
+      // notes, or before its workspace was marked internal, is never sent.
+      const settledWhy = await noticeNoLongerOwed(supabase, row);
+      if (settledWhy) {
+        await mark(row, "skipped", settledWhy);
+        counts.skipped += 1;
+        continue;
+      }
       if (kind === "invoice_issued" && (row["payload"] as Record<string, unknown> | null)?.["invoice_id"]) {
         // The invoice as it stands now: already on the buyer's WhatsApp (a
         // super admin's resend went first) → never a second copy; otherwise

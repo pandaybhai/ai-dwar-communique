@@ -28,6 +28,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { normalizePhone } from "@/lib/phone";
 import { DEFAULT_BUSINESS_HOURS, isBusinessOpen, type BusinessHours } from "@/lib/flow-graph";
 import type { HandoffAlertResult } from "@/lib/ai-outcome";
+import { STAFF_HANDOFF_TEMPLATE } from "@/lib/platform-notice-templates";
 
 export const MAX_ALERT_PHONES = 2;
 export const REMIND_AFTER_MS = 30 * 60_000;
@@ -144,19 +145,8 @@ export type AlertOutcome = {
   email_error?: string;
 };
 
-/**
- * Batch 21: the staff alert as an approved UTILITY template, for a staff
- * number outside WhatsApp's 24-hour window with the platform number (free
- * text only arrives inside it). Same shape as the platform's notice
- * templates (billing-notify BILLING_TEMPLATES): Meta rejects a body that
- * starts or ends with a variable, so it is wrapped in words. Never customer
- * reply text: it goes to staff.
- */
-export const STAFF_HANDOFF_TEMPLATE = {
-  name: "staff_handoff_alert",
-  body: "AiDwar alert for {{1}}: {{2}} is waiting for a person in the Inbox because {{3}}. Open the Inbox here: {{4}} — Aiden has stepped back on this chat until your team replies.",
-  examples: ["Sharma Textiles", "Asha (+91 98765 43210)", "a customer asked to talk to a person", "https://aidwar.in/app/inbox"],
-};
+// Batch 58: defined in platform-notice-templates.ts (client-safe), re-exported here.
+export { STAFF_HANDOFF_TEMPLATE };
 export const INBOX_LINK = "https://aidwar.in/app/inbox";
 
 /** A template variable: one line, no tabs or runs of spaces (Meta refuses them), capped. */

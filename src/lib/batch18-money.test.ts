@@ -1084,6 +1084,9 @@ describe("(9) small money fixes", () => {
     const r = c.recipients[0]!;
     r["status"] = "delivered";
     r["replied_at"] = null;
+    // Batch 58: a reply counts only after the campaign message was sent.
+    const sent = db.insert("messages", { organization_id: c.orgId, direction: "outbound", created_at: new Date(Date.now() - 60_000).toISOString() });
+    r["message_id"] = sent["id"];
     db.hook = async () => {
       await new Promise((res) => setTimeout(res, Math.random() * 3));
       return undefined;

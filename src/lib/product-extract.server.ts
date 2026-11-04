@@ -677,6 +677,61 @@ export function looksLikeLegalClause(title: string | null | undefined): boolean 
 }
 
 /**
+ * Batch 58: the shop's own information pages — contact, about, FAQ, help,
+ * careers, blog / news, cancellation — sell nothing either. Matched only as
+ * the page's first path segment or the one after pages/page/info (Shopify's
+ * /pages/contact, WooCommerce's /contact-us/), so a product or a shelf that
+ * merely contains such a word (/collections/support/…, /products/help-desk-
+ * bell) is never mistaken for one.
+ */
+const INFO_SEGMENT_RE =
+  /^(?:contact(?:[-_]?us)?|contacts|get[-_]in[-_]touch|about(?:[-_]?us)?|our[-_]story|who[-_]we[-_]are|faqs?|frequently[-_]asked[-_]questions|help(?:[-_]?cent(?:er|re))?|careers?|jobs|work[-_]with[-_]us|blogs?|news|press|articles|cancellations?(?:[-_]and[-_]\w+)?)$/i;
+
+/**
+ * A title that is only "Contact us", "About us", "FAQ", "Careers", "Blog"…
+ * (before a " | Shop" or " – Shop" tail). Words that can be a product's own
+ * name ("Press", "News") are matched by address only.
+ */
+const INFO_TITLE_RE =
+  /^\s*(?:contact(?:\s+us)?|get\s+in\s+touch|about(?:\s+us)?|our\s+story|faqs?|frequently\s+asked\s+questions|help(?:\s+cent(?:er|re))?|careers?|work\s+with\s+us|blogs?|cancellations?(?:\s+(?:and|&)\s+\w+)?)\s*(?:$|[|–—:·-])/i;
+
+/** True when the page's address is one of the shop's information pages. */
+export function isInfoPageUrl(pageUrl: string): boolean {
+  try {
+    const segments = new URL(pageUrl).pathname.split("/").filter(Boolean).map((s) => decodeURIComponent(s));
+    if (segments.length === 0) return false;
+    if (INFO_SEGMENT_RE.test(segments[0]!)) return true;
+    const pagesAt = segments.findIndex((s) => /^(?:pages?|info)$/i.test(s));
+    return pagesAt >= 0 && pagesAt + 1 < segments.length && INFO_SEGMENT_RE.test(segments[pagesAt + 1]!);
+  } catch {
+    return false;
+  }
+}
+
+/** True when the address alone names a legal / policy page (any path segment). */
+export function isLegalPageUrl(pageUrl: string): boolean {
+  try {
+    const segments = new URL(pageUrl).pathname.split("/").filter(Boolean);
+    return segments.some((s) => LEGAL_SEGMENT_RE.test(decodeURIComponent(s)));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Batch 58: any page that is never a product page — legal / policy pages
+ * (isLegalPage) and the shop's information pages (contact, about, FAQ, help,
+ * careers, blog, cancellation), by address, title or main heading.
+ */
+export function isNonProductPage(pageUrl: string, html: string): boolean {
+  if (isLegalPage(pageUrl, html) || isInfoPageUrl(pageUrl)) return true;
+  const docTitle = pageTitle(html) ?? "";
+  if (INFO_TITLE_RE.test(docTitle)) return true;
+  const h1 = decode((/<h1\b[^>]*>([\s\S]*?)<\/h1>/i.exec(html)?.[1] ?? "").replace(/<[^>]+>/g, " "));
+  return INFO_TITLE_RE.test(h1);
+}
+
+/**
  * True for a terms / privacy / refund / shipping-policy page: products are
  * never read off one (its numbered clause headings and amounts look like a
  * product with a price).
@@ -709,7 +764,7 @@ export type ExtractContext = {
  * raw HTML our own fetch gets, with no AI and no paid reader.
  */
 export function structuredProduct(html: string, pageUrl: string): ProductDraft | null {
-  if (!html || html.length < 200 || isLegalPage(pageUrl, html)) return null;
+  if (!html || html.length < 200 || isNonProductPage(pageUrl, html)) return null;
   const draft = fromJsonLd(html, pageUrl) ?? fromOpenGraph(html, pageUrl);
   if (!draft || !draft.title || looksLikeLegalClause(draft.title)) return null;
   return draft;
@@ -721,8 +776,9 @@ export function extractProduct(
   context: ExtractContext = {},
 ): ProductDraft | null {
   if (!html || html.length < 200) return null;
-  // Terms, privacy, refund and shipping policies sell nothing.
-  if (isLegalPage(pageUrl, html)) return null;
+  // Terms, privacy, refund and shipping policies sell nothing; nor do the
+  // contact, about, FAQ, help, careers, blog and cancellation pages (Batch 58).
+  if (isNonProductPage(pageUrl, html)) return null;
   const draft =
     fromJsonLd(html, pageUrl) ?? fromOpenGraph(html, pageUrl) ?? fromPageShape(html, pageUrl);
   if (!draft || !draft.title) return null;
@@ -898,6 +954,16 @@ export async function saveCrawledProducts(
 
   let saved = 0;
   for (const draft of unique.values()) {
+    // Batch 58: the last check before any crawled product is written, whatever
+    // path found it — never one from a legal/policy or information page, and
+    // never a numbered clause heading. An existing row is left as it is
+    // (nothing live is deleted by code).
+    if (
+      looksLikeLegalClause(draft.title) ||
+      [draft.productUrl, draft.externalId].some((u) => u && (isLegalPageUrl(u) || isInfoPageUrl(u)))
+    ) {
+      continue;
+    }
     const row = {
       organization_id: organizationId,
       source: CRAWL_SOURCE,

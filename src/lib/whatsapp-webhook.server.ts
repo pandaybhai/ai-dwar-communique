@@ -676,30 +676,52 @@ export const STATUS_ROW_WAIT_MS = 10 * 60_000;
 const CHARGED_SYNC_EVERY_MS = 15_000;
 const chargedSyncedAt = new Map<string, number>();
 
-/** Counts one reply per contact per campaign for campaigns sent in the last 7 days. */
+/**
+ * Counts one reply per contact per campaign. Batch 58: only for a recipient
+ * whose campaign message was delivered (status delivered or read — a reply
+ * can never outnumber deliveries), and only for a customer message that came
+ * after that campaign message was sent (its messages row) and within
+ * REPLY_WINDOW_MS of it. "delivered 0, replied 1" came from a recipient still
+ * at 'sent' (its delivered status was never processed) and from a window
+ * measured from when the recipient was queued, not sent.
+ */
 export async function applyCampaignReply(
   supabase: SupabaseClient,
   organizationId: string,
   contactId: string,
+  inboundAt: string | null = null,
 ): Promise<void> {
-  const since = new Date(Date.now() - REPLY_WINDOW_MS).toISOString();
+  const inboundMs = inboundAt && Number.isFinite(Date.parse(inboundAt)) ? Date.parse(inboundAt) : Date.now();
+  // A recipient is queued before it is sent, so the queue time bounds the search.
+  const since = new Date(inboundMs - REPLY_WINDOW_MS).toISOString();
   const { data: recipients } = await supabase
     .from("campaign_recipients")
-    .select("id, campaign_id, replied_at, created_at")
+    .select("id, campaign_id, replied_at, created_at, message_id")
     .eq("organization_id", organizationId)
     .eq("contact_id", contactId)
     .gte("created_at", since)
-    .in("status", ["sent", "delivered", "read"])
+    .in("status", REPLY_COUNTS_FOR_STATUSES)
     .order("created_at", { ascending: false })
     .limit(5);
 
-  for (const r of (recipients ?? []) as Array<Record<string, unknown>>) {
-    if (r["replied_at"]) continue;
+  const open = ((recipients ?? []) as Array<Record<string, unknown>>).filter((r) => !r["replied_at"] && r["message_id"]);
+  if (open.length === 0) return;
+  const { data: sentRows, error: sentError } = await supabase
+    .from("messages")
+    .select("id, created_at")
+    .in("id", open.map((r) => String(r["message_id"])));
+  if (sentError) throw new Error(sentError.message);
+  const sentAt = new Map(
+    ((sentRows ?? []) as Array<Record<string, unknown>>).map((m) => [String(m["id"]), Date.parse(String(m["created_at"] ?? ""))]),
+  );
+
+  for (const r of open) {
+    if (!replyCounts(sentAt.get(String(r["message_id"])) ?? null, inboundMs)) continue;
     // Only the update that sets replied_at counts it: two messages from the
     // same customer at once can't both bump the counter.
     const { data: marked, error: markError } = await supabase
       .from("campaign_recipients")
-      .update({ replied_at: new Date().toISOString() })
+      .update({ replied_at: new Date(inboundMs).toISOString() })
       .eq("id", r["id"] as string)
       .is("replied_at", null)
       .select("id");
@@ -710,6 +732,15 @@ export async function applyCampaignReply(
       p_replied: 1,
     });
   }
+}
+
+/** Batch 58: the recipient statuses a reply may count for (delivered, or read which implies it). */
+export const REPLY_COUNTS_FOR_STATUSES = ["delivered", "read"];
+
+/** Batch 58: a customer message counts as a reply only after the send and within the window. */
+export function replyCounts(sentAtMs: number | null, inboundMs: number): boolean {
+  if (sentAtMs === null || !Number.isFinite(sentAtMs)) return false;
+  return inboundMs > sentAtMs && inboundMs - sentAtMs <= REPLY_WINDOW_MS;
 }
 
 type AnyRecord = Record<string, unknown>;
@@ -2047,7 +2078,7 @@ export async function processWebhookPayload(
                   .eq("id", conversation.id),
               );
               later(windowReady);
-              afterReply.push(() => applyCampaignReply(supabase, orgId, contact.id));
+              afterReply.push(() => applyCampaignReply(supabase, orgId, contact.id, occurredAt));
               // Batch 32: the customer's file is copied into chat-media once
               // the reply is out (the Meta id expires after 7 days). Awaited
               // with the rest before the event closes; a failure leaves
