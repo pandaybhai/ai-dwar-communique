@@ -618,6 +618,7 @@ function guidePages(): Page[] {
   const upsert = endpoint("contact-upsert");
   const media = endpoint("media-link");
   const received = WEBHOOK_EVENTS.find((x) => x.name === "message.received")!;
+  const integratorGuides = integrator();
   const guide = (
     slug: string,
     title: string,
@@ -703,6 +704,7 @@ const res = await fetch("${BASE_URL}/messages/template", {
         },
       ],
     ),
+    integratorGuides.recipe,
     guide(
       "reply-inside-24-hours",
       "Reply to customers inside 24 hours",
@@ -868,14 +870,14 @@ const res = await fetch("${BASE_URL}/messages/template", {
             {
               kind: "list",
               items: [
-                "**4xx** — the request can't be done as it is. Read `error` (for people) and `code` (for programs), fix it, send again. Nothing was sent.",
-                "**429** — too many requests this minute. Wait the seconds in `Retry-After`.",
-                "**5xx** — try again with the same idempotency key. It is never sent twice.",
+                "**4xx** — the request can't be done as it is. Read `error` (for people) and `code` (for programs), fix it, send again. Nothing was sent. Never retry a 4xx unchanged — it fails the same way — except 429 and `409 idempotency_in_progress` (below).",
+                "**429** — too many requests this minute. Wait the seconds in `Retry-After`, then retry with the same idempotency key.",
+                "**5xx, a timeout or no answer at all** — try again with the same idempotency key. It is never sent twice.",
               ],
             },
             {
               kind: "p",
-              text: `Every code, with what to do, is in [Errors](${DOCS_ROOT}/errors).`,
+              text: `Every code, with what to do, is in [Errors](${DOCS_ROOT}/errors). WhatsApp's own numbered errors (131026 and the rest) are in [Common WhatsApp errors](${guidePath("whatsapp-errors")}).`,
             },
           ],
           code: {
@@ -902,36 +904,730 @@ const res = await fetch("${BASE_URL}/messages/template", {
               kind: "p",
               text: `Give every send an \`idempotency_key\` (or the \`Idempotency-Key\` header) — your invoice or order number works well. Within ${IDEMPOTENCY_WINDOW_HOURS} hours the same key gets the first answer back with \`Idempotent-Replayed: true\`, and the customer gets one message. [More on idempotency](${DOCS_ROOT}/idempotency).`,
             },
+            {
+              kind: "table",
+              head: ["Answer", "Retry?", "How"],
+              rows: [
+                [
+                  "No answer, a timeout, a dropped connection",
+                  "Yes",
+                  `Same body, same key. Wait ${RETRY_WAITS_SECONDS.map((s) => `${s} s`).join(", then ")} between tries; then queue it and try again later (within ${IDEMPOTENCY_WINDOW_HOURS} hours, still the same key).`,
+                ],
+                [
+                  "**429** `rate_limited`",
+                  "Yes",
+                  "Wait the seconds in `Retry-After`, then the same body and key.",
+                ],
+                [
+                  "**409** `idempotency_in_progress`",
+                  "Yes",
+                  "The first try is still being sent: wait the `Retry-After` seconds and ask again with the same key. You get its answer.",
+                ],
+                [
+                  "**500**, **503**, **502** `whatsapp_upload_failed`",
+                  "Yes",
+                  `Same body and key, waiting ${RETRY_WAITS_SECONDS.map((s) => `${s} s`).join(", ")}.`,
+                ],
+                [
+                  "**502** `whatsapp_rejected`",
+                  "No",
+                  `WhatsApp refused this message (\`message_id\` has its reason). The same key gives this answer back, it doesn't send again. Fix the cause ([Common WhatsApp errors](${guidePath("whatsapp-errors")})), then [resend with a new key](${DOCS_ROOT}/idempotency#resend).`,
+                ],
+                [
+                  "Any other **4xx**",
+                  "No",
+                  "Fix what `error` says. When the error says nothing was sent, the key is free again: send the corrected request with it.",
+                ],
+              ],
+            },
           ],
           code: {
             title: "Retry with backoff",
-            samples: [
-              code(
-                "node",
-                "Node.js",
-                `async function sendOnce(body) {
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    const res = await fetch("${BASE_URL}/messages/template", {
-      method: "POST",
-      headers: {
-        Authorization: \`Bearer \${process.env.AIDWAR_API_KEY}\`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body), // the same idempotency_key every time
-    });
-    if (res.status < 500 && res.status !== 429) return res.json();
-    const wait = Number(res.headers.get("retry-after") ?? 2 ** attempt);
-    await new Promise((r) => setTimeout(r, wait * 1000));
-  }
-  throw new Error("Still failing; try again later with the same idempotency_key.");
-}`,
-              ),
-            ],
+            samples: [code("node", "Node.js", RETRY_SAMPLE)],
           },
+        },
+        {
+          id: "resend",
+          title: "Resend on purpose",
+          blocks: [
+            {
+              kind: "p",
+              text: `A retry with the same key never sends again. To send the same message again on purpose — the customer lost the invoice, or you fixed their number — use a **new** key, such as \`${INVOICE_KEY}-r1\`, then \`${INVOICE_KEY}-r2\`. [How resending works](${DOCS_ROOT}/idempotency#resend).`,
+            },
+          ],
         },
       ],
     ),
+    ...integratorGuides.rest,
   ];
+}
+
+// ------------------------------------------------------------ integrator guides (resend, delivery, errors, rules, the invoice recipe)
+
+/** The waits between tries the docs recommend (seconds). */
+export const RETRY_WAITS_SECONDS = [1, 5, 30] as const;
+
+/** The invoice the integrator examples send (a made-up number). */
+export const INVOICE_NUMBER = "ZADM2611A002";
+export const INVOICE_KEY = `inv-${INVOICE_NUMBER}`;
+const RESEND_KEY = `${INVOICE_KEY}-r1`;
+const STAFF_NUMBER = "+918000000001";
+
+/** The recipe's request: an invoice PDF by link, its number as the key. */
+export const INVOICE_RECIPE_BODY: Record<string, unknown> = {
+  to: "+919812345678",
+  template_name: "invoice_document",
+  document: {
+    url: `https://billing.example.com/invoices/${INVOICE_NUMBER}.pdf`,
+    filename: `${INVOICE_NUMBER}.pdf`,
+  },
+  body_params: ["Asha", INVOICE_NUMBER, "₹2,500.00"],
+  idempotency_key: INVOICE_KEY,
+};
+
+/** The same invoice sent again on purpose: a new key. */
+export const INVOICE_RESEND_BODY: Record<string, unknown> = {
+  ...INVOICE_RECIPE_BODY,
+  idempotency_key: RESEND_KEY,
+};
+
+/** Meta's page listing every WhatsApp error code. */
+export const META_ERROR_CODES_URL =
+  "https://developers.facebook.com/docs/whatsapp/cloud-api/support/error-codes";
+
+/**
+ * WhatsApp's own errors integrators meet most, as Meta's error-code page
+ * names them. Every code here is one our code knows (batch64-docs.test.ts
+ * checks each against wa-reachability's reasons and the dispatcher's
+ * throughput codes); `ours` are the API's own codes that catch the same
+ * problem before anything is sent.
+ */
+export const WHATSAPP_ERRORS: Array<{
+  code: string;
+  title: string;
+  means: Inline;
+  todo: Inline;
+  ours: string[];
+}> = [
+  {
+    code: "131026",
+    title: "Message undeliverable",
+    means:
+      "The number isn't on WhatsApp, its WhatsApp is too old, or its owner hasn't accepted WhatsApp's latest terms.",
+    todo: 'Check the number with the customer (country code, no leading 0). The next send still goes, but for 30 days its `202` carries `warning: "number_not_on_whatsapp_recently"` — until a message to that number is delivered.',
+    ours: [],
+  },
+  {
+    code: "131049",
+    title: "Not delivered to maintain healthy ecosystem engagement",
+    means:
+      "WhatsApp held back a **marketing** template for this customer, to limit how many marketing messages one person gets. The number is fine.",
+    todo: "Don't retry at once: try again another day. Send invoices and order updates as **utility** templates.",
+    ours: [],
+  },
+  {
+    code: "131047",
+    title: "Re-engagement message",
+    means:
+      "More than 24 hours since the customer last wrote, so a free-form message can't go. The session endpoint checks this first and answers `409 window_closed`.",
+    todo: `Send an approved template instead ([the 24-hour window](${DOCS_ROOT}/24-hour-window)).`,
+    ours: ["window_closed"],
+  },
+  {
+    code: "132000",
+    title: "Number of parameters does not match the expected number of params",
+    means:
+      "The values don't fit the template's `{{1}}`, `{{2}}`…. AiDwar checks the count first (`400 param_count_mismatch`); 132000 means the template changed on WhatsApp's side since.",
+    todo: "Open the template in Templates and send exactly as many `body_params` as it has placeholders.",
+    ours: ["param_count_mismatch"],
+  },
+  {
+    code: "132001",
+    title: "Template does not exist",
+    means:
+      "No approved template with this name in this language. AiDwar checks first (`400 template_not_found`, `template_not_approved`, `language_required`).",
+    todo: "Check the template's exact name and `language` in Templates, and that it is approved.",
+    ours: ["template_not_found", "template_not_approved", "language_required"],
+  },
+  {
+    code: "131053",
+    title: "Media upload error",
+    means:
+      "WhatsApp couldn't take the file. AiDwar downloads your link and hands the file to WhatsApp itself, so a link that isn't public or a file that's too big is refused before sending (`400 document_unreachable`, `413 document_too_large`, `502 whatsapp_upload_failed`).",
+    todo: `Check the PDF opens normally, is under ${MAX_DOCUMENT_MB} MB and its link works without a login ([file rules](${guidePath("numbers-values-and-files")}#files)).`,
+    ours: ["document_unreachable", "document_too_large", "whatsapp_upload_failed"],
+  },
+  {
+    code: "131056",
+    title: "(Business Account, Consumer Account) pair rate limit hit",
+    means: "Too many messages from your number to this one customer in a short time.",
+    todo: "Wait a minute or more before the next message to this customer, then resend with a new key.",
+    ours: [],
+  },
+  {
+    code: "130429",
+    title: "Rate limit hit",
+    means: `Your WhatsApp number reached WhatsApp's own messages-per-second limit. (AiDwar's own limit, ${RATE_PER_KEY_PER_MIN} requests a minute per key, is \`429 rate_limited\`.)`,
+    todo: "Slow down, then resend with a new key. Sending to many customers at once? Use a campaign: it is sent at WhatsApp's pace.",
+    ours: [],
+  },
+];
+
+/** The failed delivery the docs show (the shape webhookBody writes). */
+export const FAILED_DELIVERY_EXAMPLE = {
+  event: "message.failed",
+  message_id: "6f1c2b0e-3c4d-4f7a-9a51-2f0d8c1e7b42",
+  idempotency_key: INVOICE_KEY,
+  to: "+919812345678",
+  status: "failed",
+  error: { code: "131026", message: "Message undeliverable." },
+  timestamp: "2026-11-04T10:00:04.000Z",
+};
+
+/** The same failure from GET /api/v1/messages/{message_id}. */
+export const FAILED_STATUS_EXAMPLE = {
+  message_id: FAILED_DELIVERY_EXAMPLE.message_id,
+  status: "failed",
+  to: "+919812345678",
+  template_name: "invoice_document",
+  idempotency_key: INVOICE_KEY,
+  wamid: "wamid.HBgM…",
+  error: FAILED_DELIVERY_EXAMPLE.error,
+  created_at: "2026-11-04T10:00:00.000Z",
+  sent_at: "2026-11-04T10:00:02.000Z",
+  delivered_at: null,
+  read_at: null,
+  failed_at: "2026-11-04T10:00:04.000Z",
+  updated_at: "2026-11-04T10:00:04.000Z",
+};
+
+/** What `to` does with the numbers integrators send (batch64-docs.test.ts runs each through the check). */
+export const PHONE_EXAMPLES: Array<{ input: string; sentTo: string | null; note: Inline }> = [
+  { input: "+919812345678", sentTo: "+919812345678", note: "Right: `+`, country code, number." },
+  { input: "919812345678", sentTo: "+919812345678", note: "Also right: the `+` is optional." },
+  {
+    input: "+91 98123-45678",
+    sentTo: "+919812345678",
+    note: "Accepted: spaces, dashes, dots and brackets are removed.",
+  },
+  {
+    input: "9812345678",
+    sentTo: "+9812345678",
+    note: "**Not refused, but wrong.** Without its country code the number is read as if it started with one (here +98), so it goes to someone else or fails. Add `91`.",
+  },
+  {
+    input: "09812345678",
+    sentTo: "+09812345678",
+    note: "**Not refused, but it can't be delivered** (no country code starts with 0): you get `502 whatsapp_rejected` or `message.failed`. Drop the 0 and add `91`.",
+  },
+  { input: "+91 98123", sentTo: null, note: "Refused, `400 invalid_to`: fewer than 8 digits." },
+  {
+    input: "+91981234567812345",
+    sentTo: null,
+    note: "Refused, `400 invalid_to`: more than 15 digits.",
+  },
+];
+
+/** What the customer sees as the PDF's name (cleanFilename). */
+export const FILENAME_EXAMPLES: Array<{ input: string; shown: string }> = [
+  { input: `${INVOICE_NUMBER}.pdf`, shown: `${INVOICE_NUMBER}.pdf` },
+  { input: INVOICE_NUMBER, shown: `${INVOICE_NUMBER}.pdf` },
+  { input: `C:\\bills\\2026\\${INVOICE_NUMBER}.pdf`, shown: `${INVOICE_NUMBER}.pdf` },
+  { input: "", shown: "document.pdf" },
+];
+
+const RETRY_SAMPLE = `const WAITS = [${RETRY_WAITS_SECONDS.join(", ")}]; // seconds between tries
+
+// Send once, safely: the same body (and so the same idempotency_key) on every try.
+async function sendOnce(body) {
+  for (let attempt = 0; ; attempt += 1) {
+    let res = null;
+    let answer = {};
+    try {
+      res = await fetch("${BASE_URL}/messages/template", {
+        method: "POST",
+        headers: {
+          Authorization: \`Bearer \${process.env.AIDWAR_API_KEY}\`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(30_000),
+      });
+      answer = await res.json().catch(() => ({}));
+    } catch {
+      // A timeout or a dropped connection: it may have gone, so retry with the same key.
+    }
+    if (res && res.ok) return answer; // 202 { message_id, status: "queued", … }
+    const retry =
+      !res ||
+      res.status === 429 ||
+      answer.code === "idempotency_in_progress" ||
+      (res.status >= 500 && answer.code !== "whatsapp_rejected");
+    if (!retry || attempt >= WAITS.length) {
+      const error = new Error(res ? \`\${res.status} \${answer.code}: \${answer.error}\` : "No answer");
+      error.answer = answer;
+      throw error; // a 4xx: fix it. Still 5xx: queue it, retry later with the same key.
+    }
+    const wait = Number(res?.headers.get("retry-after")) || WAITS[attempt];
+    await new Promise((r) => setTimeout(r, wait * 1000));
+  }
+}`;
+
+/** The recipe's full Node.js example (batch64-docs.test.ts runs it against a stand-in server). */
+export const INVOICE_RECIPE_NODE = `${RETRY_SAMPLE}
+
+// Call this from your server once an invoice is final and its PDF exists.
+// resend = 0 for the first send; 1, 2… when someone presses "Send again".
+async function sendInvoice(invoice, resend = 0) {
+  const key = resend ? \`inv-\${invoice.number}-r\${resend}\` : \`inv-\${invoice.number}\`;
+  const sent = await sendOnce({
+    to: invoice.customerPhone, // "+91…": always with the country code
+    template_name: "invoice_document",
+    document: { url: invoice.pdfUrl, filename: \`\${invoice.number}.pdf\` },
+    body_params: [invoice.customerName, invoice.number, invoice.total],
+    idempotency_key: key,
+    // cc: ["${STAFF_NUMBER}"], // or leave it out to use Settings' default copy numbers
+  });
+  // Keep sent.message_id with the invoice: delivery updates name it.
+  if (sent.warning === "number_not_on_whatsapp_recently")
+    console.warn(\`\${invoice.number}: WhatsApp recently said this number can't receive messages. Check it with the customer.\`);
+  for (const copy of sent.copies ?? [])
+    if (copy.status !== "queued") console.warn(\`Copy to \${copy.to}: \${copy.code ?? copy.status}\`);
+  return sent;
+}
+
+// Test with your own WhatsApp number first, never with a number from these docs.
+const sent = await sendInvoice({
+  number: "${INVOICE_NUMBER}",
+  customerPhone: process.env.TEST_WHATSAPP_NUMBER,
+  customerName: "Asha",
+  total: "₹2,500.00",
+  pdfUrl: "https://billing.example.com/invoices/${INVOICE_NUMBER}.pdf",
+});
+console.log(sent.message_id, sent.status); // "…", "queued" — accepted, not yet delivered`;
+
+/** The recipe's webhook side: delivery and failure, by message_id. */
+const INVOICE_WEBHOOK_NODE = `import express from "express";
+import { isFromAiDwar } from "./verify.js"; // the signature check from "Verify webhook signatures"
+
+const app = express();
+app.post("/aidwar/webhook", express.raw({ type: "application/json" }), async (req, res) => {
+  const raw = req.body.toString("utf8");
+  if (!isFromAiDwar(raw, req.headers, process.env.AIDWAR_WEBHOOK_SECRET)) return res.sendStatus(401);
+  res.sendStatus(200); // answer at once; do the work after
+  const e = JSON.parse(raw);
+  if (e.cc_of) return; // a staff copy, not the customer's message
+  // Find the invoice by the message_id you kept from the 202.
+  if (e.event === "message.delivered" || e.event === "message.read")
+    await markInvoice(e.message_id, "delivered");
+  if (e.event === "message.failed")
+    await markInvoice(e.message_id, "failed", \`\${e.error?.code}: \${e.error?.message}\`);
+});
+app.listen(3000);`;
+
+function integratorGuide(
+  slug: string,
+  title: string,
+  nav: string,
+  description: string,
+  sections: Section[],
+): Page {
+  return {
+    id: `guide-${slug}`,
+    path: guidePath(slug),
+    kind: "guide",
+    eyebrow: "Guide",
+    title,
+    nav,
+    description,
+    sections,
+  };
+}
+
+function integrator(): { recipe: Page; rest: Page[] } {
+  const send = endpoint("send-template");
+  const status = endpoint("message-status");
+  const failedJson = code("json", "message.failed", json(FAILED_DELIVERY_EXAMPLE));
+  const statusesTable: Block = {
+    kind: "table",
+    head: ["Status", "What it means", "Webhook event"],
+    rows: [
+      ["`queued`", "WhatsApp accepted it; no report yet. This is what the `202` says.", "—"],
+      [
+        "`sent`",
+        "It reached WhatsApp's servers.",
+        `[\`message.sent\`](${eventPath("message.sent")})`,
+      ],
+      [
+        "`delivered`",
+        "It reached the customer's phone.",
+        `[\`message.delivered\`](${eventPath("message.delivered")})`,
+      ],
+      [
+        "`read`",
+        "The customer opened it (only when they share read receipts).",
+        `[\`message.read\`](${eventPath("message.read")})`,
+      ],
+      [
+        "`failed`",
+        "WhatsApp couldn't deliver it; `error.code` and `error.message` say why. Final for this message.",
+        `[\`message.failed\`](${eventPath("message.failed")})`,
+      ],
+    ],
+  };
+
+  const recipe = integratorGuide(
+    "send-every-invoice-automatically",
+    "Recipe: send every invoice automatically",
+    "Send every invoice automatically",
+    "Wire your billing software to send each invoice PDF on WhatsApp once, with copies to staff, and know whether it arrived.",
+    [
+      {
+        id: "where",
+        title: "Where to call it",
+        blocks: [
+          {
+            kind: "list",
+            ordered: true,
+            items: [
+              "**Once, when the invoice is final** and its PDF exists — in the step that saves or finalises the invoice, or in the background job it starts. Not when someone opens, prints or edits it.",
+              "**From your server**, never from the browser or the billing screen: the API key must stay secret.",
+              "**Don't let it block billing.** If the call fails, put it in a queue and retry; the invoice is saved either way.",
+            ],
+          },
+          {
+            kind: "callout",
+            tone: "warn",
+            title: "Test with your own number first",
+            text: `Send the first invoices to your own WhatsApp number. The numbers in these docs (\`+919812345678\`, \`${STAFF_NUMBER}\`…) are examples, not your customers — a real person may own them.`,
+          },
+        ],
+      },
+      {
+        id: "request",
+        title: "The request",
+        blocks: [
+          {
+            kind: "list",
+            items: [
+              "An approved template with a **document header** (for example `invoice_document`) and its values in `body_params`, in order.",
+              `The PDF as a public https \`document.url\`, or the file itself as \`document.base64\` ([file rules](${guidePath("numbers-values-and-files")}#files)).`,
+              `**The invoice number as the key:** \`idempotency_key: "${INVOICE_KEY}"\`. A retry can then never send it twice.`,
+              `**Copies to staff:** add \`cc\` (up to ${MAX_CC} numbers) to this request, or leave it out and set default copy numbers once in Settings → API & webhooks → "Also send every API template message to". \`"cc": []\` sends no copies.`,
+            ],
+          },
+        ],
+        code: { title: "Send the invoice", samples: requestSamples(send, INVOICE_RECIPE_BODY) },
+      },
+      {
+        id: "answer",
+        title: "Read the answer",
+        blocks: [
+          {
+            kind: "table",
+            head: ["Answer", "What to do"],
+            rows: [
+              [
+                "**202** `queued`",
+                "Keep `message_id` with the invoice. WhatsApp has accepted it — delivery comes next.",
+              ],
+              [
+                '**202** with `warning: "number_not_on_whatsapp_recently"`',
+                "It was still sent. WhatsApp said in the last 30 days that this number can't receive messages: ask the customer to check their number.",
+              ],
+              [
+                "**202** with `copies`",
+                "One entry per staff copy: `queued`, `failed` or `not_sent`, with `code`. A copy never changes the customer's answer.",
+              ],
+              [
+                "**429**, **500**, **503**, a timeout",
+                `Retry with the same body and key (${RETRY_WAITS_SECONDS.map((s) => `${s} s`).join(", ")}). [Errors and retries](${guidePath("handle-errors-and-retries")}).`,
+              ],
+              [
+                "**502** `whatsapp_rejected`",
+                `WhatsApp refused it. Show the reason to your staff; fix it and resend with a new key ([Common WhatsApp errors](${guidePath("whatsapp-errors")})).`,
+              ],
+              [
+                "Any other **4xx**",
+                "Nothing was sent. Show `error` to your staff and fix the invoice (number, template, PDF).",
+              ],
+            ],
+          },
+        ],
+        code: {
+          title: "Accepted, with a warning",
+          status: 202,
+          samples: [
+            code(
+              "json",
+              "Response",
+              json({
+                message_id: FAILED_DELIVERY_EXAMPLE.message_id,
+                status: "queued",
+                wamid: "wamid.HBgM…",
+                idempotency_key: INVOICE_KEY,
+                warning: "number_not_on_whatsapp_recently",
+              }),
+            ),
+          ],
+        },
+      },
+      {
+        id: "delivery",
+        title: "Check it arrived",
+        blocks: [
+          {
+            kind: "p",
+            text: `\`202\` means accepted, not delivered. Listen for \`message.delivered\` and \`message.failed\` on your webhook and update the invoice by \`message_id\`; or ask ${ref("message-status")}. [Know it was delivered](${guidePath("know-it-was-delivered")}).`,
+          },
+        ],
+        code: {
+          title: "Your webhook",
+          samples: [code("node", "Node.js (Express)", INVOICE_WEBHOOK_NODE), failedJson],
+        },
+      },
+      {
+        id: "resend",
+        title: "Resend",
+        blocks: [
+          {
+            kind: "p",
+            text: `For a "Send again" button, add \`-r1\`, \`-r2\`… to the key: \`${RESEND_KEY}\`. The same key would only give the first answer back. A resend sends the copies again too (each copy's key follows the main key, \`${RESEND_KEY}:cc:${STAFF_NUMBER}\`); add \`"cc": []\` to resend to the customer only.`,
+          },
+        ],
+        code: { title: "Send it again", samples: requestSamples(send, INVOICE_RESEND_BODY) },
+      },
+      {
+        id: "full",
+        title: "The whole thing in Node.js",
+        blocks: [
+          {
+            kind: "p",
+            text: "Node.js 18 or later (fetch built in). Set `AIDWAR_API_KEY`, and `TEST_WHATSAPP_NUMBER` to your own number for the first run.",
+          },
+          {
+            kind: "code",
+            group: {
+              title: "send-invoice.mjs",
+              samples: [code("node", "Node.js", INVOICE_RECIPE_NODE)],
+            },
+          },
+        ],
+      },
+    ],
+  );
+
+  const delivered = integratorGuide(
+    "know-it-was-delivered",
+    "Know a message was delivered",
+    "Know it was delivered",
+    "A 202 only means WhatsApp accepted the message. Delivery or failure comes seconds later: on your webhook, or from the status endpoint.",
+    [
+      {
+        id: "accepted",
+        title: "Accepted is not delivered",
+        blocks: [
+          {
+            kind: "p",
+            text: 'A `202` with `"status": "queued"` means WhatsApp **accepted** the message for sending. It doesn\'t mean it reached the customer. A few seconds later WhatsApp reports what happened — a failure (a number not on WhatsApp, say) arrives then, never in the `202`.',
+          },
+          statusesTable,
+          {
+            kind: "p",
+            text: "`delivered` can take longer when the customer's phone is off; it isn't a failure until `message.failed` comes.",
+          },
+        ],
+      },
+      {
+        id: "webhook",
+        title: "On your webhook",
+        blocks: [
+          {
+            kind: "list",
+            items: [
+              `Add a webhook that hears \`message.sent\`, \`message.delivered\`, \`message.read\` and \`message.failed\` (Settings → API & webhooks, or ${ref("webhook-create")}).`,
+              "Match each event to your record by `message_id` (from the `202`); `idempotency_key` is there too.",
+              "An event can arrive twice or out of order: skip an `X-AiDwar-Delivery` you already handled, and never move a message back from `read` or `failed`.",
+              "A staff copy's events carry `cc_of`, the customer's `message_id`.",
+            ],
+          },
+          { kind: "payload", event: "message.failed" },
+        ],
+        code: { title: "A failed delivery", samples: [failedJson] },
+      },
+      {
+        id: "status",
+        title: "Or ask",
+        blocks: [
+          {
+            kind: "p",
+            text: `${ref("message-status")} gives the status, when each step happened and, for a failure, \`error\`. Ask a little later rather than in a tight loop — for example after 10 seconds, 1 minute and 10 minutes: status reads count against the [rate limits](${DOCS_ROOT}/rate-limits) too.`,
+          },
+        ],
+        code: { title: "Ask for the status", samples: requestSamples(status) },
+        aside: {
+          title: "A failed message",
+          status: 200,
+          samples: [code("json", "Response", json(FAILED_STATUS_EXAMPLE))],
+        },
+      },
+      {
+        id: "refused",
+        title: "Refused at once",
+        blocks: [
+          {
+            kind: "p",
+            text:
+              'When WhatsApp refuses the message on the spot, the send answers `502 whatsapp_rejected` with `message_id` and `"status": "failed"`, and your webhook hears `message.failed` as well. Read `error.code` and see [Common WhatsApp errors](' +
+              guidePath("whatsapp-errors") +
+              ").",
+          },
+        ],
+      },
+    ],
+  );
+
+  const errors = integratorGuide(
+    "whatsapp-errors",
+    "Common WhatsApp errors",
+    "Common WhatsApp errors",
+    "The numbered errors WhatsApp reports in message.failed — 131026, 131049, 132000 and more — what each means and what to do.",
+    [
+      {
+        id: "where",
+        title: "Where you see them",
+        blocks: [
+          {
+            kind: "p",
+            text: `AiDwar's own errors are words (\`invalid_to\`) and come back on the call — see [Errors](${DOCS_ROOT}/errors). WhatsApp's errors are numbers and come in \`error.code\` of [\`message.failed\`](${eventPath("message.failed")}) and of ${ref("message-status")}, and in a \`502 whatsapp_rejected\`. The full list is on [Meta's error codes page](${META_ERROR_CODES_URL}).`,
+          },
+        ],
+        code: { title: "message.failed", samples: [failedJson] },
+      },
+      {
+        id: "table",
+        title: "The common ones",
+        blocks: [
+          {
+            kind: "table",
+            head: ["Code", "WhatsApp calls it", "What it means", "What to do"],
+            rows: WHATSAPP_ERRORS.map((e) => [`\`${e.code}\``, e.title, e.means, e.todo]),
+          },
+          {
+            kind: "p",
+            text: `Resending after any of these needs a new idempotency key — [Resend on purpose](${DOCS_ROOT}/idempotency#resend).`,
+          },
+        ],
+      },
+    ],
+  );
+
+  const rules = integratorGuide(
+    "numbers-values-and-files",
+    "Numbers, template values and files",
+    "Numbers, values and files",
+    "What the API accepts in `to`, in template values and as a PDF — and what it refuses — so a send doesn't fail.",
+    [
+      {
+        id: "numbers",
+        title: "Phone numbers",
+        blocks: [
+          {
+            kind: "p",
+            text: "Always send the full number **with its country code**: `+919812345678`. AiDwar removes everything that isn't a digit and refuses only numbers with fewer than 8 or more than 15 digits — it can't tell a 10-digit Indian number from a foreign one, so add the country code in your own system.",
+          },
+          {
+            kind: "table",
+            head: ["You send", "Sent to", "What happens"],
+            rows: PHONE_EXAMPLES.map((p) => [
+              `\`${p.input}\``,
+              p.sentTo ? `\`${p.sentTo}\`` : "Nothing sent",
+              p.note,
+            ]),
+          },
+          {
+            kind: "callout",
+            tone: "warn",
+            title: "Never test with the numbers in these docs",
+            text: "`+919812345678` is not a real customer of yours, and neither are the other sample numbers — a real person may own them. Test with your own WhatsApp number first.",
+          },
+        ],
+        code: {
+          title: "Fix numbers before you send (India)",
+          samples: [
+            code(
+              "node",
+              "Node.js",
+              `// "098123 45678", "98123-45678", "+91 98123 45678" → "+919812345678"
+function toWhatsAppNumber(raw) {
+  let digits = String(raw).replace(/\\D/g, "");
+  if (digits.length === 11 && digits.startsWith("0")) digits = digits.slice(1); // drop a leading 0
+  if (digits.length === 10) digits = "91" + digits; // add India's country code
+  return "+" + digits;
+}`,
+            ),
+          ],
+        },
+      },
+      {
+        id: "values",
+        title: "Template values",
+        blocks: [
+          {
+            kind: "list",
+            items: [
+              "**Exactly one value per placeholder**, in order: a template with `{{1}}` `{{2}}` `{{3}}` takes three `body_params`. Another count is `400 param_count_mismatch`.",
+              "**No empty values.** An empty one (or only spaces) is `400 invalid_body_params`; spaces at the start and end are removed.",
+              "**No new lines, no tabs, no more than 4 spaces in a row** — WhatsApp refuses them: `400 invalid_body_params` (in a text header's values, `invalid_header`). Put line breaks in the template's own text, and an address on one line: `12 MG Road, Pune 411001`.",
+              "**Up to 1,024 characters** per value. Button values: a link's `url_param` up to 2,000, a quick reply's `payload` up to 256, a coupon `code` up to 15 — no new lines or tabs (`400 invalid_buttons`).",
+              "**Currency symbols, emoji and any language are fine:** `₹2,500.00`, `Rs. 2,500`, `€45`, `नमस्ते`. Numbers are sent as text.",
+            ],
+          },
+        ],
+        code: {
+          title: "Refused before sending",
+          status: 400,
+          samples: [
+            code(
+              "json",
+              "Response",
+              json({
+                error:
+                  "body_params[1] can't contain a new line, a tab or more than four spaces in a row.",
+                code: "invalid_body_params",
+              }),
+            ),
+          ],
+        },
+      },
+      {
+        id: "files",
+        title: "PDFs and other files",
+        blocks: [
+          {
+            kind: "list",
+            items: [
+              "**A public `https://` link** that opens without a login, a cookie or a VPN. Private and local addresses are refused, also after a redirect (up to 5 redirects are followed): `400 document_url_not_https` / `document_url_blocked`.",
+              "**It must download within 15 seconds** (`400 document_unreachable`). AiDwar fetches it during your call and gives WhatsApp its own copy, so the link only has to work until the `202` — a signed link that expires later is fine.",
+              `**A real PDF, up to ${MAX_DOCUMENT_MB} MB.** AiDwar reads the file's first bytes, not its \`Content-Type\` or name: a Word file or a login page saved as \`.pdf\` is \`400 document_not_pdf\`; over ${MAX_DOCUMENT_MB} MB is \`413 document_too_large\`; an empty file \`400 document_empty\`. Serving it as \`application/pdf\` is still good practice.`,
+              "**`document.filename` is the name the customer sees** in WhatsApp. Folders are removed, `.pdf` is added when missing, at most 120 characters; without one the customer sees `document.pdf`.",
+              "**No public link?** Send the file itself as `document.base64` instead of `document.url` (exactly one of the two; a `data:` URL is accepted). The whole request may be up to 23 MB (`413 request_too_large`).",
+            ],
+          },
+          {
+            kind: "table",
+            head: ["`document.filename`", "The customer sees"],
+            rows: FILENAME_EXAMPLES.map((x) => [
+              x.input ? `\`${x.input}\`` : "(none)",
+              `\`${x.shown}\``,
+            ]),
+          },
+        ],
+      },
+    ],
+  );
+
+  return { recipe, rest: [delivered, errors, rules] };
 }
 
 const GROUP_ORDER: ApiEndpoint["group"][] = [
@@ -1235,6 +1931,10 @@ function conceptPages(): Page[] {
               kind: "p",
               text: "Every error is JSON with `error` (a sentence for people) and `code` (stable, for programs). When an error says nothing was sent, nothing was.",
             },
+            {
+              kind: "p",
+              text: `A message WhatsApp accepted can still fail a few seconds later: that comes in \`message.failed\` with WhatsApp's own numbered code — see [Know it was delivered](${guidePath("know-it-was-delivered")}) and [Common WhatsApp errors](${guidePath("whatsapp-errors")}).`,
+            },
           ],
           code: {
             title: "An error",
@@ -1332,6 +2032,27 @@ function conceptPages(): Page[] {
           code: {
             title: "Replayed",
             samples: [code("bash", "Headers", "HTTP/1.1 202 Accepted\nIdempotent-Replayed: true")],
+          },
+        },
+        {
+          id: "resend",
+          title: "Resend on purpose",
+          blocks: [
+            {
+              kind: "list",
+              items: [
+                `**The same key within ${IDEMPOTENCY_WINDOW_HOURS} hours never sends again.** It returns the first answer — whatever it was, a \`202\` or a \`502 whatsapp_rejected\` — with \`Idempotent-Replayed: true\`.`,
+                `**To send it again on purpose, use a new key.** Add \`-r1\`, \`-r2\`… to the first one: \`${INVOICE_KEY}\`, then \`${INVOICE_KEY}-r1\`, \`${INVOICE_KEY}-r2\`.`,
+                `**After ${IDEMPOTENCY_WINDOW_HOURS} hours the same key sends again**, as a new message. Keep your own record of what you sent rather than relying on an old key.`,
+                "**The same key with a changed body** — another number, amount or PDF link — is **409 idempotency_key_reused**, and nothing is sent.",
+                "Keys belong to the workspace: every API key of one workspace shares them.",
+                `**Copies follow the main key** (\`<key>:cc:<number>\`): a resend with \`${INVOICE_KEY}-r1\` sends the copies again too, as \`${INVOICE_KEY}-r1:cc:+918000000001\`. Send \`"cc": []\` to resend to the customer only.`,
+              ],
+            },
+          ],
+          code: {
+            title: "Send it again",
+            samples: requestSamples(endpoint("send-template"), INVOICE_RESEND_BODY),
           },
         },
       ],
@@ -1564,7 +2285,10 @@ export function whatToDo(status: string, codeName: string): string {
     window_closed: "Send an approved template instead of a free-form message.",
     contact_opted_out:
       "Don't send marketing to this customer. Utility templates (order updates, codes) still reach them.",
-    idempotency_key_reused: "Use a new key for a new request.",
+    idempotency_key_reused:
+      "Use a new key for a new request. To resend the same message on purpose, add `-r1`, `-r2`… to the key.",
+    whatsapp_rejected:
+      "Don't retry with the same key: it gives this answer back. Read the reason (Common WhatsApp errors), fix it, then send with a new key.",
     idempotency_in_progress: "Wait a few seconds and ask again with the same key.",
     campaign_finished: "Nothing to cancel: it already finished.",
     webhook_limit_reached: "Remove a webhook you no longer use, then add the new one.",
