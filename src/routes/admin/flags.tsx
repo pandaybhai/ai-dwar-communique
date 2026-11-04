@@ -9,6 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { EmptyState, ErrorState, PageHeader, PageSkeleton } from "@/components/empty-state";
 import { aidwar } from "@/integrations/aidwar/client";
 import { DesignCountsCard } from "@/components/admin/design-counts";
+import { callApi } from "@/lib/whatsapp-client";
 
 export const Route = createFileRoute("/admin/flags")({
   head: () => ({
@@ -33,7 +34,7 @@ type FlagRow = {
   default_enabled: boolean;
 };
 type OrgRow = { id: string; name: string };
-type Override = { organization_id: string; flag_key: string; enabled: boolean };
+type Override = { organization_id: string; flag_key: string; enabled: boolean; manual?: boolean };
 
 function AdminFlags() {
   const [flags, setFlags] = useState<FlagRow[] | null>(null);
@@ -81,14 +82,17 @@ function AdminFlags() {
     setOrgs(orgRows);
 
     if (orgRows.length > 0) {
-      const { data: ov } = await aidwar
-        .from("organization_feature_overrides")
-        .select("organization_id, flag_key, enabled")
-        .in(
-          "organization_id",
-          orgRows.map((r) => r.id),
-        );
-      setOverrides((ov ?? []) as Override[]);
+      // Batch 63: rows with who owns them (a person's survive plan changes).
+      const { data: owned } = await callApi<{
+        overrides: Record<string, Array<{ flag_key: string; enabled: boolean; manual: boolean }>>;
+      }>("/api/admin/feature-overrides", {
+        body: { action: "list", organization_ids: orgRows.map((r) => r.id) },
+      });
+      setOverrides(
+        Object.entries(owned?.overrides ?? {}).flatMap(([organization_id, rows]) =>
+          rows.map((r) => ({ organization_id, ...r })),
+        ),
+      );
     } else {
       setOverrides([]);
     }
@@ -140,12 +144,9 @@ function AdminFlags() {
 
   async function setOverride(orgId: string, flag: FlagRow, enabled: boolean) {
     setBusy(`${orgId}:${flag.key}`);
-    const { error: err } = await aidwar
-      .from("organization_feature_overrides")
-      .upsert(
-        { organization_id: orgId, flag_key: flag.key, enabled },
-        { onConflict: "organization_id,flag_key" },
-      );
+    const { error: err } = await callApi("/api/admin/feature-overrides", {
+      body: { action: "set", organization_id: orgId, flag_key: flag.key, enabled, via: "admin_flags" },
+    });
     setBusy(null);
     if (err) setError("We couldn't save that override.");
     else await load();
@@ -153,11 +154,9 @@ function AdminFlags() {
 
   async function clearOverride(orgId: string, flag: FlagRow) {
     setBusy(`${orgId}:${flag.key}`);
-    const { error: err } = await aidwar
-      .from("organization_feature_overrides")
-      .delete()
-      .eq("organization_id", orgId)
-      .eq("flag_key", flag.key);
+    const { error: err } = await callApi("/api/admin/feature-overrides", {
+      body: { action: "reset_to_plan", organization_id: orgId, flag_key: flag.key },
+    });
     setBusy(null);
     if (err) setError("We couldn't reset that override.");
     else await load();
@@ -290,9 +289,10 @@ function AdminFlags() {
                       <tr key={o.id} className="transition-colors duration-200 hover:bg-muted/30">
                         <td className="px-4 py-3 font-medium text-foreground">{o.name}</td>
                         {flags.map((f) => {
-                          const has = overrides.some(
+                          const row = overrides.find(
                             (ov) => ov.organization_id === o.id && ov.flag_key === f.key,
                           );
+                          const has = Boolean(row);
                           return (
                             <td key={f.id} className="px-4 py-3">
                               <div className="flex items-center gap-2">
@@ -301,14 +301,21 @@ function AdminFlags() {
                                   disabled={busy === `${o.id}:${f.key}`}
                                   onCheckedChange={(v) => setOverride(o.id, f, v)}
                                 />
-                                {has ? (
-                                  <button
-                                    type="button"
-                                    className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-                                    onClick={() => clearOverride(o.id, f)}
-                                  >
-                                    Reset
-                                  </button>
+                                {row?.manual ? (
+                                  <>
+                                    <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-1.5 py-px text-[10px] font-medium text-amber-700 dark:text-amber-300">
+                                      Manual
+                                    </span>
+                                    <button
+                                      type="button"
+                                      className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                                      onClick={() => clearOverride(o.id, f)}
+                                    >
+                                      Reset to plan
+                                    </button>
+                                  </>
+                                ) : has ? (
+                                  <span className="text-xs text-muted-foreground">plan</span>
                                 ) : (
                                   <span className="text-xs text-muted-foreground">default</span>
                                 )}

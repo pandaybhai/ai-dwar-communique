@@ -106,6 +106,9 @@ describe("item 4 — which number a flow starts on", () => {
     expect(passes.sort()).toEqual(
       [
         "args.onlyAccountId",
+        // Batch 63: flowsV2Inbound hands the same value to the flow engine too
+        // (an exact trigger keyword may end a waiting run; same number rule).
+        "args.onlyAccountId",
         "isCustomerNumber ? null : onboardingAccountId",
         "null",
         "onboardingAccountId",

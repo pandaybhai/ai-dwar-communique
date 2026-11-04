@@ -17,7 +17,7 @@
 -- query_to_xml only when to_regclass('cron.job') finds it, so the query
 -- still runs where pg_cron is absent (every cron job is then listed).
 --
--- Expected objects: table 96, column 1128, view 2, function 122, index 171, trigger 71, cron_job 14.
+-- Expected objects: table 96, column 1130, view 2, function 122, index 172, trigger 71, cron_job 14.
 WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, introduced_in_file) AS (
   VALUES
     ('table', 'aidwar_private', 'mcp_db_proof', NULL, NULL, NULL, '20261300_batch56_mcp_hardening.sql'),
@@ -501,6 +501,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('column', 'public', 'contacts', 'source_detail', NULL, 'jsonb', '20260814_lead_source_attribution.sql'),
     ('column', 'public', 'contacts', 'updated_at', NULL, 'timestamp with time zone', '20260813_phase2_whatsapp_data_plane.sql'),
     ('column', 'public', 'contacts', 'wa_id', NULL, 'text', '20260813_phase2_whatsapp_data_plane.sql'),
+    ('column', 'public', 'contacts', 'wa_unreachable', NULL, 'jsonb', '20261350_batch63.sql'),
     ('column', 'public', 'conversations', 'aiden_flow_rules', NULL, 'jsonb', '20261050_batch21_aiden_flow_rules.sql'),
     ('column', 'public', 'conversations', 'assigned_to', NULL, 'uuid', '20260813_phase2_whatsapp_data_plane.sql'),
     ('column', 'public', 'conversations', 'contact_id', NULL, 'uuid', '20260813_phase2_whatsapp_data_plane.sql'),
@@ -932,6 +933,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('column', 'public', 'organization_billing_settings', 'last_expiry_sweep_at', NULL, 'timestamp with time zone', '20260922_billing_admin_surfaces.sql'),
     ('column', 'public', 'organization_billing_settings', 'last_float_low_notice_at', NULL, 'timestamp with time zone', '20260922_billing_admin_surfaces.sql'),
     ('column', 'public', 'organization_billing_settings', 'last_low_credit_notice_at', NULL, 'timestamp with time zone', '20260922_billing_admin_surfaces.sql'),
+    ('column', 'public', 'organization_feature_overrides', 'source', NULL, 'text', '20261350_batch63.sql'),
     ('column', 'public', 'organization_send_settings', 'attribution_window_hours', NULL, 'integer', '20260828_revenue_attribution.sql'),
     ('column', 'public', 'organization_send_settings', 'created_at', NULL, 'timestamp with time zone', '20260825_flows.sql'),
     ('column', 'public', 'organization_send_settings', 'gst_percent', NULL, 'numeric', '20260831_message_cost_receipts.sql'),
@@ -1487,6 +1489,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('index', 'public', 'messages_org_direction_status_idx', NULL, NULL, 'on public.messages', '20260816_analytics.sql'),
     ('index', 'public', 'messages_outbound_created_idx', NULL, NULL, 'on public.messages', '20260828_revenue_attribution.sql'),
     ('index', 'public', 'messages_outbound_failed_recent_idx', NULL, NULL, 'on public.messages', '20260924_send_health_scope_diff.sql'),
+    ('index', 'public', 'messages_template_sends_idx', NULL, NULL, 'on public.messages', '20261350_batch63.sql'),
     ('index', 'public', 'opt_out_keywords_unique', NULL, NULL, 'unique on public.opt_out_keywords', '20260815_optout_and_health.sql'),
     ('index', 'public', 'order_items_order_idx', NULL, NULL, 'on public.order_items', '20260821_shopify_integration.sql'),
     ('index', 'public', 'orders_integration_external_unique_idx', NULL, NULL, 'unique on public.orders', '20260821_shopify_integration.sql'),

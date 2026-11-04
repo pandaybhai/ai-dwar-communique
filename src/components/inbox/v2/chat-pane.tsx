@@ -48,6 +48,7 @@ import { FlowRunBanner } from "../flow-run-banner";
 import { AidenRulesBadge } from "../aiden-rules-badge";
 import { FlowRunHistory } from "../flow-run-history";
 import { SendCardButton } from "../send-card-button";
+import { UnreachableBadge } from "@/components/contacts/unreachable-badge";
 import { SendFormButton } from "../send-form-button";
 import { useAiRuns, useAutoHeight, useHandoffAlertText } from "../chat-thread";
 import {
@@ -540,6 +541,7 @@ export function ChatPane({
                   </>
                 )}
               </span>
+              <UnreachableBadge contactId={conversation.contact?.id ?? null} className="mt-0.5 self-start" />
             </span>
             <span className="sr-only">, contact details</span>
           </button>

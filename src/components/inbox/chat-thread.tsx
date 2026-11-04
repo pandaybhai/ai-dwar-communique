@@ -38,6 +38,7 @@ import { SendFormButton } from "@/components/inbox/send-form-button";
 import { SendCardButton } from "@/components/inbox/send-card-button";
 import { aiRunApi } from "@/lib/employee-client";
 import { aidwar } from "@/integrations/aidwar/client";
+import { UnreachableBadge } from "@/components/contacts/unreachable-badge";
 import { languageLabel } from "@/lib/languages";
 import { describeAlertResult, handoverReasonText, type HandoffAlertResult } from "@/lib/ai-outcome";
 import { aiRunFor, questionBefore, type AiRunNote, type AiRunRow } from "@/lib/inbox-ai-runs";
@@ -693,6 +694,11 @@ export function ChatThread({
           <span className="min-w-0">
             <span className="block truncate text-sm font-semibold text-foreground">{label}</span>
             <span className="block truncate text-xs text-muted-foreground">
+              <UnreachableBadge
+                contactId={conversation.contact?.id ?? null}
+                compact
+                className="mr-1.5 px-1.5 py-0 align-middle text-[10px]"
+              />
               {conversation.contact?.phone ?? "—"}
               {fromNumber ? <span className="opacity-80"> · via {fromNumber}</span> : null}
             </span>

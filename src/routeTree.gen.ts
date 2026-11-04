@@ -49,6 +49,7 @@ import { Route as ApiDesignRouteImport } from './routes/api/design'
 import { Route as ApiEventsRouteImport } from './routes/api/events'
 import { Route as ApiFormsRouteImport } from './routes/api/forms'
 import { Route as ApiPermissionsRouteImport } from './routes/api/permissions'
+import { Route as ApiTemplateSendsRouteImport } from './routes/api/template-sends'
 import { Route as AppIndexRouteImport } from './routes/app/index'
 import { Route as AppAiAssistantsRouteImport } from './routes/app/ai-assistants'
 import { Route as AppAnalyticsRouteImport } from './routes/app/analytics'
@@ -85,6 +86,7 @@ import { Route as ApiAdminAiRouteImport } from './routes/api/admin/ai'
 import { Route as ApiAdminBillingRouteImport } from './routes/api/admin/billing'
 import { Route as ApiAdminCustomersRouteImport } from './routes/api/admin/customers'
 import { Route as ApiAdminDesignRouteImport } from './routes/api/admin/design'
+import { Route as ApiAdminFeatureOverridesRouteImport } from './routes/api/admin/feature-overrides'
 import { Route as ApiAdminLeadsRouteImport } from './routes/api/admin/leads'
 import { Route as ApiAdminOnboardingRouteImport } from './routes/api/admin/onboarding'
 import { Route as ApiAdminSendingRouteImport } from './routes/api/admin/sending'
@@ -409,6 +411,11 @@ const ApiPermissionsRoute = ApiPermissionsRouteImport.update({
   path: '/api/permissions',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiTemplateSendsRoute = ApiTemplateSendsRouteImport.update({
+  id: '/api/template-sends',
+  path: '/api/template-sends',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -593,6 +600,12 @@ const ApiAdminDesignRoute = ApiAdminDesignRouteImport.update({
   path: '/api/admin/design',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAdminFeatureOverridesRoute =
+  ApiAdminFeatureOverridesRouteImport.update({
+    id: '/api/admin/feature-overrides',
+    path: '/api/admin/feature-overrides',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiAdminLeadsRoute = ApiAdminLeadsRouteImport.update({
   id: '/api/admin/leads',
   path: '/api/admin/leads',
@@ -1283,6 +1296,7 @@ export interface FileRoutesByFullPath {
   '/api/events': typeof ApiEventsRoute
   '/api/forms': typeof ApiFormsRoute
   '/api/permissions': typeof ApiPermissionsRoute
+  '/api/template-sends': typeof ApiTemplateSendsRoute
   '/app/ai-assistants': typeof AppAiAssistantsRoute
   '/app/analytics': typeof AppAnalyticsRoute
   '/app/automations': typeof AppAutomationsRoute
@@ -1320,6 +1334,7 @@ export interface FileRoutesByFullPath {
   '/api/admin/billing': typeof ApiAdminBillingRoute
   '/api/admin/customers': typeof ApiAdminCustomersRoute
   '/api/admin/design': typeof ApiAdminDesignRoute
+  '/api/admin/feature-overrides': typeof ApiAdminFeatureOverridesRoute
   '/api/admin/leads': typeof ApiAdminLeadsRoute
   '/api/admin/onboarding': typeof ApiAdminOnboardingRoute
   '/api/admin/sending': typeof ApiAdminSendingRoute
@@ -1480,6 +1495,7 @@ export interface FileRoutesByTo {
   '/api/events': typeof ApiEventsRoute
   '/api/forms': typeof ApiFormsRoute
   '/api/permissions': typeof ApiPermissionsRoute
+  '/api/template-sends': typeof ApiTemplateSendsRoute
   '/app/ai-assistants': typeof AppAiAssistantsRoute
   '/app/analytics': typeof AppAnalyticsRoute
   '/app/automations': typeof AppAutomationsRoute
@@ -1517,6 +1533,7 @@ export interface FileRoutesByTo {
   '/api/admin/billing': typeof ApiAdminBillingRoute
   '/api/admin/customers': typeof ApiAdminCustomersRoute
   '/api/admin/design': typeof ApiAdminDesignRoute
+  '/api/admin/feature-overrides': typeof ApiAdminFeatureOverridesRoute
   '/api/admin/leads': typeof ApiAdminLeadsRoute
   '/api/admin/onboarding': typeof ApiAdminOnboardingRoute
   '/api/admin/sending': typeof ApiAdminSendingRoute
@@ -1681,6 +1698,7 @@ export interface FileRoutesById {
   '/api/events': typeof ApiEventsRoute
   '/api/forms': typeof ApiFormsRoute
   '/api/permissions': typeof ApiPermissionsRoute
+  '/api/template-sends': typeof ApiTemplateSendsRoute
   '/app/ai-assistants': typeof AppAiAssistantsRoute
   '/app/analytics': typeof AppAnalyticsRoute
   '/app/automations': typeof AppAutomationsRoute
@@ -1718,6 +1736,7 @@ export interface FileRoutesById {
   '/api/admin/billing': typeof ApiAdminBillingRoute
   '/api/admin/customers': typeof ApiAdminCustomersRoute
   '/api/admin/design': typeof ApiAdminDesignRoute
+  '/api/admin/feature-overrides': typeof ApiAdminFeatureOverridesRoute
   '/api/admin/leads': typeof ApiAdminLeadsRoute
   '/api/admin/onboarding': typeof ApiAdminOnboardingRoute
   '/api/admin/sending': typeof ApiAdminSendingRoute
@@ -1883,6 +1902,7 @@ export interface FileRouteTypes {
     | '/api/events'
     | '/api/forms'
     | '/api/permissions'
+    | '/api/template-sends'
     | '/app/ai-assistants'
     | '/app/analytics'
     | '/app/automations'
@@ -1920,6 +1940,7 @@ export interface FileRouteTypes {
     | '/api/admin/billing'
     | '/api/admin/customers'
     | '/api/admin/design'
+    | '/api/admin/feature-overrides'
     | '/api/admin/leads'
     | '/api/admin/onboarding'
     | '/api/admin/sending'
@@ -2080,6 +2101,7 @@ export interface FileRouteTypes {
     | '/api/events'
     | '/api/forms'
     | '/api/permissions'
+    | '/api/template-sends'
     | '/app/ai-assistants'
     | '/app/analytics'
     | '/app/automations'
@@ -2117,6 +2139,7 @@ export interface FileRouteTypes {
     | '/api/admin/billing'
     | '/api/admin/customers'
     | '/api/admin/design'
+    | '/api/admin/feature-overrides'
     | '/api/admin/leads'
     | '/api/admin/onboarding'
     | '/api/admin/sending'
@@ -2280,6 +2303,7 @@ export interface FileRouteTypes {
     | '/api/events'
     | '/api/forms'
     | '/api/permissions'
+    | '/api/template-sends'
     | '/app/ai-assistants'
     | '/app/analytics'
     | '/app/automations'
@@ -2317,6 +2341,7 @@ export interface FileRouteTypes {
     | '/api/admin/billing'
     | '/api/admin/customers'
     | '/api/admin/design'
+    | '/api/admin/feature-overrides'
     | '/api/admin/leads'
     | '/api/admin/onboarding'
     | '/api/admin/sending'
@@ -2470,6 +2495,7 @@ export interface RootRouteChildren {
   ApiEventsRoute: typeof ApiEventsRoute
   ApiFormsRoute: typeof ApiFormsRoute
   ApiPermissionsRoute: typeof ApiPermissionsRoute
+  ApiTemplateSendsRoute: typeof ApiTemplateSendsRoute
   JoinTokenRoute: typeof JoinTokenRoute
   OauthConsentRoute: typeof OauthConsentRoute
   PayPaymentIdRoute: typeof PayPaymentIdRoute
@@ -2478,6 +2504,7 @@ export interface RootRouteChildren {
   ApiAdminBillingRoute: typeof ApiAdminBillingRoute
   ApiAdminCustomersRoute: typeof ApiAdminCustomersRoute
   ApiAdminDesignRoute: typeof ApiAdminDesignRoute
+  ApiAdminFeatureOverridesRoute: typeof ApiAdminFeatureOverridesRoute
   ApiAdminLeadsRoute: typeof ApiAdminLeadsRoute
   ApiAdminOnboardingRoute: typeof ApiAdminOnboardingRoute
   ApiAdminSendingRoute: typeof ApiAdminSendingRoute
@@ -2868,6 +2895,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPermissionsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/template-sends': {
+      id: '/api/template-sends'
+      path: '/api/template-sends'
+      fullPath: '/api/template-sends'
+      preLoaderRoute: typeof ApiTemplateSendsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/app/': {
       id: '/app/'
       path: '/'
@@ -3118,6 +3152,13 @@ declare module '@tanstack/react-router' {
       path: '/api/admin/design'
       fullPath: '/api/admin/design'
       preLoaderRoute: typeof ApiAdminDesignRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/admin/feature-overrides': {
+      id: '/api/admin/feature-overrides'
+      path: '/api/admin/feature-overrides'
+      fullPath: '/api/admin/feature-overrides'
+      preLoaderRoute: typeof ApiAdminFeatureOverridesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/admin/leads': {
@@ -4204,6 +4245,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiEventsRoute: ApiEventsRoute,
   ApiFormsRoute: ApiFormsRoute,
   ApiPermissionsRoute: ApiPermissionsRoute,
+  ApiTemplateSendsRoute: ApiTemplateSendsRoute,
   JoinTokenRoute: JoinTokenRoute,
   OauthConsentRoute: OauthConsentRoute,
   PayPaymentIdRoute: PayPaymentIdRoute,
@@ -4212,6 +4254,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAdminBillingRoute: ApiAdminBillingRoute,
   ApiAdminCustomersRoute: ApiAdminCustomersRoute,
   ApiAdminDesignRoute: ApiAdminDesignRoute,
+  ApiAdminFeatureOverridesRoute: ApiAdminFeatureOverridesRoute,
   ApiAdminLeadsRoute: ApiAdminLeadsRoute,
   ApiAdminOnboardingRoute: ApiAdminOnboardingRoute,
   ApiAdminSendingRoute: ApiAdminSendingRoute,
