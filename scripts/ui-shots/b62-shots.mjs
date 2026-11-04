@@ -17,7 +17,12 @@ const require = createRequire(import.meta.url);
 const { chromium } = require("playwright");
 
 const args = Object.fromEntries(
-  process.argv.slice(2).reduce((acc, a, i, all) => (a.startsWith("--") ? [...acc, [a.slice(2), all[i + 1]]] : acc), []),
+  process.argv
+    .slice(2)
+    .reduce(
+      (acc, a, i, all) => (a.startsWith("--") ? [...acc, [a.slice(2), all[i + 1]]] : acc),
+      [],
+    ),
 );
 const BASE = args.base ?? "http://127.0.0.1:5199";
 const OUT = args.out ?? "docs/screenshots/batch62";
@@ -45,23 +50,42 @@ async function shoot(browser, name, s, vp) {
     },
     [STORAGE_KEY, JSON.stringify(session())],
   );
-  let saved = ["+918000000001", "+918000000002", "+918000000003", "+918000000004", "+918000000005", "+918000000006", "+12025550123"];
+  let saved = [
+    "+918000000001",
+    "+918000000002",
+    "+918000000003",
+    "+918000000004",
+    "+918000000005",
+    "+918000000006",
+    "+12025550123",
+  ];
   const json = (route, body, status = 200) =>
-    route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body), headers: { "access-control-allow-origin": "*" } });
+    route.fulfill({
+      status,
+      contentType: "application/json",
+      body: JSON.stringify(body),
+      headers: { "access-control-allow-origin": "*" },
+    });
   await context.route("**/*", async (route) => {
     const url = new URL(route.request().url());
     const href = url.href;
     if (href.startsWith(BACKEND)) return fake.backend(route);
     if (href.startsWith(`${BASE}/api/`)) {
       if (url.pathname === "/api/developer/copies") {
-        if (route.request().method() === "GET") return json(route, { available: true, max: 10, numbers: saved });
+        if (route.request().method() === "GET")
+          return json(route, { available: true, max: 10, numbers: saved });
         saved = JSON.parse(route.request().postData() || "{}").numbers ?? saved;
         return json(route, { ok: true, numbers: saved });
       }
       return fake.api(route);
     }
-    if (href.startsWith(BASE) || href.startsWith("data:") || href.startsWith("blob:")) return route.continue();
-    if (href.startsWith("https://fonts.googleapis.com") || href.startsWith("https://fonts.gstatic.com")) return route.continue();
+    if (href.startsWith(BASE) || href.startsWith("data:") || href.startsWith("blob:"))
+      return route.continue();
+    if (
+      href.startsWith("https://fonts.googleapis.com") ||
+      href.startsWith("https://fonts.gstatic.com")
+    )
+      return route.continue();
     return route.abort();
   });
   await context.routeWebSocket(/fake-backend\.test/, (ws) => fake.realtime(ws));
