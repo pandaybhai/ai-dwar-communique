@@ -10,11 +10,11 @@ import {
 } from "./test-support/public-api-world";
 import { clearSafeFetchDnsCache } from "./safe-fetch.server";
 import { resetDialCodeCache } from "./public-api-send.server";
-import { copyIdempotencyKey, parseCcNumbers } from "./public-api-cc";
+import { MAX_CC, copyIdempotencyKey, parseCcNumbers } from "./public-api-cc";
 
 /**
  * Batch 61 — copies ("cc") of a Public API template send: POST
- * /api/v1/messages/template takes `cc` (up to 3 numbers) and the workspace
+ * /api/v1/messages/template takes `cc` (up to MAX_CC numbers: 10 since Batch 62) and the workspace
  * default (Settings → API & webhooks) applies when it doesn't. Copies go
  * through the same sender after the customer's send is accepted, reuse the
  * one Meta media upload, each have a derived idempotency key, count against
@@ -42,6 +42,11 @@ const B64 = Buffer.from(PDF).toString("base64");
 const STAFF_1 = "+918121310333";
 const STAFF_2 = "+919121883067";
 const CUSTOMER = "+919876543210";
+/** Batch 62: one more number than the limit (MAX_CC + 1 valid, distinct numbers). */
+const TOO_MANY = Array.from(
+  { length: MAX_CC + 1 },
+  (_, i) => `+9198000001${String(i).padStart(2, "0")}`,
+);
 
 let net: ReturnType<typeof fakeFetch>;
 const meta = { sendError: null as Record<string, unknown> | null, uploadError: false };
@@ -106,11 +111,11 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("cc numbers are checked as `to` is", () => {
-  it("removes duplicates and the `to` number; refuses more than 3 or a bad number", () => {
+  it("removes duplicates and the `to` number; refuses more than MAX_CC or a bad number", () => {
     expect(parseCcNumbers(["+91 81213 10333", "918121310333", CUSTOMER], { to: CUSTOMER })).toEqual(
       { ok: true, numbers: [STAFF_1] },
     );
-    expect(parseCcNumbers([1, 2, 3, 4]).ok).toBe(false);
+    expect(parseCcNumbers(TOO_MANY).ok).toBe(false);
     expect(parseCcNumbers(["12345"])).toMatchObject({
       ok: false,
       error: expect.stringContaining("cc[0]"),
@@ -302,12 +307,7 @@ describe("cc on the request", () => {
   });
 
   it("an invalid cc number: 400 invalid_cc naming it, nothing sent or reserved", async () => {
-    for (const cc of [
-      ["+91 12"],
-      [STAFF_1, "hello"],
-      [1, 2, 3, 4].map((n) => `+9198000000${n}0`),
-      "+918121310333",
-    ]) {
+    for (const cc of [["+91 12"], [STAFF_1, "hello"], TOO_MANY, "+918121310333"]) {
       const res = await send(invoice({ cc, idempotency_key: "inv-bad" }));
       expect([res.status, res.body["code"]], JSON.stringify(cc)).toEqual([400, "invalid_cc"]);
       expect(String(res.body["error"])).toMatch(/cc|WhatsApp number/);
@@ -492,14 +492,14 @@ describe("Settings → API & webhooks: the default copy numbers", () => {
       }),
     });
 
-  it("an admin saves up to 3 checked numbers; it is in the activity log", async () => {
+  it("an admin saves up to MAX_CC checked numbers; it is in the activity log", async () => {
     const res = await save("u-admin", ["+91 81213 10333", STAFF_2, "918121310333"]);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, numbers: [STAFF_1, STAFF_2] });
     expect(org()["api_cc_numbers"]).toEqual([STAFF_1, STAFF_2]);
     expect(await (await get("u-admin")).json()).toEqual({
       available: true,
-      max: 3,
+      max: 10,
       numbers: [STAFF_1, STAFF_2],
     });
     const log = rows("activity_log").find((a) => a["action"] === "api_cc_default_saved")!;
@@ -509,14 +509,11 @@ describe("Settings → API & webhooks: the default copy numbers", () => {
     expect(org()["api_cc_numbers"]).toEqual([]);
   });
 
-  it("refuses a bad number, more than 3, and anyone without public_api.manage", async () => {
+  it("refuses a bad number, more than MAX_CC, and anyone without public_api.manage", async () => {
     const bad = await save("u-admin", ["+91 12"]);
     expect(bad.status).toBe(400);
     expect(((await bad.json()) as { error: string }).error).toContain("Number 1");
-    expect(
-      (await save("u-admin", ["+919800000001", "+919800000002", "+919800000003", "+919800000004"]))
-        .status,
-    ).toBe(400);
+    expect((await save("u-admin", TOO_MANY)).status).toBe(400);
     expect((await save("u-agent", [STAFF_1])).status).toBe(403);
     expect((await get("u-agent")).status).toBe(403);
     expect(org()["api_cc_numbers"]).toBeUndefined();

@@ -22,6 +22,7 @@ import {
   WEBHOOK_RETRY_HOURS,
   WEBHOOK_TIMEOUT_SECONDS,
 } from "@/lib/public-api";
+import { MAX_CC } from "@/lib/public-api-cc";
 import {
   API_ENDPOINTS,
   POSTMAN_PATH,
@@ -1286,7 +1287,7 @@ function conceptPages(): Page[] {
             },
             {
               kind: "p",
-              text: "A template send with copies (`cc`, or your workspace's default copy numbers) counts as **1 + the number of copies**: one call with 2 copies uses 3 of the minute's requests. A retry that gets its first answer back counts as 1. If the copies would go over a limit, the whole call is refused with 429 and nothing is sent.",
+              text: `A template send with copies (\`cc\`, or your workspace's default copy numbers) counts as **1 + the number of copies**: one call with 2 copies uses 3 of the minute's requests, and a call with ${MAX_CC} copies (the most) counts as ${MAX_CC + 1}. A retry that gets its first answer back counts as 1. If the copies would go over a limit, the whole call is refused with 429 and nothing is sent.`,
             },
           ],
           code: {
@@ -1478,8 +1479,7 @@ export const ERROR_MEANINGS: Record<string, string> = {
   invalid_buttons: "A button's `index`, `type` or value doesn't match the template's buttons.",
   invalid_offer:
     "`offer_expires_at` is missing, in the past, or the template has no offer countdown.",
-  invalid_cc:
-    "`cc` must be a list of at most 3 WhatsApp numbers with their country code (duplicates and the `to` number are removed).",
+  invalid_cc: `\`cc\` must be a list of at most ${MAX_CC} WhatsApp numbers with their country code (duplicates and the \`to\` number are removed).`,
   invalid_media: "The file needs a `url` or `base64`.",
   media_url_not_https: "The file's link must start with `https://`.",
   media_url_blocked: "The file's link points at a private or local address.",
