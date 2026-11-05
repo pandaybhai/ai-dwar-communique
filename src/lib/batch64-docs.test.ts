@@ -61,8 +61,8 @@ import {
 import { API_ENDPOINTS, WEBHOOK_EVENTS, errorRow } from "./public-api-spec";
 import { MAX_REQUEST_BYTES, cleanFilename, parseSendRequest } from "./public-api-send.server";
 import { TEST_EVENT, webhookBody } from "./public-api-webhooks.server";
-import { copyIdempotencyKey } from "./public-api-cc";
-import { normalizePhone, toWaId } from "./phone";
+import { apiPhoneNumber, copyIdempotencyKey } from "./public-api-cc";
+import { toWaId } from "./phone";
 import { UNREACHABLE_WARNING, UNREACHABLE_WARN_DAYS, failureReason } from "./wa-reachability";
 import { classifyGraphAnswer } from "./campaign-dispatch.server";
 import { MEDIA_FETCH_TIMEOUT_MS } from "./public-api-media.server";
@@ -139,7 +139,7 @@ describe("every error code and webhook event the docs name exists in the code", 
     for (const c of [
       "whatsapp_rejected",
       "idempotency_key_reused",
-      "invalid_to",
+      "invalid_phone",
       "invalid_body_params",
       "param_count_mismatch",
       "document_not_pdf",
@@ -329,18 +329,19 @@ describe("what the docs say, the route does", () => {
     expect(sends()).toHaveLength(2);
   });
 
-  it("phone numbers: each documented input goes where the docs say, or is refused with invalid_to", async () => {
+  it("phone numbers: each documented input goes where the docs say, or is refused with invalid_phone", async () => {
     for (const [i, p] of PHONE_EXAMPLES.entries()) {
       const before = sends().length;
       const res = await send(invoice({ to: p.input, idempotency_key: `phone-${i}` }));
       if (p.sentTo === null) {
-        expect(res.body["code"], p.input).toBe("invalid_to");
+        expect(res.body["code"], p.input).toBe("invalid_phone");
+        expect(res.body["field"], p.input).toBe("to");
         expect(res.status).toBe(400);
         expect(sends()).toHaveLength(before);
       } else {
         expect(res.status, p.input).toBe(202);
         expect(sentTo(sends().at(-1)!), p.input).toBe(toWaId(p.sentTo));
-        expect(normalizePhone(p.input)).toBe(p.sentTo);
+        expect(apiPhoneNumber(p.input)).toBe(p.sentTo);
       }
     }
   });

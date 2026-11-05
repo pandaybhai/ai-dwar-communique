@@ -367,7 +367,8 @@ describe("refused before anything is sent", () => {
   it("bad JSON or a missing field: 400", async () => {
     expect((await send("{nope")).body["code"]).toBe("invalid_json");
     expect((await send(good({ to: "" }))).body["code"]).toBe("invalid_to");
-    expect((await send(good({ to: "12" }))).body["code"]).toBe("invalid_to");
+    // Batch 65: a number that isn't one (with its country code) is invalid_phone.
+    expect((await send(good({ to: "12" }))).body["code"]).toBe("invalid_phone");
     expect(
       (await send(good({ document: { url: "https://x.example.com/a.pdf", base64: B64 } }))).body[
         "code"

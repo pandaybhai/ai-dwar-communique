@@ -124,6 +124,7 @@ export const API_ERRORS: Array<{ status: string; codes: string[]; meaning: strin
     codes: [
       "invalid_json",
       "invalid_to",
+      "invalid_phone",
       "invalid_template_name",
       "invalid_document",
       "invalid_body_params",

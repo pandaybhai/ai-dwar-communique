@@ -4,7 +4,13 @@ import type { ApiCaller } from "@/lib/public-api.server";
 import { MAX_DOCUMENT_MB } from "@/lib/public-api";
 import type { TemplateComponent } from "@/lib/templates";
 import { parseMediaInput, type MediaInput } from "@/lib/public-api-media.server";
-import { copyIdempotencyKey, parseCcNumbers, type CopyResult } from "@/lib/public-api-cc";
+import {
+  apiPhoneError,
+  apiPhoneNumber,
+  copyIdempotencyKey,
+  parseCcNumbers,
+  type CopyResult,
+} from "@/lib/public-api-cc";
 
 /**
  * POST /api/v1/messages/template — one approved template to one customer,
@@ -141,6 +147,9 @@ export function parseSendRequest(raw: unknown, headerKey: string | null): SendRe
       "invalid_to",
       "`to` is required: the customer's WhatsApp number with its country code.",
     );
+  // Batch 65: a number without its country code is refused before anything else.
+  const toPhone = apiPhoneNumber(to);
+  if (!toPhone) return { status: 400, body: apiPhoneError("to") };
 
   const templateName =
     typeof body["template_name"] === "string" ? body["template_name"].trim() : "";
@@ -312,8 +321,11 @@ export function parseSendRequest(raw: unknown, headerKey: string | null): SendRe
   // ---- Batch 61: copies ----
   let cc: string[] | null = null;
   if (body["cc"] !== undefined && body["cc"] !== null) {
-    const parsedCc = parseCcNumbers(body["cc"], { to });
-    if (!parsedCc.ok) return fail(400, "invalid_cc", `${parsedCc.error} Nothing was sent.`);
+    const parsedCc = parseCcNumbers(body["cc"], { to: toPhone, number: apiPhoneNumber });
+    if (!parsedCc.ok)
+      return parsedCc.index !== undefined
+        ? { status: 400, body: apiPhoneError(`cc[${parsedCc.index}]`) }
+        : fail(400, "invalid_cc", `${parsedCc.error} Nothing was sent.`);
     cc = parsedCc.numbers;
   }
 
@@ -772,17 +784,12 @@ export async function sendTemplateViaApi(
   const parsed = parseSendRequest(raw, options.idempotencyHeader ?? null);
   if ("status" in parsed) return parsed;
   const orgId = caller.organizationId;
-  const { normalizePhone, toWaId, logServerActivity } = await import("@/lib/whatsapp-api.server");
+  const { toWaId, logServerActivity } = await import("@/lib/whatsapp-api.server");
 
-  const phone = normalizePhone(parsed.to);
+  // Batch 65: the request's own rule (parseSendRequest already refused anything it doesn't take).
+  const phone = apiPhoneNumber(parsed.to);
+  if (!phone) return { status: 400, body: apiPhoneError("to") };
   const waId = toWaId(phone);
-  if (waId.length < 8 || waId.length > 15) {
-    return fail(
-      400,
-      "invalid_to",
-      "`to` isn't a valid WhatsApp number. Include the country code, e.g. +919812345678.",
-    );
-  }
 
   // ---- reserve the idempotency key first: a repeat gets the first answer,
   // whatever changed since (a template paused, a plan lapsed) ----

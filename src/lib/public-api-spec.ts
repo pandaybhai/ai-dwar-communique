@@ -183,6 +183,7 @@ export const API_ENDPOINTS: ApiEndpoint[] = [
     response: { status: 202, body: SENT },
     errors: [
       "invalid_to",
+      "invalid_phone",
       "template_not_found",
       "template_not_approved",
       "language_required",
@@ -266,6 +267,7 @@ export const API_ENDPOINTS: ApiEndpoint[] = [
     errors: [
       "invalid_message",
       "invalid_to",
+      "invalid_phone",
       "window_closed",
       "media_type_unsupported",
       "media_too_large",
@@ -1408,7 +1410,7 @@ const ENDPOINT_DETAILS: Record<string, Partial<ApiEndpoint>> = {
         "body",
         "string",
         true,
-        "The customer's WhatsApp number with its country code.",
+        'The customer\'s WhatsApp number with its country code: "+919876543210", "00919876543210" or "919876543210" (spaces, dashes, brackets and dots are fine). A number without its country code ("9876543210", "09876543210") is 400 invalid_phone and nothing is sent; AiDwar never adds a country code for you.',
         CUSTOMER,
       ),
       f(
@@ -1468,7 +1470,7 @@ const ENDPOINT_DETAILS: Record<string, Partial<ApiEndpoint>> = {
         "body",
         "string[]",
         false,
-        `Up to ${MAX_CC} more WhatsApp numbers (with country code) that get a copy: the same template, values, file and buttons, sent only after the customer's message is accepted. Duplicates and the \`to\` number are removed. Leave it out to use your workspace's default (Settings → API & webhooks → "Also send every API template message to"); send [] for no copies. Each copy is a separate WhatsApp message charged by Meta at the template's category rate, and counts as one more request against the rate limits (a request with ${MAX_CC} copies counts as ${MAX_CC + 1}). With an idempotency_key each copy gets its own key, <key>:cc:<number>, so a retry never sends a copy twice. A copy that fails never changes the customer's answer.`,
+        `Up to ${MAX_CC} more WhatsApp numbers (with country code) that get a copy: the same template, values, file and buttons, sent only after the customer's message is accepted. Each needs its country code, as \`to\` does: one number without it refuses the whole request with 400 invalid_phone (field names it, e.g. cc[1]). Duplicates and the \`to\` number are removed. Leave it out to use your workspace's default (Settings → API & webhooks → "Also send every API template message to"); send [] for no copies. Each copy is a separate WhatsApp message charged by Meta at the template's category rate, and counts as one more request against the rate limits (a request with ${MAX_CC} copies counts as ${MAX_CC + 1}). With an idempotency_key each copy gets its own key, <key>:cc:<number>, so a retry never sends a copy twice. A copy that fails never changes the customer's answer.`,
         '["+918000000001", "+918000000002"]',
       ),
       IDEMPOTENCY,
@@ -1482,7 +1484,7 @@ const ENDPOINT_DETAILS: Record<string, Partial<ApiEndpoint>> = {
       {
         status: 202,
         label:
-          'Sent, with a warning: in the last 30 days WhatsApp said this number can\'t receive messages (error 131026 — not on WhatsApp). The message is still sent, exactly as without the warning; the warning goes once a message to the number is delivered',
+          "Sent, with a warning: in the last 30 days WhatsApp said this number can't receive messages (error 131026 — not on WhatsApp). The message is still sent, exactly as without the warning; the warning goes once a message to the number is delivered",
         body: { ...SENT, warning: "number_not_on_whatsapp_recently" },
       },
       {
@@ -1510,7 +1512,14 @@ const ENDPOINT_DETAILS: Record<string, Partial<ApiEndpoint>> = {
     purpose:
       "Reply to a customer in your own words — text, a file, reply buttons or a list — while their 24-hour window is open.",
     fields: [
-      f("to", "body", "string", true, "The customer's WhatsApp number.", CUSTOMER),
+      f(
+        "to",
+        "body",
+        "string",
+        true,
+        'The customer\'s WhatsApp number with its country code, as for a template send. Without it ("9876543210") the answer is 400 invalid_phone and nothing is sent.',
+        CUSTOMER,
+      ),
       f(
         "type",
         "body",
