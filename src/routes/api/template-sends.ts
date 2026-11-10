@@ -8,6 +8,9 @@ import { createFileRoute } from "@tanstack/react-router";
  * browser through the member's own client (RLS) — no route.
  *
  * POST { organization_id, action: "set_summary", enabled }
+ * Batch 67: action "set_summary_whatsapp" — the summary's WhatsApp copy to the
+ * owner's phone (organizations.branding.send_failure_summary_whatsapp; only
+ * false turns it off), the same permission and audit log.
  */
 export const Route = createFileRoute("/api/template-sends")({
   server: {
@@ -26,7 +29,11 @@ export const Route = createFileRoute("/api/template-sends")({
           (payload["organization_id"] as string) ?? null,
         );
         if (isResponse(auth)) return auth;
-        if (payload["action"] !== "set_summary") return jsonError("Unknown action.");
+        const action = payload["action"];
+        if (action !== "set_summary" && action !== "set_summary_whatsapp")
+          return jsonError("Unknown action.");
+        const key =
+          action === "set_summary" ? "send_failure_summary" : "send_failure_summary_whatsapp";
         if (typeof payload["enabled"] !== "boolean") return jsonError("Say on or off.");
         const denied = await requirePermission(auth, "settings.manage", "change notifications");
         if (denied) return denied;
@@ -40,7 +47,7 @@ export const Route = createFileRoute("/api/template-sends")({
           ...(((data as { branding?: Record<string, unknown> | null } | null)?.branding ??
             {}) as Record<string, unknown>),
         };
-        branding["send_failure_summary"] = payload["enabled"];
+        branding[key] = payload["enabled"];
         const { error: writeError } = await auth.supabase
           .from("organizations")
           .update({ branding })
@@ -50,7 +57,9 @@ export const Route = createFileRoute("/api/template-sends")({
           auth.supabase,
           auth.organizationId,
           auth.userId,
-          "send_failure_summary_changed",
+          action === "set_summary"
+            ? "send_failure_summary_changed"
+            : "send_failure_summary_whatsapp_changed",
           {
             enabled: payload["enabled"],
           },

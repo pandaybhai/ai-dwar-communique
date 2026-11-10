@@ -17,7 +17,7 @@
 -- query_to_xml only when to_regclass('cron.job') finds it, so the query
 -- still runs where pg_cron is absent (every cron job is then listed).
 --
--- Expected objects: table 96, column 1131, view 2, function 122, index 172, trigger 71, cron_job 14.
+-- Expected objects: table 97, column 1145, view 2, function 123, index 175, trigger 71, cron_job 14.
 WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, introduced_in_file) AS (
   VALUES
     ('table', 'aidwar_private', 'mcp_db_proof', NULL, NULL, NULL, '20261300_batch56_mcp_hardening.sql'),
@@ -39,6 +39,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('table', 'public', 'api_console_credentials', NULL, NULL, NULL, '20261160_batch38_public_api_v12.sql'),
     ('table', 'public', 'api_keys', NULL, NULL, NULL, '20261120_batch34_public_api.sql'),
     ('table', 'public', 'api_rate_windows', NULL, NULL, NULL, '20261120_batch34_public_api.sql'),
+    ('table', 'public', 'api_refusals', NULL, NULL, NULL, '20261370_batch67.sql'),
     ('table', 'public', 'api_requests', NULL, NULL, NULL, '20261120_batch34_public_api.sql'),
     ('table', 'public', 'api_webhook_attempts', NULL, NULL, NULL, '20261160_batch38_public_api_v12.sql'),
     ('table', 'public', 'api_webhook_deliveries', NULL, NULL, NULL, '20261120_batch34_public_api.sql'),
@@ -322,6 +323,20 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('column', 'public', 'api_rate_windows', 'bucket', NULL, 'text', '20261120_batch34_public_api.sql'),
     ('column', 'public', 'api_rate_windows', 'hits', NULL, 'integer', '20261120_batch34_public_api.sql'),
     ('column', 'public', 'api_rate_windows', 'window_start', NULL, 'timestamp with time zone', '20261120_batch34_public_api.sql'),
+    ('column', 'public', 'api_refusals', 'api_key_id', NULL, 'text', '20261370_batch67.sql'),
+    ('column', 'public', 'api_refusals', 'created_at', NULL, 'timestamp with time zone', '20261370_batch67.sql'),
+    ('column', 'public', 'api_refusals', 'dedupe_key', NULL, 'text', '20261370_batch67.sql'),
+    ('column', 'public', 'api_refusals', 'endpoint', NULL, 'text', '20261370_batch67.sql'),
+    ('column', 'public', 'api_refusals', 'error_code', NULL, 'text', '20261370_batch67.sql'),
+    ('column', 'public', 'api_refusals', 'field', NULL, 'text', '20261370_batch67.sql'),
+    ('column', 'public', 'api_refusals', 'http_status', NULL, 'integer', '20261370_batch67.sql'),
+    ('column', 'public', 'api_refusals', 'id', NULL, 'uuid', '20261370_batch67.sql'),
+    ('column', 'public', 'api_refusals', 'idempotency_key', NULL, 'text', '20261370_batch67.sql'),
+    ('column', 'public', 'api_refusals', 'organization_id', NULL, 'uuid', '20261370_batch67.sql'),
+    ('column', 'public', 'api_refusals', 'reason', NULL, 'text', '20261370_batch67.sql'),
+    ('column', 'public', 'api_refusals', 'source', NULL, 'text', '20261370_batch67.sql'),
+    ('column', 'public', 'api_refusals', 'template_name', NULL, 'text', '20261370_batch67.sql'),
+    ('column', 'public', 'api_refusals', 'to_received', NULL, 'text', '20261370_batch67.sql'),
     ('column', 'public', 'api_requests', 'api_key_id', NULL, 'uuid', '20261120_batch34_public_api.sql'),
     ('column', 'public', 'api_requests', 'created_at', NULL, 'timestamp with time zone', '20261120_batch34_public_api.sql'),
     ('column', 'public', 'api_requests', 'http_status', NULL, 'integer', '20261120_batch34_public_api.sql'),
@@ -1276,6 +1291,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('function', 'public', 'api_list_contacts', NULL, ARRAY['uuid', 'integer', 'timestamp with time zone', 'uuid', 'text', 'text', 'timestamp with time zone'], 'public.api_list_contacts(uuid, integer, timestamp with time zone, uuid, text, text, timestamp with time zone)', '20261150_batch37_public_api_v11.sql'),
     ('function', 'public', 'api_list_conversations', NULL, ARRAY['uuid', 'integer', 'timestamp with time zone', 'uuid', 'text', 'uuid', 'boolean', 'timestamp with time zone'], 'public.api_list_conversations(uuid, integer, timestamp with time zone, uuid, text, uuid, boolean, timestamp with time zone)', '20261160_batch38_public_api_v12.sql'),
     ('function', 'public', 'api_rate_take', NULL, ARRAY['text', 'integer', 'integer'], 'public.api_rate_take(text, integer, integer)', '20261120_batch34_public_api.sql'),
+    ('function', 'public', 'api_refusals_purge', NULL, '{}'::text[], 'public.api_refusals_purge()', '20261370_batch67.sql'),
     ('function', 'public', 'api_webhook_adopt_legacy', NULL, ARRAY['uuid'], 'public.api_webhook_adopt_legacy(uuid)', '20261160_batch38_public_api_v12.sql'),
     ('function', 'public', 'api_webhook_claim', NULL, ARRAY['integer', 'integer'], 'public.api_webhook_claim(integer, integer)', '20261120_batch34_public_api.sql'),
     ('function', 'public', 'api_webhook_endpoint_delete', NULL, ARRAY['uuid'], 'public.api_webhook_endpoint_delete(uuid)', '20261160_batch38_public_api_v12.sql'),
@@ -1395,6 +1411,9 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('index', 'public', 'api_console_credentials_token_hash_key', NULL, NULL, 'unique on public.api_console_credentials', '20261160_batch38_public_api_v12.sql'),
     ('index', 'public', 'api_keys_key_hash_key', NULL, NULL, 'unique on public.api_keys', '20261120_batch34_public_api.sql'),
     ('index', 'public', 'api_keys_org_idx', NULL, NULL, 'on public.api_keys', '20261120_batch34_public_api.sql'),
+    ('index', 'public', 'api_refusals_org_created_idx', NULL, NULL, 'on public.api_refusals', '20261370_batch67.sql'),
+    ('index', 'public', 'api_refusals_org_dedupe_key', NULL, NULL, 'unique on public.api_refusals', '20261370_batch67.sql'),
+    ('index', 'public', 'api_refusals_org_template_created_idx', NULL, NULL, 'on public.api_refusals', '20261370_batch67.sql'),
     ('index', 'public', 'api_requests_created_idx', NULL, NULL, 'on public.api_requests', '20261120_batch34_public_api.sql'),
     ('index', 'public', 'api_requests_org_key_key', NULL, NULL, 'unique on public.api_requests', '20261120_batch34_public_api.sql'),
     ('index', 'public', 'api_webhook_attempts_endpoint_idx', NULL, NULL, 'on public.api_webhook_attempts', '20261160_batch38_public_api_v12.sql'),
@@ -1626,7 +1645,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('cron_job', 'cron', 'aidwar-plan-billing', NULL, NULL, 'schedule 30 3 * * *', '20260923_plan_billing_cron.sql'),
     ('cron_job', 'cron', 'aidwar-reprice-sweep', NULL, NULL, 'schedule */10 * * * *', '20261053_cron_jobs.sql'),
     ('cron_job', 'cron', 'aidwar-reprocess-events', NULL, NULL, 'schedule */5 * * * *', '20261053_cron_jobs.sql'),
-    ('cron_job', 'cron', 'aidwar-retention-purge', NULL, NULL, 'schedule 0 2 * * *', '20261053_cron_jobs.sql'),
+    ('cron_job', 'cron', 'aidwar-retention-purge', NULL, NULL, 'schedule 0 2 * * *', '20261370_batch67.sql'),
     ('cron_job', 'cron', 'aidwar-shopify-sync', NULL, NULL, 'schedule * * * * *', '20261053_cron_jobs.sql')
 ),
 cron_jobs AS (

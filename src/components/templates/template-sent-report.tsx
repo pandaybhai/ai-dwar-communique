@@ -42,6 +42,8 @@ const STATUS_CLASS: Record<string, string> = {
   delivered: "border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
   read: "border-emerald-600/30 bg-emerald-600/15 text-emerald-800 dark:text-emerald-200",
   failed: "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300",
+  // Batch 67: refused before it was sent (nothing reached WhatsApp).
+  refused: "border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-200",
 };
 
 function when(at: string): string {
@@ -102,7 +104,11 @@ function SendItem({ line, nested = false }: { line: SendLine; nested?: boolean }
       <span className="flex min-w-0 flex-wrap items-center gap-2">
         <StatusPill line={line} />
         {line.reason ? (
-          <span className="text-xs text-red-700 dark:text-red-300">{line.reason}</span>
+          <span
+            className={`text-xs ${line.status === "refused" ? "text-amber-800 dark:text-amber-200" : "text-red-700 dark:text-red-300"}`}
+          >
+            {line.reason}
+          </span>
         ) : null}
       </span>
     </li>
@@ -115,15 +121,16 @@ function Totals({ totals }: { totals: SendTotals | null }) {
     ["Delivered", totals?.delivered ?? null],
     ["Read", totals?.read ?? null],
     ["Failed", totals?.failed ?? null],
+    ["Refused", totals?.refused ?? null],
     ["Copies sent", totals?.copies ?? null],
   ];
   return (
-    <dl className="grid grid-cols-3 gap-2 sm:grid-cols-5" data-testid="sent-totals">
+    <dl className="grid grid-cols-3 gap-2 sm:grid-cols-6" data-testid="sent-totals">
       {tiles.map(([label, value]) => (
         <div key={label} className="rounded-xl border border-border/70 bg-muted/30 px-3 py-2">
           <dt className="text-[11px] text-muted-foreground">{label}</dt>
           <dd
-            className={`text-lg font-semibold tabular-nums ${label === "Failed" && value ? "text-red-700 dark:text-red-300" : "text-foreground"}`}
+            className={`text-lg font-semibold tabular-nums ${label === "Failed" && value ? "text-red-700 dark:text-red-300" : label === "Refused" && value ? "text-amber-800 dark:text-amber-200" : "text-foreground"}`}
           >
             {value === null ? "…" : value.toLocaleString("en-IN")}
           </dd>
@@ -138,12 +145,18 @@ export function TemplateSentReport({
   templateName,
   open,
   onOpenChange,
+  noTemplate = false,
 }: {
   organizationId: string;
   templateName: string | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Batch 67: the API sends refused without a template name ("Refused (no template)"). */
+  noTemplate?: boolean;
 }) {
+  // The report's subject: a template, or (noTemplate) the refusals that named none.
+  const subject: string | null = noTemplate ? null : templateName;
+  const ready = noTemplate || Boolean(templateName);
   const { can } = usePermissions();
   const [filters, setFilters] = useState<SendFilters>(NO_SEND_FILTERS);
   const [lines, setLines] = useState<SendLine[] | null>(null);
@@ -156,11 +169,11 @@ export function TemplateSentReport({
 
   const load = useCallback(
     async (nextPage: number) => {
-      if (!templateName) return;
+      if (!ready) return;
       setBusy(true);
       const r = await loadTemplateSends(aidwar as never, {
         organizationId,
-        templateName,
+        templateName: subject,
         filters,
         page: nextPage,
       });
@@ -171,7 +184,7 @@ export function TemplateSentReport({
       setPage(nextPage);
       setLines((prev) => (nextPage === 0 || !prev ? r.lines : [...prev, ...r.lines]));
     },
-    [organizationId, templateName, filters],
+    [organizationId, subject, ready, filters],
   );
 
   useEffect(() => {
@@ -181,19 +194,22 @@ export function TemplateSentReport({
   const set = (patch: Partial<SendFilters>) => setFilters((f) => ({ ...f, ...patch }));
 
   const download = async () => {
-    if (!templateName) return;
+    if (!ready) return;
     setExporting(true);
     const all = await loadAllTemplateSends(aidwar as never, {
       organizationId,
-      templateName,
+      templateName: subject,
       filters,
     });
     setExporting(false);
-    const blob = new Blob([sendsCsv(templateName, all)], { type: "text/csv;charset=utf-8" });
+    const label = subject ?? "no-template";
+    const blob = new Blob([sendsCsv(subject ?? "(no template)", all)], {
+      type: "text/csv;charset=utf-8",
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${templateName}-sent.csv`;
+    a.download = noTemplate ? "refused-no-template.csv" : `${label}-sent.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -211,11 +227,13 @@ export function TemplateSentReport({
       >
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
-            <Send className="h-4 w-4 text-primary" aria-hidden="true" /> Sent — {templateName}
+            <Send className="h-4 w-4 text-primary" aria-hidden="true" />{" "}
+            {noTemplate ? "Refused (no template)" : <>Sent — {templateName}</>}
           </SheetTitle>
           <SheetDescription>
-            Every send of this template: API, campaigns, flows and the Inbox. Copies of an API send
-            are listed under it.
+            {noTemplate
+              ? "API sends we refused before sending that named no template (for example a free-form message outside the 24-hour window). Nothing was sent."
+              : "Every send of this template: API, campaigns, flows and the Inbox. Copies of an API send are listed under it. Refused: an API send we refused before sending, with the reason."}
           </SheetDescription>
         </SheetHeader>
 
@@ -335,7 +353,11 @@ export function TemplateSentReport({
               <p className="py-6 text-center text-sm text-muted-foreground">Loading…</p>
             ) : lines.length === 0 ? (
               <p className="py-6 text-center text-sm text-muted-foreground">
-                {filtered ? "No sends match these filters." : "This template hasn't been sent yet."}
+                {filtered
+                  ? "No sends match these filters."
+                  : noTemplate
+                    ? "No refused API sends without a template."
+                    : "This template hasn't been sent yet."}
               </p>
             ) : (
               <ul className="divide-y divide-border/70">

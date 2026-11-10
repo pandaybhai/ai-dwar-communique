@@ -36,6 +36,7 @@ import { cn } from "@/lib/utils";
 import { useWhatsAppNumbers } from "@/hooks/use-whatsapp-numbers";
 import { numberLabel, type WhatsAppNumber } from "@/lib/whatsapp-numbers";
 import { TemplateSentReport } from "@/components/templates/template-sent-report";
+import { RefusedNoTemplateLine } from "@/components/templates/refused-no-template-line";
 
 const SYNC_KEY = "aidwar.templates.last_sync";
 const TEN_MINUTES = 10 * 60 * 1000;
@@ -274,6 +275,8 @@ export function TemplatesView() {
 
   return (
     <div className="space-y-5">
+      {/* Batch 67: API sends refused with no template name. */}
+      <RefusedNoTemplateLine organizationId={orgId} variant="classic" />
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex w-full flex-col gap-2 sm:max-w-md sm:flex-row">
           <div className="relative w-full">

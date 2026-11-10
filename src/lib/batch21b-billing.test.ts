@@ -83,8 +83,10 @@ const templatesWorld = (held: string[], language = "en") =>
 
 // ------------------------------------------------------------------ (1)
 describe("(1) Create billing templates", () => {
-  it("the 14 notices in order: admin_settle_failed is the 8th, client_invoice_issued (DOCUMENT) the 9th", () => {
-    expect(ALL).toHaveLength(14);
+  it("the 15 notices in order: admin_settle_failed is the 8th, client_invoice_issued (DOCUMENT) the 9th", () => {
+    // Batch 67 added client_send_failures (the daily failure summary's WhatsApp copy) last.
+    expect(ALL).toHaveLength(15);
+    expect(ALL[14]).toBe("client_send_failures");
     expect(ALL[7]).toBe("admin_settle_failed");
     expect(BILLING_TEMPLATES[8]).toMatchObject({ name: "client_invoice_issued", headerFormat: "DOCUMENT" });
   });
@@ -134,7 +136,7 @@ describe("(1) Create billing templates", () => {
       { name: "client_invoice_overdue", error: "Cannot destructure property '__extends'" },
       { name: "client_trial_ending", error: "(#2388024) Content in this language already exists" },
     ]);
-    expect(report.created).toEqual(["client_invoice_issued", "client_payment_failed", "admin_ai_provider_alert", "staff_handoff_alert"]);
+    expect(report.created).toEqual(["client_invoice_issued", "client_payment_failed", "admin_ai_provider_alert", "staff_handoff_alert", "client_send_failures"]);
   });
 
   it("starts nothing new past the time budget; the rest come back as remaining, and the next run takes only those", async () => {
@@ -146,7 +148,7 @@ describe("(1) Create billing templates", () => {
     const first = await ensureBillingTemplates(db.supabase, "admin-1", { budgetMs: 10_000, now: () => clock });
     expect(first.created.length).toBeGreaterThan(0);
     expect(first.remaining.length).toBeGreaterThan(0);
-    expect(first.created.length + first.remaining.length).toBe(14);
+    expect(first.created.length + first.remaining.length).toBe(15);
     expect(first.results.filter((r) => r.outcome === "remaining").map((r) => r.name)).toEqual(first.remaining);
 
     h.created.length = 0;

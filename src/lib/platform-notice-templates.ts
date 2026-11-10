@@ -25,7 +25,12 @@ export const RESUME_LINK_TEMPLATE_NAME = "aidwar_onboarding_resume_link";
 export const STAFF_HANDOFF_TEMPLATE = {
   name: "staff_handoff_alert",
   body: "AiDwar alert for {{1}}: {{2}} is waiting for a person in the Inbox because {{3}}. Open the Inbox here: {{4}} — Aiden has stepped back on this chat until your team replies.",
-  examples: ["Sharma Textiles", "Asha (+91 98765 43210)", "a customer asked to talk to a person", "https://aidwar.in/app/inbox"],
+  examples: [
+    "Sharma Textiles",
+    "Asha (+91 98765 43210)",
+    "a customer asked to talk to a person",
+    "https://aidwar.in/app/inbox",
+  ],
 };
 
 export type BillingTemplateSpec = {
@@ -110,12 +115,25 @@ export const BILLING_TEMPLATES: BillingTemplateSpec[] = [
     // Raised at most once an hour by ai-fallback.server.ts.
     name: "admin_ai_provider_alert",
     body: "AiDwar AI alert: {{1}}. Right now {{2}}. Details are here: {{3}} — please check.",
-    examples: ["Lovable AI gateway is out of credit or quota", "Aiden is answering on the anthropic backup", "https://aidwar.in/admin/ai"],
+    examples: [
+      "Lovable AI gateway is out of credit or quota",
+      "Aiden is answering on the anthropic backup",
+      "https://aidwar.in/admin/ai",
+    ],
   },
   // Batch 21: staff hand-off alert outside the 24-hour window (sent by handoff-alerts.server.ts).
   STAFF_HANDOFF_TEMPLATE,
+  {
+    // Batch 67: the daily failure summary's WhatsApp copy to the workspace
+    // owner (send-failure-digest.server.ts), only once Meta has APPROVED it.
+    // {{3}} is always https://aidwar.in/app/templates (no token in it). "Thank
+    // you." follows it because Meta (and validateDraft) refuse a body that ends
+    // with a variable.
+    name: "client_send_failures",
+    body: "Hello {{1}}, {{2}} WhatsApp messages from your account couldn't be sent or delivered yesterday. See them here: {{3}} Thank you.",
+    examples: ["Sharma Textiles", "3", "https://aidwar.in/app/templates"],
+  },
 ];
-
 
 /** Every AiDwar notice template name, exactly (never a prefix match). */
 export const PLATFORM_NOTICE_TEMPLATE_NAMES: ReadonlySet<string> = new Set([

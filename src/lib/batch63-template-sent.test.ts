@@ -177,13 +177,15 @@ describe("the report", () => {
       templateName: "invoice_ready",
       filters: NO_SEND_FILTERS,
     });
-    expect(r.totals).toEqual({ sent: 4, delivered: 3, read: 2, failed: 1, copies: 2 });
+    // Batch 67: totals also count refused API sends (none here).
+    expect(r.totals).toEqual({ sent: 4, delivered: 3, read: 2, failed: 1, copies: 2, refused: 0 });
     expect(totalsFrom({ sent: 1, delivered: 2, read: 3, failed: 4 }, 5)).toEqual({
       sent: 6,
       delivered: 5,
       read: 3,
       failed: 4,
       copies: 5,
+      refused: 0,
     });
   });
 

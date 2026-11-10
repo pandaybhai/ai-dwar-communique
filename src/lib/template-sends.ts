@@ -1,4 +1,5 @@
 import { failureReason } from "@/lib/wa-reachability";
+import type { RefusalRecord } from "@/lib/api-refusals";
 
 /**
  * Batch 63 (C): a template's "Sent" report — every send of one template from
@@ -23,8 +24,9 @@ export const SEND_SOURCE_LABEL: Record<SendSource, string> = {
 
 export const SEND_SOURCES: SendSource[] = ["api", "campaign", "flow", "inbox", "other"];
 
-export type SendStatus = "pending" | "sent" | "delivered" | "read" | "failed";
-export const SEND_STATUSES: SendStatus[] = ["sent", "delivered", "read", "failed"];
+/** Batch 67: "refused" — an API send refused before it was sent (public.api_refusals), never a messages row. */
+export type SendStatus = "pending" | "sent" | "delivered" | "read" | "failed" | "refused";
+export const SEND_STATUSES: SendStatus[] = ["sent", "delivered", "read", "failed", "refused"];
 
 export type SendRow = {
   id: string;
@@ -117,6 +119,25 @@ export function toLine(row: SendRow): SendLine {
   };
 }
 
+/** Batch 67: a refused API send as a report line (no customer: the number is as the request gave it). */
+export function refusalLine(r: RefusalRecord): SendLine {
+  const phone = String(r.to_received ?? "").trim();
+  return {
+    id: `refusal:${r.id}`,
+    at: r.created_at,
+    source: "api",
+    customer: phone || "No number given",
+    phone,
+    contactId: null,
+    reference: r.idempotency_key,
+    status: "refused",
+    // The field (e.g. cc[1]) only when the sentence doesn't already name it.
+    reason: r.field && !r.reason.includes(r.field) ? `${r.reason} (${r.field})` : r.reason,
+    copy: false,
+    copies: [],
+  };
+}
+
 /**
  * Customer sends, newest first, each with its copies (oldest first) under
  * it. A copy whose customer send isn't on this page is shown on its own,
@@ -153,6 +174,8 @@ export type SendTotals = {
   read: number;
   failed: number;
   copies: number;
+  /** Batch 67: API sends refused before they were sent. */
+  refused: number;
 };
 
 /**
@@ -163,6 +186,7 @@ export type SendTotals = {
 export function totalsFrom(
   counts: Partial<Record<SendStatus, number>>,
   copies: number,
+  refused = 0,
 ): SendTotals {
   const read = counts.read ?? 0;
   const delivered = (counts.delivered ?? 0) + read;
@@ -172,6 +196,7 @@ export function totalsFrom(
     read,
     failed: counts.failed ?? 0,
     copies,
+    refused,
   };
 }
 
@@ -251,6 +276,7 @@ const STATUS_LABEL: Record<SendStatus, string> = {
   delivered: "Delivered",
   read: "Read",
   failed: "Failed",
+  refused: "Refused",
 };
 export const sendStatusLabel = (s: SendStatus) => STATUS_LABEL[s];
 
