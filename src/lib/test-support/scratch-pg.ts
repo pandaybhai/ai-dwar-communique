@@ -23,9 +23,9 @@ import { join } from "node:path";
 
 /**
  * Postgres 16's binaries when installed (as before), else the newest other
- * version under /usr/lib/postgresql (Batch 66: GitHub's runner image dropped
- * 16 on 10 Nov; CI now installs it, and a machine with only another version
- * still runs these tests).
+ * version under /usr/lib/postgresql (Batch 66: ubuntu-latest moved to Ubuntu
+ * 26 without 16, so CI pins ubuntu-24.04, which ships it; a machine with only
+ * another version still runs these tests).
  */
 function findPgBin(): string {
   const root = "/usr/lib/postgresql";

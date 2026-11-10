@@ -18,7 +18,9 @@ concurrency:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    # Pinned (Batch 66): ubuntu-latest moved to Ubuntu 26, which has no PostgreSQL 16
+    # for the real-Postgres tests (scratch-pg.ts); 24.04 ships it, as before.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -36,13 +38,6 @@ jobs:
         run: |
           sed -i -E 's#https://europe-west[0-9]+-npm\.pkg\.dev/lovable-core-prod/sandbox-npm-cache/#https://registry.npmjs.org/#g' bun.lock
           bun install --frozen-lockfile
-      - name: Postgres for the SQL tests
-        # GitHub's ubuntu-latest image no longer ships PostgreSQL 16 (10 Nov):
-        # the real-Postgres tests (scratch-pg.ts) need its initdb / pg_ctl.
-        run: |
-          sudo apt-get update -q
-          sudo apt-get install -y -q postgresql-16
-          sudo systemctl stop postgresql || true
       - name: Typecheck
         run: npx tsc --noEmit -p .
       - name: Tests
@@ -60,7 +55,9 @@ jobs:
   # moved by src/lib/test-support/shift-clock.mjs: no test may depend on the
   # real date, the time of day or the machine's timezone.
   shifted-clock:
-    runs-on: ubuntu-latest
+    # Pinned (Batch 66): ubuntu-latest moved to Ubuntu 26, which has no PostgreSQL 16
+    # for the real-Postgres tests (scratch-pg.ts); 24.04 ships it, as before.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -95,13 +92,6 @@ jobs:
         run: |
           sed -i -E 's#https://europe-west[0-9]+-npm\.pkg\.dev/lovable-core-prod/sandbox-npm-cache/#https://registry.npmjs.org/#g' bun.lock
           bun install --frozen-lockfile
-      - name: Postgres for the SQL tests
-        # GitHub's ubuntu-latest image no longer ships PostgreSQL 16 (10 Nov):
-        # the real-Postgres tests (scratch-pg.ts) need its initdb / pg_ctl.
-        run: |
-          sudo apt-get update -q
-          sudo apt-get install -y -q postgresql-16
-          sudo systemctl stop postgresql || true
       - name: Tests at a shifted clock
         env:
           TZ: ${{ matrix.tz }}
