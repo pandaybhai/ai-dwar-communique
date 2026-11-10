@@ -15,10 +15,9 @@ export const Route = createFileRoute("/api/contacts/import")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const { requireOrgMember, isResponse, jsonError, logServerActivity } = await import(
-          "@/lib/whatsapp-api.server"
-        );
-        const { normalizePhone, toWaId } = await import("@/lib/phone");
+        const { requireOrgMember, isResponse, jsonError, logServerActivity } =
+          await import("@/lib/whatsapp-api.server");
+        const { enteredPhone, phoneProblemText, toWaId } = await import("@/lib/phone");
         const { importOptInPatch, isOptedOut } = await import("@/lib/opt-out.server");
         const { optInConsent, writeWithConsent } = await import("@/lib/opt-in.server");
 
@@ -29,7 +28,10 @@ export const Route = createFileRoute("/api/contacts/import")({
           return jsonError("Invalid request.");
         }
 
-        const auth = await requireOrgMember(request, (payload["organization_id"] as string) ?? null);
+        const auth = await requireOrgMember(
+          request,
+          (payload["organization_id"] as string) ?? null,
+        );
         if (isResponse(auth)) return auth;
         const { requirePermission } = await import("@/lib/whatsapp-api.server");
         const denied = await requirePermission(auth, "contacts.import", "import contacts");
@@ -57,7 +59,8 @@ export const Route = createFileRoute("/api/contacts/import")({
             })
             .select("id")
             .single();
-          if (error || !data) return jsonError("We couldn't start the import. Please try again.", 500);
+          if (error || !data)
+            return jsonError("We couldn't start the import. Please try again.", 500);
 
           await logServerActivity(supabase, organizationId, userId, "contacts_import_consent", {
             filename,
@@ -86,9 +89,7 @@ export const Route = createFileRoute("/api/contacts/import")({
 
           // Resolve/create tags once per chunk.
           const tagNames = Array.from(
-            new Set(
-              rows.flatMap((r) => (r.tags ?? []).map((t) => t.trim()).filter(Boolean)),
-            ),
+            new Set(rows.flatMap((r) => (r.tags ?? []).map((t) => t.trim()).filter(Boolean))),
           );
           const tagIds = new Map<string, string>();
           if (tagNames.length) {
@@ -112,18 +113,32 @@ export const Route = createFileRoute("/api/contacts/import")({
             }
           }
 
+          // Batch 66: the one phone rule; the workspace's default country code
+          // is read only when a row needs it (the app sends +E.164 already).
+          let defaultCode: string | null = null;
+          if (
+            rows.some((r) => {
+              const e = enteredPhone(r.phone ?? "", null);
+              return !e.ok && e.problem === "needs_country";
+            })
+          ) {
+            const { loadDefaultCountryCode } = await import("@/lib/default-country");
+            const read = await loadDefaultCountryCode(supabase, organizationId);
+            if ("code" in read) defaultCode = read.code;
+          }
           for (const raw of rows) {
             const rowNumber = Number(raw.row_number ?? 0);
-            const phone = normalizePhone(raw.phone ?? "");
-            const digits = toWaId(phone);
-            if (digits.length < 8 || digits.length > 15) {
+            const entered = enteredPhone(raw.phone ?? "", defaultCode);
+            if (!entered.ok) {
               errors.push({
                 row: rowNumber,
                 phone: String(raw.phone ?? ""),
-                reason: "Invalid phone number",
+                reason: phoneProblemText(entered.problem),
               });
               continue;
             }
+            const phone = entered.phone;
+            const digits = toWaId(phone);
 
             const { data: existing } = await supabase
               .from("contacts")
@@ -152,7 +167,11 @@ export const Route = createFileRoute("/api/contacts/import")({
                   ...optIn,
                   ...(optIn.opt_in_status ? optInConsent("import", at) : {}),
                 },
-                (patch) => supabase.from("contacts").update(patch).eq("id", contactId as string),
+                (patch) =>
+                  supabase
+                    .from("contacts")
+                    .update(patch)
+                    .eq("id", contactId as string),
               );
               if (updErr) {
                 errors.push({ row: rowNumber, phone, reason: "Could not update contact" });
@@ -196,13 +215,19 @@ export const Route = createFileRoute("/api/contacts/import")({
                   organization_id: organizationId,
                 }));
               if (links.length) {
-                await supabase.from("contact_tags").upsert(links, { onConflict: "contact_id,tag_id" });
+                await supabase
+                  .from("contact_tags")
+                  .upsert(links, { onConflict: "contact_id,tag_id" });
                 // Flows v2 "tag added" triggers — only when the import opted in.
                 if (startFlows) {
                   try {
                     const { dispatchTagAdded } = await import("@/lib/flow-triggers.server");
                     for (const n of rowTags) {
-                      await dispatchTagAdded(supabase, { organizationId, contactId: contactId as string, tag: n });
+                      await dispatchTagAdded(supabase, {
+                        organizationId,
+                        contactId: contactId as string,
+                        tag: n,
+                      });
                     }
                   } catch {
                     // a trigger problem must never fail the import

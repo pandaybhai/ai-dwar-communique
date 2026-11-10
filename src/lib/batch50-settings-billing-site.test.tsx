@@ -401,8 +401,10 @@ describe("flag off: today's Settings, Billing and journey", () => {
     // Batch 55: billing-view, invoices-panel and plan-chooser were re-pinned after
     // their "+ 18% GST" copy started following platform_settings.gst_registered.
     const from = (text: string, marker: string) => text.slice(text.indexOf(marker));
+    // Re-pinned in Batch 66: Settings > Workspace (GeneralTab, both designs) shows
+    // "Default country code: +91" read-only — the brief's one UI line; nothing else moved.
     expect(sha(from(src("routes/app/settings.tsx"), "function SettingsPage()"))).toBe(
-      "df2551925c43daf5c72cdd73e731e50a33c748fcc2074d775532539f5d76d57f",
+      "ec8bf120ec66ffad3d276e1ee1c276d377ab15064243854a47ccad3cca91bc95",
     );
     // Re-pinned in Batch 61 after Lovable c1ee4bd ("Fixed trial plan picker", asked for by
     // the founder): a trial workspace now gets the plan picker (`|| org?.plan_status === "trial"`).

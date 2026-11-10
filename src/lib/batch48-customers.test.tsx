@@ -226,7 +226,8 @@ describe("the import: the classic logic, moved unchanged and shared", () => {
     );
     const phone = normalizePhone("+919876543210");
     const errors = [
-      { row: 3, phone: "bad", reason: "Invalid phone number" },
+      // Batch 66: the skip reason says why (phoneProblemText).
+      { row: 3, phone: "bad", reason: "No phone number" },
       { row: 4, phone, reason: "Duplicate row in file" },
     ];
     expect(calls).toEqual([

@@ -9,11 +9,14 @@ import {
   attrKey,
   errorReportCsv,
   phoneColumnOf,
+  planImportRows,
   readImportCsv,
   runContactImport,
   type Mapping,
   type Results,
 } from "@/lib/contact-import";
+import { ImportPhoneCheck } from "@/components/contacts/import-phone-check";
+import { useDefaultCountryCode } from "@/hooks/use-default-country-code";
 import {
   IMPORT_CONSENT_HELPER,
   IMPORT_CONSENT_LABEL,
@@ -78,6 +81,12 @@ export function GuidedImportDialog({
   const inputRef = useRef<HTMLInputElement>(null);
 
   const phoneColumn = useMemo(() => phoneColumnOf(mapping), [mapping]);
+  // Batch 66: the workspace's default country code and what it does to this file's numbers.
+  const country = useDefaultCountryCode(organizationId);
+  const phonePlan = useMemo(
+    () => (phoneColumn && country.code ? planImportRows(rows, mapping, country.code) : null),
+    [rows, mapping, phoneColumn, country.code],
+  );
   const shown = guidedStep(step);
 
   function reset() {
@@ -122,6 +131,7 @@ export function GuidedImportDialog({
       consent,
       startFlows,
       onProgress: setProgress,
+      defaultCountryCode: country.code,
     });
     if ("startError" in run) {
       setRunning(false);
@@ -344,6 +354,16 @@ export function GuidedImportDialog({
               </table>
             </div>
 
+            {phoneColumn ? (
+              <ImportPhoneCheck
+                plan={phonePlan}
+                code={country.code}
+                error={country.error}
+                loading={country.loading}
+                variant="new"
+              />
+            ) : null}
+
             {!phoneColumn ? (
               <p className="m-0 text-sm text-danger-soft-foreground" role="status">
                 {t.needPhone}
@@ -353,7 +373,11 @@ export function GuidedImportDialog({
               <Button variant="ghost" className="phone:h-11" onClick={() => setStep(1)}>
                 {t.back}
               </Button>
-              <Button className="phone:h-11" disabled={!phoneColumn} onClick={() => setStep(3)}>
+              <Button
+                className="phone:h-11"
+                disabled={!phoneColumn || !country.code}
+                onClick={() => setStep(3)}
+              >
                 {t.next}
               </Button>
             </div>

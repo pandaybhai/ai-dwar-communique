@@ -161,16 +161,16 @@ async function conversationForPhone(
   organizationId: string,
   rawPhone: string,
 ): Promise<{ row: ConversationRow; contact: ContactRow } | null> {
-  const { normalizePhone, toWaId } = await import("@/lib/phone");
   let text = rawPhone;
   try {
     text = decodeURIComponent(rawPhone);
   } catch {
     // not encoded
   }
-  const phone = normalizePhone(text);
-  const digits = toWaId(phone);
-  if (digits.length < 8 || digits.length > 15) return null;
+  // Batch 66: the one phone rule (a 10-digit number gets the default country code).
+  const { pathPhone } = await import("@/lib/public-api-contacts.server");
+  const phone = await pathPhone(supabase, organizationId, text);
+  if (!phone || phone === "error") return null;
   const { data: contact } = await supabase
     .from("contacts")
     .select("id, phone, name, opt_in_status")

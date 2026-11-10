@@ -54,7 +54,9 @@ const ACCEPTED: Array<[string, string]> = [
   ["+6591234567", "6591234567"],
   ["+18133043903", "18133043903"],
 ];
-const REFUSED = ["9876543210", "09876543210", "0 98765 43210", "12345", "9198765432101234"];
+// Batch 66: a 10-digit number (or 0 + 10 digits) now gets the workspace's default
+// country code (batch66-phone.test.ts); what is still refused is too short or too long.
+const REFUSED = ["12345", "+91 98765", "9198765432101234"];
 
 /** Recorded on main before Batch 65 (the same requests, the same fakes). */
 const MAIN = {
@@ -138,7 +140,7 @@ describe("the rule", () => {
     for (const input of REFUSED) expect(apiPhoneNumber(input), input).toBeNull();
     expect(apiPhoneNumber(919876543210)).toBe("+919876543210"); // a JSON number
     expect(apiPhoneNumber("(+91) 98765.43210")).toBe("+919876543210");
-    expect(apiPhoneNumber("6591234567")).toBeNull(); // never guessed
+    expect(apiPhoneNumber("6591234567")).toBeNull(); // no default code given: not guessed
     expect(apiPhoneNumber("")).toBeNull();
     expect(apiPhoneNumber(null)).toBeNull();
   });
@@ -185,9 +187,9 @@ describe("the rule", () => {
     expect(API_ERRORS.find((r) => r.status === "400")!.codes).toContain("invalid_phone");
     for (const id of ["send-template", "send-session"])
       expect(API_ENDPOINTS.find((e) => e.id === id)!.errors, id).toContain("invalid_phone");
-    expect(apiPhoneError("cc[1]")).toEqual({
+    expect(apiPhoneError("cc[1]", "12345")).toEqual({
       error:
-        "`cc[1]` isn't a WhatsApp number with its country code. Add the country code, e.g. +919876543210. Nothing was sent.",
+        "`cc[1]` isn't a WhatsApp number we can send to (too short: needs 10 digits, or + and the country code). Write it with the country code, e.g. +919876543210. Nothing was sent.",
       code: "invalid_phone",
       field: "cc[1]",
     });
@@ -211,7 +213,9 @@ describe("POST /api/v1/messages/template", () => {
         "invalid_phone",
         "to",
       ]);
-      expect(String(res.body["error"])).toContain("Add the country code, e.g. +919876543210.");
+      expect(String(res.body["error"])).toContain(
+        "Write it with the country code, e.g. +919876543210.",
+      );
     }
     expect(sends()).toHaveLength(0);
     expect(rows("api_requests")).toHaveLength(0);
@@ -224,7 +228,7 @@ describe("POST /api/v1/messages/template", () => {
 
   it("cc with one bad number refuses the whole request, naming cc[n]", async () => {
     const res = await template(
-      invoice({ cc: ["+918121310333", "9121883067"], idempotency_key: "inv-cc" }),
+      invoice({ cc: ["+918121310333", "91218"], idempotency_key: "inv-cc" }),
     );
     expect(res).toMatchObject({
       status: 400,

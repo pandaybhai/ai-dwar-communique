@@ -8,11 +8,14 @@ import {
   SAMPLE_CSV,
   attrKey,
   phoneColumnOf,
+  planImportRows,
   readImportCsv,
   runContactImport,
   type Mapping,
   type Results,
 } from "@/lib/contact-import";
+import { ImportPhoneCheck } from "@/components/contacts/import-phone-check";
+import { useDefaultCountryCode } from "@/hooks/use-default-country-code";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -77,6 +80,12 @@ export function ImportContactsDialog({
   const inputRef = useRef<HTMLInputElement>(null);
 
   const phoneColumn = useMemo(() => phoneColumnOf(mapping), [mapping]);
+  // Batch 66: the workspace's default country code and what it does to this file's numbers.
+  const country = useDefaultCountryCode(organizationId);
+  const phonePlan = useMemo(
+    () => (phoneColumn && country.code ? planImportRows(rows, mapping, country.code) : null),
+    [rows, mapping, phoneColumn, country.code],
+  );
 
   function reset() {
     setStep(1);
@@ -124,6 +133,7 @@ export function ImportContactsDialog({
       consent,
       startFlows,
       onProgress: setProgress,
+      defaultCountryCode: country.code,
     });
     if ("startError" in run) {
       setRunning(false);
@@ -182,9 +192,7 @@ export function ImportContactsDialog({
             }`}
           >
             <FileSpreadsheet className="mx-auto h-10 w-10 text-primary" />
-            <p className="mt-4 text-sm font-medium text-foreground">
-              Drag & drop your CSV here
-            </p>
+            <p className="mt-4 text-sm font-medium text-foreground">Drag & drop your CSV here</p>
             <p className="mt-1 text-xs text-muted-foreground">
               Up to {MAX_ROWS.toLocaleString()} rows. A phone column is required.
             </p>
@@ -264,7 +272,6 @@ export function ImportContactsDialog({
               })}
             </div>
 
-
             <div className="overflow-x-auto rounded-xl border border-border/70">
               <table className="w-full text-xs">
                 <thead className="bg-muted/50 text-left">
@@ -290,11 +297,25 @@ export function ImportContactsDialog({
               </table>
             </div>
 
+            {phoneColumn ? (
+              <ImportPhoneCheck
+                plan={phonePlan}
+                code={country.code}
+                error={country.error}
+                loading={country.loading}
+                variant="classic"
+              />
+            ) : null}
+
             <div className="flex justify-between">
               <Button variant="ghost" className="rounded-full" onClick={() => setStep(1)}>
                 Back
               </Button>
-              <Button className="rounded-full" disabled={!phoneColumn} onClick={() => setStep(3)}>
+              <Button
+                className="rounded-full"
+                disabled={!phoneColumn || !country.code}
+                onClick={() => setStep(3)}
+              >
                 Continue
               </Button>
             </div>
@@ -334,8 +355,8 @@ export function ImportContactsDialog({
                   className="mt-0.5"
                 />
                 <Label htmlFor="start-flows" className="text-sm leading-relaxed">
-                  Also start flows that begin when these tags are added. Leave this off to
-                  import quietly.
+                  Also start flows that begin when these tags are added. Leave this off to import
+                  quietly.
                 </Label>
               </div>
             </div>
@@ -371,14 +392,19 @@ export function ImportContactsDialog({
                 { label: "Updated", value: results.updated },
                 { label: "Skipped", value: results.skipped },
               ].map((s) => (
-                <div key={s.label} className="rounded-2xl border border-border/70 bg-card p-4 text-center shadow-sm">
+                <div
+                  key={s.label}
+                  className="rounded-2xl border border-border/70 bg-card p-4 text-center shadow-sm"
+                >
                   <p className="text-2xl font-bold text-foreground">{s.value.toLocaleString()}</p>
                   <p className="mt-1 text-xs text-muted-foreground">{s.label}</p>
                 </div>
               ))}
             </div>
             {results.stayedOptedOut > 0 ? (
-              <p className="text-sm text-muted-foreground">{stayedOptedOutLine(results.stayedOptedOut)}</p>
+              <p className="text-sm text-muted-foreground">
+                {stayedOptedOutLine(results.stayedOptedOut)}
+              </p>
             ) : null}
             {results.errors.length ? (
               <Button

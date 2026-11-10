@@ -584,16 +584,26 @@ export async function resolveApiAudience(
   }
 
   // ---- a list of phones ----
-  const { normalizePhone, toWaId } = await import("@/lib/phone");
+  // Batch 66: the one phone rule; the default country code is read once, only
+  // when a number has none (a list of full numbers makes no extra read).
+  const { enteredPhone } = await import("@/lib/phone");
+  const { needsDefaultCountry } = await import("@/lib/public-api-cc");
+  let defaultCode: string | null = null;
+  if (audience.phones.some((entry) => needsDefaultCountry(entry.phone))) {
+    const { loadDefaultCountryCode } = await import("@/lib/default-country");
+    const read = await loadDefaultCountryCode(supabase, organizationId);
+    if ("error" in read) return fail(503, "unavailable", read.error);
+    defaultCode = read.code;
+  }
   const skipped: Skipped[] = [];
   const wanted = new Map<string, PhoneEntry>();
   for (const entry of audience.phones) {
-    const phone = normalizePhone(entry.phone);
-    const digits = toWaId(phone);
-    if (digits.length < 8 || digits.length > 15) {
+    const entered = enteredPhone(entry.phone, defaultCode);
+    if (!entered.ok) {
       skipped.push({ phone: String(entry.phone), reason: "invalid_phone" });
       continue;
     }
+    const phone = entered.phone;
     if (wanted.has(phone)) {
       skipped.push({ phone, reason: "duplicate" });
       continue;

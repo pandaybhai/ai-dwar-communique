@@ -33,10 +33,19 @@ export async function accountBalance(
       return fail(400, "invalid_filter", "`country` must be a two-letter country code, e.g. IN.");
     country = askedCountry.toUpperCase();
   } else if (askedTo !== null) {
-    const { normalizePhone, toWaId } = await import("@/lib/phone");
-    const digits = toWaId(normalizePhone(askedTo));
-    if (digits.length < 8 || digits.length > 15)
+    // Batch 66: the one phone rule (a 10-digit number gets the default country code).
+    const { toWaId } = await import("@/lib/phone");
+    const { pathPhone } = await import("@/lib/public-api-contacts.server");
+    const phone = await pathPhone(supabase, orgId, askedTo);
+    if (phone === "error")
+      return fail(
+        503,
+        "unavailable",
+        "We couldn't read this workspace's default country code. Please try again.",
+      );
+    if (!phone)
       return fail(400, "invalid_to", "`to` must be a WhatsApp number with its country code.");
+    const digits = toWaId(phone);
     const { countryForPhone } = await import("@/lib/public-api-send.server");
     country = await countryForPhone(supabase, digits);
   }

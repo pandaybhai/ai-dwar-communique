@@ -303,8 +303,49 @@ export async function upsertContacts(
   const results: UpsertResult[] = [];
   const inputs: Array<{ index: number; input: ContactInput }> = [];
   const seen = new Set<string>();
+  // Batch 66: the one phone rule; the default country code is read once, only
+  // when some row's phone has none.
+  const { enteredPhone, phoneProblemText } = await import("@/lib/phone");
+  const phoneOf = (raw: unknown) =>
+    raw && typeof raw === "object" && !Array.isArray(raw)
+      ? (raw as Record<string, unknown>)["phone"]
+      : undefined;
+  let defaultCode: string | null = null;
+  let codeUnread: string | null = null;
+  const { needsDefaultCountry } = await import("@/lib/public-api-cc");
+  if (rows.some((raw) => needsDefaultCountry(phoneOf(raw)))) {
+    const { loadDefaultCountryCode } = await import("@/lib/default-country");
+    const read = await loadDefaultCountryCode(supabase, orgId);
+    if ("error" in read) codeUnread = read.error;
+    else defaultCode = read.code;
+  }
   for (const [index, raw] of rows.entries()) {
-    const parsed = await parseContactInput(raw);
+    const givenPhone = phoneOf(raw);
+    if (codeUnread && needsDefaultCountry(givenPhone)) {
+      results[index] = {
+        index,
+        phone: typeof givenPhone === "string" ? givenPhone : null,
+        status: "error",
+        error: { code: "unavailable", message: codeUnread },
+      };
+      continue;
+    }
+    const entered = enteredPhone(givenPhone, defaultCode);
+    if (raw && typeof raw === "object" && !Array.isArray(raw) && !entered.ok) {
+      results[index] = {
+        index,
+        phone: typeof givenPhone === "string" ? givenPhone : null,
+        status: "error",
+        error: {
+          code: "invalid_phone",
+          message: `\`phone\` isn't a WhatsApp number we can use (${phoneProblemText(entered.problem).toLowerCase()}). Write it with the country code, e.g. +919812345678.`,
+        },
+      };
+      continue;
+    }
+    const parsed = await parseContactInput(
+      entered.ok ? { ...(raw as Record<string, unknown>), phone: entered.phone } : raw,
+    );
     if (typeof parsed === "string") {
       const phone = (raw as Record<string, unknown> | null)?.["phone"];
       results[index] = {
@@ -549,7 +590,14 @@ export async function upsertOneContact(
 ): Promise<ApiReply> {
   const [result] = await upsertContacts(supabase, caller, [raw]);
   if (!result || result.status === "error")
-    return fail(400, "invalid_contact", result?.error?.message ?? "The contact can't be saved.");
+    return result?.error?.code === "unavailable"
+      ? fail(503, "unavailable", result.error.message)
+      : fail(
+          400,
+          // Batch 66: a phone it can't read is invalid_phone; anything else stays invalid_contact.
+          result?.error?.code === "invalid_phone" ? "invalid_phone" : "invalid_contact",
+          result?.error?.message ?? "The contact can't be saved.",
+        );
   return {
     status: result.status === "created" ? 201 : 200,
     body: {
@@ -589,14 +637,38 @@ export async function upsertContactsBulk(
   };
 }
 
+/**
+ * Batch 66: a {phone} in a Public API path, by the one rule; the workspace's
+ * default country code is read only when the number has none. Null: not a
+ * number (answered as not found, as before); "error": the code couldn't be read.
+ */
+export async function pathPhone(
+  supabase: SupabaseClient,
+  organizationId: string,
+  raw: string,
+): Promise<string | null | "error"> {
+  const { enteredPhone } = await import("@/lib/phone");
+  const { needsDefaultCountry } = await import("@/lib/public-api-cc");
+  let code: string | null = null;
+  if (needsDefaultCountry(raw)) {
+    const { loadDefaultCountryCode } = await import("@/lib/default-country");
+    const read = await loadDefaultCountryCode(supabase, organizationId);
+    if ("error" in read) return "error";
+    code = read.code;
+  }
+  const entered = enteredPhone(raw, code);
+  return entered.ok ? entered.phone : null;
+}
+
 async function contactByPhone(
   supabase: SupabaseClient,
   organizationId: string,
   rawPhone: string,
 ): Promise<ContactRow | null | "error"> {
-  const { normalizePhone, toWaId } = await import("@/lib/phone");
-  const phone = normalizePhone(pathValue(rawPhone));
-  if (toWaId(phone).length < 8) return null;
+  // Batch 66: the one phone rule (a 10-digit number gets the default country code).
+  const phone = await pathPhone(supabase, organizationId, pathValue(rawPhone));
+  if (phone === "error") return "error";
+  if (!phone) return null;
   const { data, error } = await supabase
     .from("contacts")
     .select(CONTACT_COLUMNS)

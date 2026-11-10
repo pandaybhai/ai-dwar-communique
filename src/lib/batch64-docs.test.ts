@@ -341,7 +341,8 @@ describe("what the docs say, the route does", () => {
       } else {
         expect(res.status, p.input).toBe(202);
         expect(sentTo(sends().at(-1)!), p.input).toBe(toWaId(p.sentTo));
-        expect(apiPhoneNumber(p.input)).toBe(p.sentTo);
+        // Batch 66: the test workspace has no default_country_code: it reads "91".
+        expect(apiPhoneNumber(p.input, "91")).toBe(p.sentTo);
       }
     }
   });
