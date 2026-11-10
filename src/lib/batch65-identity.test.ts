@@ -206,8 +206,12 @@ describe("a template sent from the app: byte-identical", () => {
   });
 });
 
-describe("nothing but the Public API's two sends calls the new rule", () => {
-  it("apiPhoneNumber / apiPhoneError appear only in their definition and the template and session sends", () => {
+describe("only the audited places call the phone rule", () => {
+  // Batch 65 pinned apiPhoneNumber to the two API sends; Batch 66 made it the
+  // one rule (enteredPhone) for every place a person or integrator types a
+  // number — the list below is the PR's audit — and still never the inbound
+  // or status webhooks, campaigns, flows, the inbox or the app's template send.
+  it("enteredPhone and its wrappers appear only in the audited files", () => {
     const root = join(import.meta.dirname, "..");
     const files: string[] = [];
     const walk = (dir: string) => {
@@ -218,16 +222,39 @@ describe("nothing but the Public API's two sends calls the new rule", () => {
       }
     };
     walk(root);
+    const rule =
+      /\b(enteredPhone|apiPhoneNumber|apiPhoneError|needsDefaultCountry|requestNeedsDefaultCountry|pathPhone|planImportRows)\b/;
     const callers = files
-      .filter((f) => /\bapiPhone(Number|Error)\b/.test(readFileSync(f, "utf8")))
+      .filter((f) => rule.test(readFileSync(f, "utf8")))
       .map((f) => relative(root, f))
       .sort();
-    // On main before Batch 65 there were none.
-    if (callers.length === 0) return;
     expect(callers).toEqual([
+      "components/contacts/import-contacts-dialog.tsx",
+      "components/contacts/import-phone-check.tsx",
+      "components/customers-v2/import-guided.tsx",
+      "components/settings/api-copies-card.tsx",
+      "lib/add-contact-phone.ts",
+      "lib/contact-import.ts",
+      "lib/phone.ts",
+      "lib/public-api-account.server.ts",
+      "lib/public-api-campaigns.server.ts",
+      "lib/public-api-cc.server.ts",
       "lib/public-api-cc.ts",
+      "lib/public-api-console.server.ts",
+      "lib/public-api-contacts.server.ts",
+      "lib/public-api-inbox.server.ts",
       "lib/public-api-send.server.ts",
       "lib/public-api-session.server.ts",
+      "routes/api/contacts/import.ts",
     ]);
+    for (const f of [
+      "lib/whatsapp-webhook.server.ts",
+      "lib/campaign-dispatch.server.ts",
+      "lib/campaigns.server.ts",
+      "lib/flow-engine.server.ts",
+      "lib/wa-reachability.server.ts",
+      "routes/api/whatsapp/send-message.ts",
+    ])
+      expect(callers, f).not.toContain(f);
   });
 });

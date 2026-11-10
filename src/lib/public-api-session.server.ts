@@ -2,7 +2,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ApiCaller, ApiReply } from "@/lib/public-api.server";
 import { parseMediaInput, mediaFingerprint, type MediaInput } from "@/lib/public-api-media.server";
 import { SEND_PATH, SESSION_PATH } from "@/lib/public-api";
-import { apiPhoneError, apiPhoneNumber } from "@/lib/public-api-cc";
+import { apiPhoneError, needsDefaultCountry } from "@/lib/public-api-cc";
+import { enteredPhone } from "@/lib/phone";
 
 /**
  * Batch 37 item 2: POST /api/v1/messages/session — a free-form message to a
@@ -39,6 +40,9 @@ type Row = { id: string; title: string; description?: string };
 
 export type SessionRequest = {
   to: string;
+  /** Batch 66: `to` as E.164, and whether the workspace's default country code was added. */
+  toPhone: string;
+  toAddedCountry: boolean;
   idempotencyKey: string | null;
 } & (
   | { type: "text"; text: string; previewUrl: boolean }
@@ -55,7 +59,12 @@ export type SessionRequest = {
 const str = (v: unknown) => (typeof v === "string" ? v : typeof v === "number" ? String(v) : "");
 
 /** The request body, checked for shape. Never reads anything else. */
-export function parseSessionRequest(raw: unknown, headerKey: string | null): SessionRequest | Fail {
+export function parseSessionRequest(
+  raw: unknown,
+  headerKey: string | null,
+  /** Batch 66: the workspace's default country code, read when `to` needs it (else null). */
+  defaultCountryCode: string | null = null,
+): SessionRequest | Fail {
   if (!raw || typeof raw !== "object" || Array.isArray(raw))
     return fail(400, "invalid_json", "The request body must be a JSON object.");
   const body = raw as Record<string, unknown>;
@@ -67,7 +76,9 @@ export function parseSessionRequest(raw: unknown, headerKey: string | null): Ses
       "`to` is required: the customer's WhatsApp number with its country code.",
     );
   // Batch 65: a number without its country code is refused before anything else.
-  if (!apiPhoneNumber(to)) return { status: 400, body: apiPhoneError("to") };
+  const toEntered = enteredPhone(to, defaultCountryCode);
+  if (!toEntered.ok) return { status: 400, body: apiPhoneError("to", to) };
+  const toFields = { toPhone: toEntered.phone, toAddedCountry: toEntered.addedCountry };
 
   const keyRaw = body["idempotency_key"] ?? headerKey;
   let idempotencyKey: string | null = null;
@@ -83,7 +94,7 @@ export function parseSessionRequest(raw: unknown, headerKey: string | null): Ses
   }
 
   const type = str(body["type"]).toLowerCase();
-  const base = { to, idempotencyKey };
+  const base = { to, idempotencyKey, ...toFields };
   const bad = (error: string) => fail(400, "invalid_message", error);
 
   if (type === "text") {
@@ -177,7 +188,14 @@ export function parseSessionRequest(raw: unknown, headerKey: string | null): Ses
 
 /** What the reservation fingerprints: every field the message is made of. */
 function fingerprintFields(parsed: SessionRequest, waId: string): Record<string, unknown> {
-  const { idempotencyKey: _key, to: _to, ...rest } = parsed;
+  // Batch 66: toPhone / toAddedCountry are left out, so the fingerprint is exactly Batch 37's.
+  const {
+    idempotencyKey: _key,
+    to: _to,
+    toPhone: _toPhone,
+    toAddedCountry: _added,
+    ...rest
+  } = parsed;
   if ("media" in rest) return { to: waId, type: rest.type, media: mediaFingerprint(rest.media) };
   return { ...rest, to: waId };
 }
@@ -245,13 +263,21 @@ export async function sendSessionViaApi(
   raw: unknown,
   options: { idempotencyHeader?: string | null } = {},
 ): Promise<ApiReply> {
-  const parsed = parseSessionRequest(raw, options.idempotencyHeader ?? null);
+  // Batch 66: the default country code, read only when `to` has none.
+  let defaultCountryCode: string | null = null;
+  const rawTo = (raw as Record<string, unknown> | null)?.["to"];
+  if (raw && typeof raw === "object" && needsDefaultCountry(rawTo)) {
+    const { loadDefaultCountryCode } = await import("@/lib/default-country");
+    const read = await loadDefaultCountryCode(supabase, caller.organizationId);
+    if ("error" in read) return fail(503, "unavailable", read.error);
+    defaultCountryCode = read.code;
+  }
+  const parsed = parseSessionRequest(raw, options.idempotencyHeader ?? null, defaultCountryCode);
   if ("status" in parsed) return parsed;
   const orgId = caller.organizationId;
   const { toWaId, logServerActivity } = await import("@/lib/whatsapp-api.server");
   // Batch 65: the request's own rule, as the template send.
-  const phone = apiPhoneNumber(parsed.to);
-  if (!phone) return { status: 400, body: apiPhoneError("to") };
+  const phone = parsed.toPhone;
   const waId = toWaId(phone);
 
   const lib = await import("@/lib/public-api.server");
@@ -499,6 +525,8 @@ export async function sendSessionViaApi(
         status: "queued",
         wamid,
         idempotency_key: parsed.idempotencyKey,
+        // Batch 66: when AiDwar added the default country code, the number it sent to.
+        ...(parsed.toAddedCountry ? { to: phone } : {}),
       },
     };
     if (requestId) await lib.finishIdempotency(supabase, requestId, { ...answer, messageId });

@@ -357,7 +357,7 @@ export const API_ENDPOINTS: ApiEndpoint[] = [
       opted_in: true,
     },
     response: { status: 201, body: { status: "created", contact: CONTACT_EXAMPLE } },
-    errors: ["invalid_contact"],
+    errors: ["invalid_contact", "invalid_phone"],
   },
   {
     id: "contacts-bulk",
@@ -1390,7 +1390,7 @@ const PHONE_PATH = f(
   "path",
   "string",
   true,
-  'The customer\'s number with its country code ("+" as %2B, or left out).',
+  "The customer's number with its country code (\"+\" as %2B, or left out); a 10-digit number gets the workspace's default country code.",
   "919812345678",
 );
 const LIST_FIELDS = (def: number) => [
@@ -1410,7 +1410,7 @@ const ENDPOINT_DETAILS: Record<string, Partial<ApiEndpoint>> = {
         "body",
         "string",
         true,
-        'The customer\'s WhatsApp number with its country code: "+919876543210", "00919876543210" or "919876543210" (spaces, dashes, brackets and dots are fine). A number without its country code ("9876543210", "09876543210") is 400 invalid_phone and nothing is sent; AiDwar never adds a country code for you.',
+        'The customer\'s WhatsApp number: "+919876543210", "00919876543210" or "919876543210" (spaces, dashes, brackets and dots are fine). A 10-digit number ("9876543210", or "09876543210") gets your workspace\'s default country code (+91 unless set otherwise), and the 202 answer\'s `to` shows the number it was sent to. Too short or more than 15 digits is 400 invalid_phone and nothing is sent.',
         CUSTOMER,
       ),
       f(
@@ -1470,7 +1470,7 @@ const ENDPOINT_DETAILS: Record<string, Partial<ApiEndpoint>> = {
         "body",
         "string[]",
         false,
-        `Up to ${MAX_CC} more WhatsApp numbers (with country code) that get a copy: the same template, values, file and buttons, sent only after the customer's message is accepted. Each needs its country code, as \`to\` does: one number without it refuses the whole request with 400 invalid_phone (field names it, e.g. cc[1]). Duplicates and the \`to\` number are removed. Leave it out to use your workspace's default (Settings → API & webhooks → "Also send every API template message to"); send [] for no copies. Each copy is a separate WhatsApp message charged by Meta at the template's category rate, and counts as one more request against the rate limits (a request with ${MAX_CC} copies counts as ${MAX_CC + 1}). With an idempotency_key each copy gets its own key, <key>:cc:<number>, so a retry never sends a copy twice. A copy that fails never changes the customer's answer.`,
+        `Up to ${MAX_CC} more WhatsApp numbers (with country code) that get a copy: the same template, values, file and buttons, sent only after the customer's message is accepted. Each is read as \`to\` is (a 10-digit number gets the workspace's default country code): one number that can't be read refuses the whole request with 400 invalid_phone (field names it, e.g. cc[1]). Duplicates and the \`to\` number are removed. Leave it out to use your workspace's default (Settings → API & webhooks → "Also send every API template message to"); send [] for no copies. Each copy is a separate WhatsApp message charged by Meta at the template's category rate, and counts as one more request against the rate limits (a request with ${MAX_CC} copies counts as ${MAX_CC + 1}). With an idempotency_key each copy gets its own key, <key>:cc:<number>, so a retry never sends a copy twice. A copy that fails never changes the customer's answer.`,
         '["+918000000001", "+918000000002"]',
       ),
       IDEMPOTENCY,
@@ -1517,7 +1517,7 @@ const ENDPOINT_DETAILS: Record<string, Partial<ApiEndpoint>> = {
         "body",
         "string",
         true,
-        'The customer\'s WhatsApp number with its country code, as for a template send. Without it ("9876543210") the answer is 400 invalid_phone and nothing is sent.',
+        "The customer's WhatsApp number, as for a template send: a 10-digit number (\"9876543210\") gets the workspace's default country code and the 202 answer's `to` shows it; too short or too long is 400 invalid_phone and nothing is sent.",
         CUSTOMER,
       ),
       f(
@@ -1600,7 +1600,14 @@ const ENDPOINT_DETAILS: Record<string, Partial<ApiEndpoint>> = {
     since: "v1.1",
     purpose: "Add a customer to your contacts — or update one — and record their consent.",
     fields: [
-      f("phone", "body", "string", true, "With its country code.", CUSTOMER),
+      f(
+        "phone",
+        "body",
+        "string",
+        true,
+        "With its country code; a 10-digit number gets the workspace's default country code. Too short or too long is invalid_phone.",
+        CUSTOMER,
+      ),
       f("name", "body", "string", false, "Up to 120 characters.", "Asha Rao"),
       f(
         "attributes",
@@ -1694,7 +1701,7 @@ const ENDPOINT_DETAILS: Record<string, Partial<ApiEndpoint>> = {
         "body",
         "object",
         true,
-        "Exactly one of { segment_id } · { tag } · { phones: [ phone | { phone, variables } ] } · { all: true }. Only customers who opted in are sent to.",
+        "Exactly one of { segment_id } · { tag } · { phones: [ phone | { phone, variables } ] } · { all: true }. Only customers who opted in are sent to. A 10-digit phone gets the workspace's default country code.",
       ),
       f(
         "variables",

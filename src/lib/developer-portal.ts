@@ -1119,23 +1119,23 @@ export const PHONE_EXAMPLES: Array<{ input: string; sentTo: string | null; note:
     sentTo: "+919812345678",
     note: "Accepted: spaces, dashes, dots and brackets are removed.",
   },
-  { input: "+6591234567", sentTo: "+6591234567", note: "Accepted: Singapore, with its `+`." },
   {
     input: "9812345678",
-    sentTo: null,
-    note: "Refused, `400 invalid_phone`: 10 digits without `+` could be any country's number. Add `91`.",
+    sentTo: "+919812345678",
+    note: "Accepted: a 10-digit number gets your workspace's default country code (`+91` unless set otherwise; Settings > Workspace shows it). The answer's `to` says so.",
   },
   {
     input: "09812345678",
-    sentTo: null,
-    note: "Refused, `400 invalid_phone`: a leading 0 means no country code. Drop the 0 and add `91`.",
+    sentTo: "+919812345678",
+    note: "Accepted: the leading 0 is dropped and the default country code added.",
   },
+  { input: "+6591234567", sentTo: "+6591234567", note: "Accepted: Singapore, with its `+`." },
   {
     input: "6591234567",
-    sentTo: null,
-    note: "Refused, `400 invalid_phone`, even though it is Singapore with its code: 10 digits without `+` can't be told from a local number. Send `+6591234567`.",
+    sentTo: "+916591234567",
+    note: "**Careful:** 10 digits without `+` always get the default code, even when they are another country's number with its code. Send `+6591234567`.",
   },
-  { input: "+91 98123", sentTo: null, note: "Refused, `400 invalid_phone`: fewer than 8 digits." },
+  { input: "12345", sentTo: null, note: "Refused, `400 invalid_phone`: too short." },
   {
     input: "+91981234567812345",
     sentTo: null,
@@ -1327,7 +1327,7 @@ function integrator(): { recipe: Page; rest: Page[] } {
             items: [
               "An approved template with a **document header** (for example `invoice_document`) and its values in `body_params`, in order.",
               `The PDF as a public https \`document.url\`, or the file itself as \`document.base64\` ([file rules](${guidePath("numbers-values-and-files")}#files)).`,
-              `**The customer's number with its country code**, as your billing app should store it: \`+91…\` or \`91…\` (12 digits). A 10-digit number is refused with \`400 invalid_phone\` ([number rules](${guidePath("numbers-values-and-files")}#numbers)).`,
+              `**The customer's number with its country code**, as your billing app should store it: \`+91…\` or \`91…\` (12 digits). A 10-digit number gets your default country code (\`+91\`) ([number rules](${guidePath("numbers-values-and-files")}#numbers)).`,
               `**The invoice number as the key:** \`idempotency_key: "${INVOICE_KEY}"\`. A retry can then never send it twice.`,
               `**Copies to staff:** add \`cc\` (up to ${MAX_CC} numbers) to this request, or leave it out and set default copy numbers once in Settings → API & webhooks → "Also send every API template message to". \`"cc": []\` sends no copies.`,
             ],
@@ -1550,7 +1550,7 @@ function integrator(): { recipe: Page; rest: Page[] } {
         blocks: [
           {
             kind: "p",
-            text: "Always send the full number **with its country code**: `+919812345678`. Spaces, dashes, dots and brackets are removed. A number that starts with `+` or `00` needs 8–15 digits after it; digits only need 11–15 (already with their country code, like `919812345678`). Anything shorter, or starting with 0, is **400 invalid_phone** — for `to` and for every `cc` number — and nothing is sent. AiDwar never adds a country code: a 10-digit number could be any country's.",
+            text: "Send the full number **with its country code** when you have it: `+919812345678`. Spaces, dashes, dots and brackets are removed. A number that starts with `+` or `00` needs 8–15 digits after it; digits only with 11–15 digits already have their country code (`919812345678`). A **10-digit number** (or 0 and 10 digits) gets your workspace's **default country code** — `+91` unless it is set otherwise — and the `202` answer's `to` shows the number it was sent to. Anything else (too short, more than 15 digits) is **400 invalid_phone**, for `to` and for every `cc` number, and nothing is sent. The same rule applies to every endpoint that takes a phone: contacts, `/contacts/{phone}`, `/conversations/{phone}`, a campaign's `audience.phones` and `?to=` on the balance.",
           },
           {
             kind: "table",
@@ -1573,7 +1573,7 @@ function integrator(): { recipe: Page; rest: Page[] } {
           },
         ],
         aside: {
-          title: "A number without its country code",
+          title: "A number that can't be read",
           status: 400,
           samples: [
             code(
@@ -1581,7 +1581,7 @@ function integrator(): { recipe: Page; rest: Page[] } {
               "Response",
               json({
                 error:
-                  "`cc[1]` isn't a WhatsApp number with its country code. Add the country code, e.g. +919876543210. Nothing was sent.",
+                  "`cc[1]` isn't a WhatsApp number we can send to (too short: needs 10 digits, or + and the country code). Write it with the country code, e.g. +919876543210. Nothing was sent.",
                 code: "invalid_phone",
                 field: "cc[1]",
               }),
@@ -1594,7 +1594,8 @@ function integrator(): { recipe: Page; rest: Page[] } {
             code(
               "node",
               "Node.js",
-              `// Only when every customer of yours is in India: a 10-digit number can be another country's.
+              `// AiDwar already adds your default country code to a 10-digit number.
+// To store full numbers in your own system too (India):
 // "098123 45678", "98123-45678", "+91 98123 45678" → "+919812345678"
 function toWhatsAppNumber(raw) {
   let digits = String(raw).replace(/\\D/g, "");
@@ -2158,6 +2159,18 @@ function conceptPages(): Page[] {
       "What changed in each version of the AiDwar API.",
       [
         {
+          id: "2026-11-default-country",
+          title: "November 2026 — the default country code",
+          blocks: [
+            {
+              kind: "list",
+              items: [
+                `A **10-digit number** (or 0 and 10 digits) now gets your workspace's default country code (\`+91\` unless set otherwise) instead of \`400 invalid_phone\`: \`9908109123\` is sent to \`+919908109123\`, and the \`202\` answer's \`to\` says so. Numbers with their country code work exactly as before. The same rule now applies to \`to\`, \`cc\`, contacts, \`/contacts/{phone}\`, \`/conversations/{phone}\`, \`audience.phones\` and \`?to=\` on the balance. [Number rules](${guidePath("numbers-values-and-files")}#numbers).`,
+              ],
+            },
+          ],
+        },
+        {
           id: "2026-11-phone",
           title: "November 2026 — numbers need their country code",
           blocks: [
@@ -2225,7 +2238,7 @@ export const ERROR_MEANINGS: Record<string, string> = {
   invalid_to:
     "`to` is missing, or (on a price lookup) isn't a WhatsApp number with its country code.",
   invalid_phone:
-    "A number in `to` or `cc` has no country code (for example `9876543210` or `09876543210`), or isn't a phone number at all. `field` says which one (`to`, `cc[1]`). Nothing was sent.",
+    "A number in `to`, `cc` or a contact's `phone` can't be read: too short (fewer than 10 digits without `+`) or more than 15 digits. A 10-digit number isn't refused: it gets the workspace's default country code. `field` says which one (`to`, `cc[1]`). Nothing was sent.",
   invalid_template_name: "`template_name` is missing or not a template name.",
   invalid_document: "`document` needs a `url` or `base64`, and a `filename`.",
   invalid_body_params: "`body_params` must be a list of strings.",
@@ -2349,7 +2362,7 @@ export function whatToDo(status: string, codeName: string): string {
     template_not_found: "Check the template's name and language in Templates.",
     language_required: "Say which language with `language`.",
     invalid_phone:
-      "Send the number with its country code — `+919876543210` or `919876543210` — and send again; the same idempotency key works, nothing was stored. AiDwar never guesses the country.",
+      "Check the number — `+919876543210`, `919876543210` or a 10-digit number — and send again; the same idempotency key works, nothing was stored.",
     no_whatsapp_number: "Connect a WhatsApp number in AiDwar first.",
     media_link_expired: "Ask for a new download link.",
     not_found: "Check the id or phone — another workspace's items are never visible.",

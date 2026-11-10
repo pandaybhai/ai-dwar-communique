@@ -1,5 +1,5 @@
 import { parseCsv, toCsv } from "@/lib/csv";
-import { normalizePhone, toWaId } from "@/lib/phone";
+import { enteredPhone, phoneProblemText } from "@/lib/phone";
 import { callApi } from "@/lib/whatsapp-client";
 
 /**
@@ -49,7 +49,7 @@ export function attrKey(header: string, index: number): string {
 }
 
 export const FORMAT_TIPS = [
-  "Phone must include the country code (+91…).",
+  "Include the country code (+91…). A 10-digit number gets your workspace's default country code.",
   'Tags are comma-separated inside quotes, e.g. "vip,repeat-buyer".',
   "Extra columns become custom attributes automatically.",
 ];
@@ -84,76 +84,60 @@ export function phoneColumnOf(mapping: Mapping): string | null {
   return Object.entries(mapping).find(([, v]) => v === "phone")?.[0] ?? null;
 }
 
-type CallApi = typeof callApi;
+/** One row the import sends to the server. */
+export type PayloadRow = {
+  row_number: number;
+  phone: string;
+  name: string;
+  tags: string[];
+  attributes: Record<string, string>;
+};
 
 /**
- * Runs an import: start, then the rows in chunks, then finish. Returns the
- * start error when the import couldn't begin (nothing was sent), else the
- * results; a failed chunk counts its rows as skipped, as before.
+ * Batch 66: what an import will do with the file's phone numbers, before
+ * anything is saved — the preview shows it and the import sends exactly it.
+ * Each number goes through enteredPhone with the workspace's default country
+ * code: 9908109123 → +919908109123 (counted in `addedCountry`), a number it
+ * can't read is skipped with its reason. `defaultCountryCode` null (not read):
+ * a number without its country code is skipped, never saved without one.
  */
-export async function runContactImport(
-  {
-    organizationId,
-    filename,
-    rows,
-    mapping,
-    consent,
-    startFlows,
-    onProgress,
-  }: {
-    organizationId: string;
-    filename: string;
-    rows: string[][];
-    mapping: Mapping;
-    consent: boolean;
-    startFlows: boolean;
-    onProgress: (percent: number) => void;
-  },
-  call: CallApi = callApi,
-): Promise<{ startError: string } | { results: Results }> {
-  const phoneColumn = phoneColumnOf(mapping);
-  const start = await call<{ import_id: string }>("/api/contacts/import", {
-    body: {
-      action: "start",
-      organization_id: organizationId,
-      filename,
-      total_rows: rows.length,
-      consent,
-    },
-  });
-  if (start.error || !start.data) {
-    return { startError: start.error ?? "We couldn't start the import." };
-  }
-  const importId = start.data.import_id;
+export type ImportPlan = {
+  rows: PayloadRow[];
+  errors: ErrorRow[];
+  /** Numbers that had the default country code added. */
+  addedCountry: number;
+};
 
+export function planImportRows(
+  rows: string[][],
+  mapping: Mapping,
+  defaultCountryCode: string | null,
+): ImportPlan {
+  const phoneColumn = phoneColumnOf(mapping);
   const attrColumns = Object.entries(mapping).filter(([, v]) => v.startsWith("attr:"));
   const nameColumn = Object.entries(mapping).find(([, v]) => v === "name")?.[0] ?? null;
   const tagsColumn = Object.entries(mapping).find(([, v]) => v === "tags")?.[0] ?? null;
 
   const seen = new Set<string>();
   const errors: ErrorRow[] = [];
-  const payloadRows: {
-    row_number: number;
-    phone: string;
-    name: string;
-    tags: string[];
-    attributes: Record<string, string>;
-  }[] = [];
+  const payloadRows: PayloadRow[] = [];
+  let addedCountry = 0;
 
   rows.forEach((r, index) => {
     const rowNumber = index + 2;
     const rawPhone = (r[Number(phoneColumn)] ?? "").trim();
-    const normalized = normalizePhone(rawPhone);
-    const digits = toWaId(normalized);
-    if (digits.length < 8 || digits.length > 15) {
-      errors.push({ row: rowNumber, phone: rawPhone, reason: "Invalid phone number" });
+    const entered = enteredPhone(rawPhone, defaultCountryCode);
+    if (!entered.ok) {
+      errors.push({ row: rowNumber, phone: rawPhone, reason: phoneProblemText(entered.problem) });
       return;
     }
+    const normalized = entered.phone;
     if (seen.has(normalized)) {
       errors.push({ row: rowNumber, phone: normalized, reason: "Duplicate row in file" });
       return;
     }
     seen.add(normalized);
+    if (entered.addedCountry) addedCountry += 1;
     const attributes: Record<string, string> = {};
     for (const [idx, key] of attrColumns) {
       const value = (r[Number(idx)] ?? "").trim();
@@ -172,6 +156,66 @@ export async function runContactImport(
       attributes,
     });
   });
+  return { rows: payloadRows, errors, addedCountry };
+}
+
+/** The preview's line for numbers that got the default code, e.g. "814 numbers had +91 added". */
+export function addedCountryLine(n: number, code: string): string {
+  return `${n.toLocaleString()} ${n === 1 ? "number" : "numbers"} had +${code} added`;
+}
+
+/** The preview's line for skipped rows. */
+export function skippedRowsLine(n: number): string {
+  return `${n.toLocaleString()} ${n === 1 ? "row" : "rows"} will be skipped`;
+}
+
+type CallApi = typeof callApi;
+
+/**
+ * Runs an import: start, then the rows in chunks, then finish. Returns the
+ * start error when the import couldn't begin (nothing was sent), else the
+ * results; a failed chunk counts its rows as skipped, as before.
+ */
+export async function runContactImport(
+  {
+    organizationId,
+    filename,
+    rows,
+    mapping,
+    consent,
+    startFlows,
+    onProgress,
+    defaultCountryCode = null,
+  }: {
+    organizationId: string;
+    filename: string;
+    rows: string[][];
+    mapping: Mapping;
+    consent: boolean;
+    startFlows: boolean;
+    onProgress: (percent: number) => void;
+    /** Batch 66: the workspace's default country code (what the preview showed); null: not read. */
+    defaultCountryCode?: string | null;
+  },
+  call: CallApi = callApi,
+): Promise<{ startError: string } | { results: Results }> {
+  const start = await call<{ import_id: string }>("/api/contacts/import", {
+    body: {
+      action: "start",
+      organization_id: organizationId,
+      filename,
+      total_rows: rows.length,
+      consent,
+    },
+  });
+  if (start.error || !start.data) {
+    return { startError: start.error ?? "We couldn't start the import." };
+  }
+  const importId = start.data.import_id;
+
+  const plan = planImportRows(rows, mapping, defaultCountryCode);
+  const errors: ErrorRow[] = [...plan.errors];
+  const payloadRows = plan.rows;
 
   let created = 0;
   let updated = 0;

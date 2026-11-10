@@ -308,10 +308,18 @@ export async function consoleQuote(
   supabase: SupabaseClient,
   input: { organizationId: string; templateName: string; language: string | null; to: string },
 ): Promise<ConsoleQuote> {
-  const { normalizePhone, toWaId } = await import("@/lib/phone");
-  const waId = toWaId(normalizePhone(input.to));
-  if (waId.length < 8 || waId.length > 15)
+  // Batch 66: the send's own rule, so the price is for the number the send would use.
+  const { toWaId } = await import("@/lib/phone");
+  const { pathPhone } = await import("@/lib/public-api-contacts.server");
+  const phone = await pathPhone(supabase, input.organizationId, input.to);
+  if (phone === "error")
+    return {
+      ok: false,
+      error: "We couldn't read this workspace's default country code. Please try again.",
+    };
+  if (!phone)
     return { ok: false, error: "Enter the test number with its country code, e.g. +919812345678." };
+  const waId = toWaId(phone);
   const { getWhatsAppConnection } = await import("@/lib/whatsapp-numbers.server");
   const { connection } = await getWhatsAppConnection(supabase, input.organizationId, null);
   if (!connection) return { ok: false, error: "Connect a WhatsApp number first." };

@@ -2,7 +2,8 @@ import { useState, type ReactNode } from "react";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import { aidwar } from "@/integrations/aidwar/client";
-import { normalizePhone, toWaId } from "@/lib/phone";
+import { addContactPhone } from "@/lib/add-contact-phone";
+import { useDefaultCountryCode } from "@/hooks/use-default-country-code";
 import { logActivity } from "@/lib/activity";
 import { emitClientEvent, recordClientUsage } from "@/lib/events-capture";
 import { callApi } from "@/lib/whatsapp-client";
@@ -41,15 +42,17 @@ export function AddContactDialog({
   const [optedIn, setOptedIn] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Batch 66: a 10-digit number gets the workspace's default country code.
+  const country = useDefaultCountryCode(open ? organizationId : null);
 
   async function submit() {
     setError(null);
-    const normalized = normalizePhone(phone);
-    const digits = toWaId(normalized);
-    if (digits.length < 8 || digits.length > 15) {
-      setError("Enter a valid phone number with country code, e.g. +91 98765 43210.");
+    const checked = addContactPhone(phone, country.code, country.error);
+    if ("error" in checked) {
+      setError(checked.error);
       return;
     }
+    const { phone: normalized, waId: digits } = checked;
     setSaving(true);
     const { data: existing } = await aidwar
       .from("contacts")
@@ -98,7 +101,8 @@ export function AddContactDialog({
       properties: { contact_source: "manual" },
     });
     recordClientUsage("contacts_stored", organizationId, 1, { source: "manual" });
-    if (optInFailed) toast.warning("Contact added, but we couldn't mark it opted in. Open it to try again.");
+    if (optInFailed)
+      toast.warning("Contact added, but we couldn't mark it opted in. Open it to try again.");
     else toast.success("Contact added.");
     setName("");
     setPhone("");
@@ -142,7 +146,10 @@ export function AddContactDialog({
               onChange={(e) => setPhone(e.target.value)}
               placeholder="+91 98765 43210"
             />
-            <p className="text-xs text-muted-foreground">Include the country code.</p>
+            <p className="text-xs text-muted-foreground">
+              Include the country code.
+              {country.code ? ` A 10-digit number gets +${country.code}.` : ""}
+            </p>
           </div>
           <div className="flex items-start gap-3 rounded-xl border border-border/70 bg-muted/30 p-3">
             <Checkbox

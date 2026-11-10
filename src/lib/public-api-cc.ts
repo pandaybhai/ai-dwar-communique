@@ -1,4 +1,4 @@
-import { normalizePhone, toWaId } from "@/lib/phone";
+import { enteredPhone, normalizePhone, phoneProblemText, toWaId } from "@/lib/phone";
 
 /**
  * Batch 61: copies ("cc") of an API template send — the same template, values,
@@ -23,46 +23,52 @@ export type CcNumbers =
 export const API_PHONE_EXAMPLE = "+919876543210";
 
 /**
- * Batch 65: a phone number in a Public API request — `to` on
- * POST /api/v1/messages/template and /api/v1/messages/session, and a
- * request's own `cc` — and nothing else (stored numbers, the Settings
- * default copy numbers, campaigns, the inbox, contacts and the webhook keep
- * their own rules: batch65-identity.test.ts checks no other code calls it).
- *
- * Spaces, dashes, brackets and dots are stripped as before. Accepted: a
- * number that starts with "+" or "00" and then has 8–15 digits; or digits
- * only, 11–15 of them, not starting with 0 (already with its country code,
- * e.g. 919876543210). Refused: digits only with 10 or fewer, or starting with
- * 0 — a number without its country code. Never adds a country code. The
- * E.164 form ("+919876543210"), else null. For every number accepted before
- * that has its country code (all but "00…") the result is exactly
- * normalizePhone's, so lookups, fingerprints and copy keys don't move.
+ * A phone number in a Public API request (`to` and `cc` on the template and
+ * session sends, Batch 65). Since Batch 66 it is the one rule, enteredPhone
+ * (phone.ts), with the workspace's default country code: a 10-digit number
+ * (or 0 + 10 digits) gets the default code instead of being refused.
+ * `defaultCountryCode` null: such a number is refused (callers read the code
+ * first when requestNeedsDefaultCountry says so). Every number with its
+ * country code is exactly what Batch 65 gave. E.164, else null.
  */
-export function apiPhoneNumber(raw: unknown): string | null {
-  if (typeof raw !== "string" && typeof raw !== "number") return null;
-  const text = String(raw).trim();
-  if (!text) return null;
-  const lead = text.replace(/^[\s().-]+/, "");
-  let digits = toWaId(text);
-  if (lead.startsWith("+")) {
-    // "+" and the country code: as before.
-  } else if (lead.startsWith("00")) {
-    digits = digits.slice(2); // "00" is the international prefix, not part of the number
-  } else if (digits.length < 11 || digits.startsWith("0")) {
-    return null; // no country code
-  }
-  if (digits.length < 8 || digits.length > 15) return null;
-  return normalizePhone(digits);
+export function apiPhoneNumber(
+  raw: unknown,
+  defaultCountryCode: string | null = null,
+): string | null {
+  const entered = enteredPhone(raw, defaultCountryCode);
+  return entered.ok ? entered.phone : null;
 }
 
-/** Batch 65: the 400 for a request number apiPhoneNumber refuses, naming the field. */
-export function apiPhoneError(field: string): {
+/** Batch 66: a number in the request needs the workspace's default country code. */
+export function needsDefaultCountry(raw: unknown): boolean {
+  const entered = enteredPhone(raw, null);
+  return !entered.ok && entered.problem === "needs_country";
+}
+
+/** Batch 66: `to` or any `cc` number of a send request needs the default country code. */
+export function requestNeedsDefaultCountry(body: unknown): boolean {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return false;
+  const b = body as Record<string, unknown>;
+  if (needsDefaultCountry(b["to"])) return true;
+  return Array.isArray(b["cc"]) && b["cc"].some(needsDefaultCountry);
+}
+
+/** The 400 for a request number apiPhoneNumber refuses, naming the field (Batch 65) and why (Batch 66). */
+export function apiPhoneError(
+  field: string,
+  raw: unknown = undefined,
+): {
   error: string;
   code: "invalid_phone";
   field: string;
 } {
+  const entered = enteredPhone(raw, null);
+  const why =
+    raw !== undefined && !entered.ok && entered.problem !== "needs_country"
+      ? ` (${phoneProblemText(entered.problem).toLowerCase()})`
+      : "";
   return {
-    error: `\`${field}\` isn't a WhatsApp number with its country code. Add the country code, e.g. ${API_PHONE_EXAMPLE}. Nothing was sent.`,
+    error: `\`${field}\` isn't a WhatsApp number we can send to${why}. Write it with the country code, e.g. ${API_PHONE_EXAMPLE}. Nothing was sent.`,
     code: "invalid_phone",
     field,
   };

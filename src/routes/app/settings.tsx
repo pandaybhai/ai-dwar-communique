@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ErrorState, PageHeader } from "@/components/empty-state";
+import { useDefaultCountryCode } from "@/hooks/use-default-country-code";
 import { aidwar } from "@/integrations/aidwar/client";
 import { logActivity } from "@/lib/activity";
 import { useOrg } from "@/lib/org-context";
@@ -184,6 +185,8 @@ function GeneralTab() {
   const canManage = can("settings.manage");
   const [name, setName] = useState(active?.organization.name ?? "");
   const [saving, setSaving] = useState(false);
+  // Batch 66: shown, not edited — 10-digit numbers typed or imported get this code.
+  const country = useDefaultCountryCode(active?.organization.id);
 
   useEffect(() => {
     setName(active?.organization.name ?? "");
@@ -228,6 +231,14 @@ function GeneralTab() {
             onChange={(e) => setName(e.target.value)}
             disabled={!canManage || saving}
           />
+        </div>
+        <div className="space-y-1">
+          <p className="text-sm font-medium text-foreground" data-testid="default-country-code">
+            Default country code: {country.code ? `+${country.code}` : "…"}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Added to a 10-digit number you import, add or send through the API.
+          </p>
         </div>
         {canManage ? (
           <Button type="submit" className="rounded-full" disabled={saving}>

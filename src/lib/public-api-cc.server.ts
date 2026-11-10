@@ -1,5 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { parseCcNumbers, storedCcNumbers, MAX_CC } from "@/lib/public-api-cc";
+import {
+  apiPhoneNumber,
+  needsDefaultCountry,
+  parseCcNumbers,
+  storedCcNumbers,
+  MAX_CC,
+} from "@/lib/public-api-cc";
+import { loadDefaultCountryCode } from "@/lib/default-country";
 
 /**
  * Batch 61: the workspace's default copy numbers for API template sends —
@@ -60,9 +67,18 @@ export async function saveApiCcDefault(
   organizationId: string,
   raw: unknown,
 ): Promise<SaveCcResult> {
+  // Batch 66: a number typed here follows the one phone rule (a 10-digit
+  // number gets the default country code); stored numbers are read as before.
+  let defaultCode: string | null = null;
+  if (Array.isArray(raw) && raw.some(needsDefaultCountry)) {
+    const read = await loadDefaultCountryCode(supabase, organizationId);
+    if ("error" in read) return { ok: false, status: 503, error: read.error };
+    defaultCode = read.code;
+  }
   const parsed = parseCcNumbers(raw, {
     field: "The copy list",
     label: (i) => `Number ${i + 1}`,
+    number: (entry) => apiPhoneNumber(entry, defaultCode),
   });
   if (!parsed.ok) return { ok: false, status: 400, error: parsed.error };
   const { data: before, error: readError } = await supabase

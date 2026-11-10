@@ -17,7 +17,7 @@
 -- query_to_xml only when to_regclass('cron.job') finds it, so the query
 -- still runs where pg_cron is absent (every cron job is then listed).
 --
--- Expected objects: table 96, column 1130, view 2, function 122, index 172, trigger 71, cron_job 14.
+-- Expected objects: table 96, column 1131, view 2, function 122, index 172, trigger 71, cron_job 14.
 WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, introduced_in_file) AS (
   VALUES
     ('table', 'aidwar_private', 'mcp_db_proof', NULL, NULL, NULL, '20261300_batch56_mcp_hardening.sql'),
@@ -949,6 +949,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('column', 'public', 'organization_send_settings', 'winback_after_days', NULL, 'integer', '20260901_timebased_flows.sql'),
     ('column', 'public', 'organizations', 'aiden_workspace_unlocked_at', NULL, 'timestamp with time zone', '20261270_batch53_aiden_workspace.sql'),
     ('column', 'public', 'organizations', 'api_cc_numbers', NULL, 'text[]', '20261330_batch61.sql'),
+    ('column', 'public', 'organizations', 'default_country_code', NULL, 'text', '20261360_batch66.sql'),
     ('column', 'public', 'pending_owner_replies', 'notify', NULL, 'text', '20260918_silent_gaps.sql'),
     ('column', 'public', 'pending_owner_replies', 'reminded_at', NULL, 'timestamp with time zone', '20260908_teaching_guards.sql'),
     ('column', 'public', 'pending_owner_replies', 'selected_at', NULL, 'timestamp with time zone', '20260908_pending_owner_reply_selection.sql'),

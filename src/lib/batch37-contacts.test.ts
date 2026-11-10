@@ -132,8 +132,12 @@ describe("POST /api/v1/contacts", () => {
   });
 
   it("a bad contact: 400 with the reason", async () => {
+    // Batch 66: a phone that can't be read is invalid_phone (the one phone rule).
+    const phoneRes = await call(ContactsRoute, "POST", "/api/v1/contacts", {
+      body: { phone: "12" },
+    });
+    expect([phoneRes.status, phoneRes.body["code"]]).toEqual([400, "invalid_phone"]);
     for (const body of [
-      { phone: "12" },
       { phone: "+919811111111", attributes: [1] },
       { phone: "+919811111111", opted_in: "yes" },
     ]) {

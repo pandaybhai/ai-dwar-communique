@@ -4,9 +4,11 @@ import type { ApiCaller } from "@/lib/public-api.server";
 import { MAX_DOCUMENT_MB } from "@/lib/public-api";
 import type { TemplateComponent } from "@/lib/templates";
 import { parseMediaInput, type MediaInput } from "@/lib/public-api-media.server";
+import { enteredPhone } from "@/lib/phone";
 import {
   apiPhoneError,
   apiPhoneNumber,
+  requestNeedsDefaultCountry,
   copyIdempotencyKey,
   parseCcNumbers,
   type CopyResult,
@@ -100,6 +102,9 @@ export type SendRequest = {
    * applies); an empty array when it says "no copies".
    */
   cc: string[] | null;
+  /** Batch 66: `to` as E.164, and whether the workspace's default country code was added to it. */
+  toPhone: string;
+  toAddedCountry: boolean;
 };
 
 /** One template value, checked as WhatsApp checks it. Null when fine, else why not. */
@@ -132,7 +137,12 @@ function parseParams(raw: unknown, field: string, code: string): string[] | ApiA
 const V11_FIELDS = ["header", "buttons", "offer_expires_at"];
 
 /** The request body, checked for shape. Never reads anything else. */
-export function parseSendRequest(raw: unknown, headerKey: string | null): SendRequest | ApiAnswer {
+export function parseSendRequest(
+  raw: unknown,
+  headerKey: string | null,
+  /** Batch 66: the workspace's default country code, read when a number needs it (else null). */
+  defaultCountryCode: string | null = null,
+): SendRequest | ApiAnswer {
   if (!raw || typeof raw !== "object" || Array.isArray(raw))
     return fail(400, "invalid_json", "The request body must be a JSON object.");
   const body = raw as Record<string, unknown>;
@@ -148,8 +158,9 @@ export function parseSendRequest(raw: unknown, headerKey: string | null): SendRe
       "`to` is required: the customer's WhatsApp number with its country code.",
     );
   // Batch 65: a number without its country code is refused before anything else.
-  const toPhone = apiPhoneNumber(to);
-  if (!toPhone) return { status: 400, body: apiPhoneError("to") };
+  const toEntered = enteredPhone(to, defaultCountryCode);
+  if (!toEntered.ok) return { status: 400, body: apiPhoneError("to", to) };
+  const toPhone = toEntered.phone;
 
   const templateName =
     typeof body["template_name"] === "string" ? body["template_name"].trim() : "";
@@ -321,10 +332,16 @@ export function parseSendRequest(raw: unknown, headerKey: string | null): SendRe
   // ---- Batch 61: copies ----
   let cc: string[] | null = null;
   if (body["cc"] !== undefined && body["cc"] !== null) {
-    const parsedCc = parseCcNumbers(body["cc"], { to: toPhone, number: apiPhoneNumber });
+    const parsedCc = parseCcNumbers(body["cc"], {
+      to: toPhone,
+      number: (entry) => apiPhoneNumber(entry, defaultCountryCode),
+    });
     if (!parsedCc.ok)
       return parsedCc.index !== undefined
-        ? { status: 400, body: apiPhoneError(`cc[${parsedCc.index}]`) }
+        ? {
+            status: 400,
+            body: apiPhoneError(`cc[${parsedCc.index}]`, (body["cc"] as unknown[])[parsedCc.index]),
+          }
         : fail(400, "invalid_cc", `${parsedCc.error} Nothing was sent.`);
     cc = parsedCc.numbers;
   }
@@ -354,6 +371,8 @@ export function parseSendRequest(raw: unknown, headerKey: string | null): SendRe
     idempotencyKey,
     legacy: Boolean(document) && V11_FIELDS.every((k) => body[k] === undefined || body[k] === null),
     cc,
+    toPhone,
+    toAddedCountry: toEntered.addedCountry,
   };
 }
 
@@ -781,14 +800,22 @@ export async function sendTemplateViaApi(
   raw: unknown,
   options: { idempotencyHeader?: string | null } = {},
 ): Promise<ApiAnswer> {
-  const parsed = parseSendRequest(raw, options.idempotencyHeader ?? null);
+  // Batch 66: the workspace's default country code, read only when `to` or a
+  // `cc` number has none (a request with full numbers makes no extra read).
+  let defaultCountryCode: string | null = null;
+  if (requestNeedsDefaultCountry(raw)) {
+    const { loadDefaultCountryCode } = await import("@/lib/default-country");
+    const read = await loadDefaultCountryCode(supabase, caller.organizationId);
+    if ("error" in read) return fail(503, "unavailable", read.error);
+    defaultCountryCode = read.code;
+  }
+  const parsed = parseSendRequest(raw, options.idempotencyHeader ?? null, defaultCountryCode);
   if ("status" in parsed) return parsed;
   const orgId = caller.organizationId;
   const { toWaId, logServerActivity } = await import("@/lib/whatsapp-api.server");
 
   // Batch 65: the request's own rule (parseSendRequest already refused anything it doesn't take).
-  const phone = apiPhoneNumber(parsed.to);
-  if (!phone) return { status: 400, body: apiPhoneError("to") };
+  const phone = parsed.toPhone;
   const waId = toWaId(phone);
 
   // ---- reserve the idempotency key first: a repeat gets the first answer,
@@ -1114,6 +1141,8 @@ export async function sendTemplateViaApi(
     };
     const warning = await unreachableWarning;
     if (warning) answer.body["warning"] = warning;
+    // Batch 66: when AiDwar added the default country code, the answer says the number it sent to.
+    if (parsed.toAddedCountry) answer.body["to"] = phone;
 
     // ---- Batch 61: the copies, only now that WhatsApp accepted the customer's
     // send. A copy never changes the customer's answer: each is tried on its

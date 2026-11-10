@@ -8,7 +8,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorState } from "@/components/empty-state";
 import { callApi } from "@/lib/whatsapp-client";
 import { useOrg } from "@/lib/org-context";
-import { MAX_CC, ccNumber, copyCostNote, parseCcNumbers } from "@/lib/public-api-cc";
+import { MAX_CC, apiPhoneNumber, copyCostNote, parseCcNumbers } from "@/lib/public-api-cc";
+import { useDefaultCountryCode } from "@/hooks/use-default-country-code";
 
 type CopiesState = { available: boolean; max: number; numbers: string[] };
 
@@ -24,6 +25,7 @@ const blanks = (numbers: string[]) => Array.from({ length: MAX_CC }, (_, i) => n
 export function ApiCopiesCard() {
   const { active } = useOrg();
   const orgId = active?.organization.id ?? null;
+  const country = useDefaultCountryCode(orgId);
   const [state, setState] = useState<CopiesState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [values, setValues] = useState<string[]>(blanks([]));
@@ -51,7 +53,8 @@ export function ApiCopiesCard() {
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     // Name the box the person typed in, whatever boxes are empty around it.
-    const bad = values.findIndex((v) => v.trim() !== "" && !ccNumber(v));
+    // Batch 66: the one phone rule — a 10-digit number gets the default country code.
+    const bad = values.findIndex((v) => v.trim() !== "" && !apiPhoneNumber(v, country.code));
     if (bad >= 0) {
       setBadBox(bad);
       setProblem(
@@ -64,6 +67,7 @@ export function ApiCopiesCard() {
     const checked = parseCcNumbers(entered, {
       field: "The copy list",
       label: (i) => `Number ${i + 1}`,
+      number: (entry) => apiPhoneNumber(entry, country.code),
     });
     if (!checked.ok) {
       setProblem(checked.error);
