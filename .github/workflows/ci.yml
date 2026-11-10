@@ -36,6 +36,13 @@ jobs:
         run: |
           sed -i -E 's#https://europe-west[0-9]+-npm\.pkg\.dev/lovable-core-prod/sandbox-npm-cache/#https://registry.npmjs.org/#g' bun.lock
           bun install --frozen-lockfile
+      - name: Postgres for the SQL tests
+        # GitHub's ubuntu-latest image no longer ships PostgreSQL 16 (10 Nov):
+        # the real-Postgres tests (scratch-pg.ts) need its initdb / pg_ctl.
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q postgresql-16
+          sudo systemctl stop postgresql || true
       - name: Typecheck
         run: npx tsc --noEmit -p .
       - name: Tests
@@ -88,6 +95,13 @@ jobs:
         run: |
           sed -i -E 's#https://europe-west[0-9]+-npm\.pkg\.dev/lovable-core-prod/sandbox-npm-cache/#https://registry.npmjs.org/#g' bun.lock
           bun install --frozen-lockfile
+      - name: Postgres for the SQL tests
+        # GitHub's ubuntu-latest image no longer ships PostgreSQL 16 (10 Nov):
+        # the real-Postgres tests (scratch-pg.ts) need its initdb / pg_ctl.
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q postgresql-16
+          sudo systemctl stop postgresql || true
       - name: Tests at a shifted clock
         env:
           TZ: ${{ matrix.tz }}

@@ -9,11 +9,42 @@
  * tests never silently stop running there.
  */
 import { execFileSync } from "node:child_process";
-import { chownSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chownSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const PG_BIN = "/usr/lib/postgresql/16/bin";
+/**
+ * Postgres 16's binaries when installed (as before), else the newest other
+ * version under /usr/lib/postgresql (Batch 66: GitHub's runner image dropped
+ * 16 on 10 Nov; CI now installs it, and a machine with only another version
+ * still runs these tests).
+ */
+function findPgBin(): string {
+  const root = "/usr/lib/postgresql";
+  const has = (bin: string) => existsSync(`${bin}/initdb`) && existsSync(`${bin}/pg_ctl`);
+  if (has(`${root}/16/bin`)) return `${root}/16/bin`;
+  let versions: string[] = [];
+  try {
+    versions = readdirSync(root).filter((v) => /^\d+$/.test(v));
+  } catch {
+    // no Postgres at all
+  }
+  const found = versions
+    .sort((a, b) => Number(b) - Number(a))
+    .map((v) => `${root}/${v}/bin`)
+    .find(has);
+  return found ?? `${root}/16/bin`;
+}
+
+const PG_BIN = findPgBin();
 
 export function pgAvailable(): boolean {
   return existsSync(`${PG_BIN}/initdb`) && existsSync(`${PG_BIN}/pg_ctl`);
@@ -90,7 +121,18 @@ function initAndStart(): { port: number; data: string } {
 export function startScratchPg(opts: { schemaFile: string; migrations: string[] }): ScratchPg {
   const { port, data } = initAndStart();
 
-  const base = ["-h", "127.0.0.1", "-p", String(port), "-U", "postgres", "-v", "ON_ERROR_STOP=1", "-q", "-At"];
+  const base = [
+    "-h",
+    "127.0.0.1",
+    "-p",
+    String(port),
+    "-U",
+    "postgres",
+    "-v",
+    "ON_ERROR_STOP=1",
+    "-q",
+    "-At",
+  ];
   const stop = () => {
     try {
       asPostgres(`${PG_BIN}/pg_ctl`, ["-D", data, "-m", "immediate", "stop"]);
