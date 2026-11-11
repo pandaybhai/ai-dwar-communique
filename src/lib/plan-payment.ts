@@ -173,6 +173,17 @@ export type PlanPaymentPreview = {
     open_payment_link: boolean;
   } | null;
   already_recorded: { payment_id: string; reference: string } | null;
+  /**
+   * Batch 69: the period's invoice is paid in full — who paid it and how, so
+   * the sheet says "This period is paid" instead of a difference against an
+   * invoice that owes nothing.
+   */
+  paid: {
+    invoice_number: string | null;
+    reference: string | null;
+    method: string | null;
+    excess: number;
+  } | null;
   billing_enabled: boolean;
   warnings: string[];
 };
@@ -185,6 +196,8 @@ export type RecordPlanPaymentResult =
       invoice_id: string;
       invoice_number: string | null;
       invoice_status: string;
+      /** The payment's reference (Batch 69: shown in the saved result). */
+      reference: string;
       period: { start: string; end: string };
       applied: number;
       excess: number;
@@ -202,4 +215,47 @@ export function dayText(date: string): string {
     year: "numeric",
     timeZone: "UTC",
   });
+}
+
+/** "This period is paid (invoice AD/2026-27/00031, ref 631500744741)." */
+export function paidNotice(paid: NonNullable<PlanPaymentPreview["paid"]>): string {
+  const parts = [
+    paid.invoice_number ? `invoice ${paid.invoice_number}` : null,
+    paid.reference ? `ref ${paid.reference}` : null,
+  ].filter(Boolean);
+  return `This period is paid${parts.length ? ` (${parts.join(", ")})` : ""}.`;
+}
+
+/**
+ * Batch 69: which panel the Record plan payment card shows under the form.
+ * Right after a save: the saved result (never the preview, which would now
+ * compare the money with an invoice that owes nothing). A period already paid
+ * in full: the paid notice. Otherwise: the "Before you save" preview.
+ */
+export function planPaymentPanel(
+  preview: PlanPaymentPreview | null,
+  saved: Extract<RecordPlanPaymentResult, { ok: true }> | null,
+): "saved" | "paid" | "preview" | "none" {
+  if (saved) return "saved";
+  if (!preview) return "none";
+  return preview.paid ? "paid" : "preview";
+}
+
+/** The saved result's lines (the card's "Recorded" box). */
+export function savedResultLines(
+  saved: Extract<RecordPlanPaymentResult, { ok: true }>,
+  money: (n: number) => string,
+): string[] {
+  const lines = [
+    `${saved.already ? "Already recorded" : "Recorded"}: invoice ${saved.invoice_number ?? ""} for ${dayText(saved.period.start)} to ${dayText(saved.period.end)} is ${saved.invoice_status === "paid" ? "paid" : "part paid"}${saved.reference ? ` (ref ${saved.reference})` : ""}.`,
+  ];
+  if (saved.excess > 0)
+    lines.push(
+      `${money(saved.excess)} over the invoice is left unapplied (not added to the wallet).`,
+    );
+  if (saved.short > 0) lines.push(`${money(saved.short)} is still due on the invoice.`);
+  lines.push(
+    `Billing day ${saved.billing_day}. ${saved.delivered ? "The paid invoice was sent." : "The paid invoice is queued to send."}`,
+  );
+  return lines;
 }

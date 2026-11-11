@@ -227,9 +227,14 @@ export async function startPlanPurchase(
   if (gstin && !GSTIN_PATTERN.test(gstin)) {
     return { error: "That GSTIN doesn't look right — it should be 15 characters, like 27AAAAA0000A1Z5." };
   }
-  const billingWhatsapp = (input.billingWhatsapp ?? "").replace(/[^\d+]/g, "") || null;
-  if (billingWhatsapp && billingWhatsapp.replace(/\D/g, "").length < 10) {
-    return { error: "That billing WhatsApp number looks too short." };
+  // Batch 69: the one phone rule with the workspace's default country code
+  // ("81213 10333" → +918121310333); a number with its code is kept as typed.
+  let billingWhatsapp: string | null = null;
+  if ((input.billingWhatsapp ?? "").trim()) {
+    const { workspaceTypedPhone } = await import("@/lib/default-country");
+    const out = await workspaceTypedPhone(supabase, input.organizationId, input.billingWhatsapp);
+    if ("error" in out) return { error: `Billing WhatsApp: ${out.error}` };
+    billingWhatsapp = out.phone;
   }
 
   const { razorpayKeys, createPaymentLink, PAYMENTS_NOT_CONFIGURED } =

@@ -52,7 +52,17 @@ export const Route = createFileRoute("/api/onboarding/start")({
           .select("phone")
           .eq("id", auth.userId)
           .maybeSingle();
-        const bodyPhone = normalizePhone(String(payload["phone"] ?? ""));
+        // Batch 69: the number typed here goes through the one phone rule
+        // with the workspace's default country code ("81213 10333" →
+        // +918121310333), refused with Batch 66's sentence.
+        let bodyPhone = "";
+        const typedPhone = String(payload["phone"] ?? "").trim();
+        if (typedPhone) {
+          const { workspaceTypedPhone } = await import("@/lib/default-country");
+          const out = await workspaceTypedPhone(supabaseAdmin, auth.organizationId, typedPhone);
+          if ("error" in out) return jsonError(out.error, 400);
+          bodyPhone = out.phone;
+        }
         const phone = normalizePhone((profile as { phone?: string } | null)?.phone ?? "") || bodyPhone;
         if (!phone) {
           return jsonError("We don't have your WhatsApp number yet. Add it in Settings and try again.");

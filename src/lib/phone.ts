@@ -103,3 +103,25 @@ export function phoneProblemText(problem: PhoneProblem): string {
       return "No country code";
   }
 }
+
+/** Batch 66's sentence when a typed number is refused (Add contact's wording). */
+export const ENTER_WITH_COUNTRY = "Enter it with the country code, e.g. +91 98765 43210.";
+
+/**
+ * Batch 69: a number a person types into a form that stores it — the one rule
+ * (enteredPhone) with the workspace's default country code, or Batch 66's
+ * sentence for why not. Add contact, the billing WhatsApp (Super Admin and
+ * the customer's own), staff alert numbers, the onboarding and sign-up
+ * number all answer the same way.
+ */
+export function typedPhone(
+  typed: unknown,
+  defaultCountryCode: string | null,
+  codeError: string | null = null,
+): { phone: string; addedCountry: boolean } | { error: string } {
+  const entered = enteredPhone(typed, defaultCountryCode);
+  if (entered.ok) return { phone: entered.phone, addedCountry: entered.addedCountry };
+  if (entered.problem === "needs_country")
+    return { error: codeError ?? "Add the country code, e.g. +91 98765 43210." };
+  return { error: `${phoneProblemText(entered.problem)}. ${ENTER_WITH_COUNTRY}` };
+}

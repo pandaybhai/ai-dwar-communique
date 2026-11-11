@@ -11,6 +11,9 @@ import {
   PLAN_PAYMENT_METHODS,
   dayText,
   differenceText,
+  paidNotice,
+  planPaymentPanel,
+  savedResultLines,
   type PlanPaymentPreview,
   type RecordPlanPaymentResult,
 } from "@/lib/plan-payment";
@@ -129,11 +132,22 @@ export function RecordPlanPayment({
         ? "Already recorded: nothing changed."
         : `Recorded. Invoice ${data.invoice_number ?? ""} is ${data.invoice_status === "paid" ? "paid" : "part paid"}.`,
     );
+    // Batch 69: the saved result stands on its own (planPaymentPanel shows it,
+    // never the preview). The preview is refreshed underneath, so the moment
+    // anything is changed the card says "This period is paid", not the
+    // figures it had before the save.
     onRecorded?.();
     void check({ periodStart: preview.period.start, amount, reference });
   }
 
+  /** Any change after a save starts a fresh preview. */
+  const edit = (set: (value: string) => void) => (e: { target: { value: string } }) => {
+    setDone(null);
+    set(e.target.value);
+  };
+
   const fig = preview?.figures;
+  const panel = planPaymentPanel(preview, done);
   const diff = fig ? differenceText(fig, money) : null;
 
   return (
@@ -143,12 +157,7 @@ export function RecordPlanPayment({
           <Label htmlFor="rpp-period" className="text-xs font-medium text-muted-foreground">
             Period starts on
           </Label>
-          <Input
-            id="rpp-period"
-            type="date"
-            value={periodStart}
-            onChange={(e) => setPeriodStart(e.target.value)}
-          />
+          <Input id="rpp-period" type="date" value={periodStart} onChange={edit(setPeriodStart)} />
           <p className="text-xs text-muted-foreground">
             Their next unpaid period is filled in. Change it if they paid for another month.
           </p>
@@ -162,7 +171,7 @@ export function RecordPlanPayment({
             inputMode="decimal"
             placeholder={fig ? String(fig.total) : ""}
             value={amount}
-            onChange={(e) => setAmount(e.target.value)}
+            onChange={edit(setAmount)}
           />
         </div>
         <div className="space-y-1.5">
@@ -172,7 +181,7 @@ export function RecordPlanPayment({
           <select
             id="rpp-method"
             value={method}
-            onChange={(e) => setMethod(e.target.value)}
+            onChange={edit(setMethod)}
             className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"
           >
             {PLAN_PAYMENT_METHODS.map((m) => (
@@ -190,7 +199,7 @@ export function RecordPlanPayment({
             id="rpp-ref"
             placeholder="UTR, UPI or cheque number"
             value={reference}
-            onChange={(e) => setReference(e.target.value)}
+            onChange={edit(setReference)}
           />
         </div>
         <div className="space-y-1.5">
@@ -202,14 +211,14 @@ export function RecordPlanPayment({
             type="date"
             max={indiaToday()}
             value={paidOn}
-            onChange={(e) => setPaidOn(e.target.value)}
+            onChange={edit(setPaidOn)}
           />
         </div>
         <div className="space-y-1.5 sm:col-span-2">
           <Label htmlFor="rpp-note" className="text-xs font-medium text-muted-foreground">
             Note (optional)
           </Label>
-          <Textarea id="rpp-note" rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
+          <Textarea id="rpp-note" rows={2} value={note} onChange={edit(setNote)} />
         </div>
       </div>
 
@@ -219,7 +228,38 @@ export function RecordPlanPayment({
         </p>
       ) : null}
 
-      {preview && fig ? (
+      {panel === "paid" && preview?.paid ? (
+        <div
+          className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4 text-sm"
+          data-testid="record-plan-payment-paid"
+        >
+          <p className="flex items-start gap-2 font-medium text-foreground">
+            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+            {paidNotice(preview.paid)}
+          </p>
+          <p className="mt-1 text-muted-foreground">
+            {preview.plan_name}
+            {preview.plan_version ? ` ${preview.plan_version}` : ""},{" "}
+            {dayText(preview.period.start)} to {dayText(preview.period.end)}
+            {preview.paid.method ? `, paid by ${preview.paid.method}` : ""}. Nothing to record: pick
+            another period for a new payment.
+          </p>
+          {preview.paid.excess > 0 ? (
+            <p className="mt-1 text-amber-700 dark:text-amber-300">
+              {money(preview.paid.excess)} received over the invoice is left unapplied (not added to
+              the wallet).
+            </p>
+          ) : null}
+          {preview.warnings.map((w) => (
+            <p key={w} className="mt-2 flex items-start gap-2 text-amber-700 dark:text-amber-300">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              {w}
+            </p>
+          ))}
+        </div>
+      ) : null}
+
+      {panel === "preview" && preview && fig ? (
         <div
           className="rounded-xl border border-border/70 bg-muted/30 p-4"
           data-testid="record-plan-payment-preview"
@@ -298,30 +338,25 @@ export function RecordPlanPayment({
         </div>
       ) : null}
 
-      {done ? (
+      {panel === "saved" && done ? (
         <div
           className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4 text-sm"
           data-testid="record-plan-payment-done"
         >
-          <p className="font-medium text-foreground">
-            {done.already ? "Already recorded" : "Recorded"}: invoice {done.invoice_number ?? ""}{" "}
-            for {dayText(done.period.start)} to {dayText(done.period.end)} is{" "}
-            {done.invoice_status === "paid" ? "paid" : "part paid"}.
-          </p>
-          {done.excess > 0 ? (
-            <p className="mt-1 text-amber-700 dark:text-amber-300">
-              {money(done.excess)} over the invoice is left unapplied (not added to the wallet).
+          {savedResultLines(done, money).map((line, i, all) => (
+            <p
+              key={line}
+              className={
+                i === 0
+                  ? "font-medium text-foreground"
+                  : i === all.length - 1
+                    ? "mt-1 text-muted-foreground"
+                    : "mt-1 text-amber-700 dark:text-amber-300"
+              }
+            >
+              {line}
             </p>
-          ) : null}
-          {done.short > 0 ? (
-            <p className="mt-1 text-amber-700 dark:text-amber-300">
-              {money(done.short)} is still due on the invoice.
-            </p>
-          ) : null}
-          <p className="mt-1 text-muted-foreground">
-            Billing day {done.billing_day}.{" "}
-            {done.delivered ? "The paid invoice was sent." : "The paid invoice is queued to send."}
-          </p>
+          ))}
         </div>
       ) : null}
     </div>

@@ -19,6 +19,7 @@ import { usePermissions } from "@/hooks/use-permissions";
 import { money } from "@/lib/billing";
 import { chargeFor } from "@/lib/gst-mode";
 import { callApi } from "@/lib/whatsapp-client";
+import { useDefaultCountryCode } from "@/hooks/use-default-country-code";
 import {
   confirmCashfreeReturn,
   openCashfreeCheckout,
@@ -90,6 +91,7 @@ export function PlanChooser({
   const [selected, setSelected] = useState<Plan | null>(null);
   const [gstin, setGstin] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
+  const countryCode = useDefaultCountryCode(organizationId);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -354,6 +356,9 @@ export function PlanChooser({
                   />
                   <p className="text-xs text-muted-foreground">
                     Where receipts and low-credit notes are sent.
+                    {countryCode.code
+                      ? ` Without a country code, +${countryCode.code} is added.`
+                      : ""}
                   </p>
                 </div>
                 <PriceBreakdown

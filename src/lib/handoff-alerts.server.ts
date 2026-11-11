@@ -25,7 +25,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { normalizePhone } from "@/lib/phone";
+import { DEFAULT_COUNTRY_CODE, enteredPhone, typedPhone } from "@/lib/phone";
 import { DEFAULT_BUSINESS_HOURS, isBusinessOpen, type BusinessHours } from "@/lib/flow-graph";
 import type { HandoffAlertResult } from "@/lib/ai-outcome";
 import { STAFF_HANDOFF_TEMPLATE } from "@/lib/platform-notice-templates";
@@ -65,15 +65,18 @@ export async function businessNumbers(supabase: SupabaseClient, organizationId: 
 export function validateAlertSettings(
   input: { phones?: unknown; email?: unknown },
   ownNumbers: string[],
+  defaultCountryCode: string | null = DEFAULT_COUNTRY_CODE,
 ): { ok: true; settings: HandoffAlertSettings } | { ok: false; error: string } {
   const raw = Array.isArray(input.phones) ? input.phones : [];
   const phones: string[] = [];
   for (const value of raw) {
     const text = String(value ?? "").trim();
     if (!text) continue;
-    const phone = normalizePhone(text);
-    if (phone.replace(/\D/g, "").length < 10)
-      return { ok: false, error: `“${text}” doesn't look like a full WhatsApp number. Add it with the country code, like +91 98765 43210.` };
+    // Batch 69: the one phone rule with the workspace's default country code
+    // ("81213 10333" → +918121310333), refused with Batch 66's sentence.
+    const typed = typedPhone(text, defaultCountryCode);
+    if ("error" in typed) return { ok: false, error: `“${text}”: ${typed.error}` };
+    const phone = typed.phone;
     const own = ownNumbers.find((n) => samePhone(n, phone));
     if (own)
       return {
@@ -88,6 +91,14 @@ export function validateAlertSettings(
   if (emailText && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailText))
     return { ok: false, error: `“${emailText}” doesn't look like an email address.` };
   return { ok: true, settings: { phones, email: emailText || null } };
+}
+
+/** True when a typed alert number has no country code, so the workspace's code must be read (Batch 69). */
+export function alertPhonesNeedCountry(phones: unknown): boolean {
+  return (Array.isArray(phones) ? phones : []).some((v) => {
+    const e = enteredPhone(String(v ?? "").trim(), null);
+    return !e.ok && e.problem === "needs_country";
+  });
 }
 
 /** The saved settings (a failed read means none). */

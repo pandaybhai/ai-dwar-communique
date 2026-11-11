@@ -563,6 +563,17 @@ export async function saveBillingAccount(
   const name = String(input.account["name"] ?? "").trim();
   if (!name) return { error: "The billing account needs a name." };
 
+  // Batch 69: the billing WhatsApp goes through the one phone rule with the
+  // workspace's default country code ("81213 10333" → +918121310333).
+  const typedWhatsapp = String(input.account["billing_whatsapp"] ?? "").trim();
+  let billingWhatsapp: string | null = null;
+  if (typedWhatsapp) {
+    const { workspaceTypedPhone } = await import("@/lib/default-country");
+    const out = await workspaceTypedPhone(supabase, input.organizationId, typedWhatsapp);
+    if ("error" in out) return { error: `Billing WhatsApp: ${out.error}` };
+    billingWhatsapp = out.phone;
+  }
+
   const payload = {
     name,
     legal_name: (input.account["legal_name"] as string) || null,
@@ -571,7 +582,7 @@ export async function saveBillingAccount(
     state_code: (input.account["state_code"] as string) || null,
     currency: (input.account["currency"] as string) || "INR",
     billing_email: (input.account["billing_email"] as string) || null,
-    billing_whatsapp: (input.account["billing_whatsapp"] as string) || null,
+    billing_whatsapp: billingWhatsapp,
     address: (input.account["address"] as Record<string, unknown>) ?? {},
     tds_applicable: input.account["tds_applicable"] === true,
   };

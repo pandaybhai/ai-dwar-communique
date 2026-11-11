@@ -1,4 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { DEFAULT_COUNTRY_CODE, typedPhone } from "@/lib/phone";
 import { useEffect, useState } from "react";
 import { Eye, EyeOff, Loader2, MailCheck } from "lucide-react";
 import { AuthShell } from "@/components/auth-shell";
@@ -53,18 +54,14 @@ export const Route = createFileRoute("/signup")({
   component: SignupPage,
 });
 
-/** Aiden recognises the owner by this number: a 10-digit Indian mobile becomes +91, anything else must be full E.164. */
-export function signupPhone(raw: string): string | null {
-  const text = raw.trim();
-  const digits = text.replace(/\D/g, "");
-  const phone = text.startsWith("+")
-    ? `+${digits}`
-    : digits.length === 10
-      ? `+91${digits}`
-      : digits
-        ? `+${digits}`
-        : "";
-  return /^\+\d{10,15}$/.test(phone) ? phone : null;
+/**
+ * Aiden recognises the owner by this number. Batch 69: the one phone rule
+ * (typedPhone) with India's code, as there is no workspace yet: a 10-digit
+ * mobile (or 0 + 10 digits) becomes +91…, anything else needs its country code.
+ */
+export function signupPhone(raw: string): { phone: string } | { error: string } {
+  const out = typedPhone(raw, DEFAULT_COUNTRY_CODE);
+  return "error" in out ? out : { phone: out.phone };
 }
 
 function SignupPage() {
@@ -113,11 +110,12 @@ function SignupPage() {
       setError("Use at least 8 characters for your password.");
       return;
     }
-    const phone = signupPhone(String(form.get("phone") ?? ""));
-    if (!phone) {
-      setError("Enter your WhatsApp number — 10 digits for India, or with the country code.");
+    const typed = signupPhone(String(form.get("phone") ?? ""));
+    if ("error" in typed) {
+      setError(`Your WhatsApp number: ${typed.error}`);
       return;
     }
+    const phone = typed.phone;
     setPending(true);
     setError(null);
     const { data, error: err } = await aidwar.auth.signUp({
