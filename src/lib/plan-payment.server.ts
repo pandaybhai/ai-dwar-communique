@@ -233,12 +233,39 @@ export async function planPaymentPreview(
     owed,
   });
 
-  const warnings: string[] = [];
-  if (invoice && invoice.amount_paid + 0.01 >= invoice.total && !recorded) {
-    warnings.push(
-      `Invoice ${invoice.invoice_number ?? ""} for this period is already paid. Pick another period.`,
-    );
+  // Batch 69: a period whose invoice is paid in full says so (and by what),
+  // never a difference against an invoice that owes nothing.
+  let paid: PlanPaymentPreview["paid"] = null;
+  if (invoice && invoice.amount_paid + 0.01 >= invoice.total) {
+    const paymentId = (existing?.["payment_id"] as string | null) ?? null;
+    const { data: payment } = paymentId
+      ? await supabase
+          .from("payments")
+          .select("provider, method, provider_payment_id, raw")
+          .eq("id", paymentId)
+          .maybeSingle()
+      : { data: null };
+    const raw = ((payment?.["raw"] ?? {}) as Record<string, unknown>) ?? {};
+    const provider = (payment?.["provider"] as string | null) ?? null;
+    paid = {
+      invoice_number: invoice.invoice_number,
+      reference:
+        (raw["reference"] as string | undefined) ??
+        (payment?.["provider_payment_id"] as string | null) ??
+        null,
+      method:
+        provider === "manual"
+          ? methodLabel(String(payment?.["method"] ?? ""))
+          : provider === "cashfree"
+            ? "Cashfree"
+            : provider === "razorpay"
+              ? "Razorpay"
+              : null,
+      excess: provider === "manual" ? Number(raw["excess"] ?? 0) : 0,
+    };
   }
+
+  const warnings: string[] = [];
   if (invoice?.open_payment_link) {
     warnings.push(
       "This invoice also has an open online payment link. Tell them not to pay it as well.",
@@ -278,6 +305,7 @@ export async function planPaymentPreview(
           ),
         }
       : null,
+    paid,
     billing_enabled: Boolean(org["billing_enabled_at"]),
     warnings,
   };
@@ -328,6 +356,7 @@ export async function recordPlanPayment(
       invoice_id: String(raw["invoice_id"] ?? ""),
       invoice_number: (inv?.["invoice_number"] as string | null) ?? null,
       invoice_status: String(inv?.["status"] ?? ""),
+      reference: String(raw["reference"] ?? reference),
       period: { start: period.start, end: period.end },
       applied: Number(raw["applied"] ?? 0),
       excess: Number(raw["excess"] ?? 0),
@@ -544,6 +573,7 @@ export async function recordPlanPayment(
     invoice_id: invoiceId,
     invoice_number: (paidInv?.["invoice_number"] as string | null) ?? null,
     invoice_status: invoiceStatus,
+    reference,
     period: { start: period.start, end: period.end },
     applied: figures.applied,
     excess: figures.excess,

@@ -359,9 +359,19 @@ export const Route = createFileRoute("/api/ai/employee")({
             const alerts = await import("@/lib/handoff-alerts.server");
             const own = await alerts.businessNumbers(supabase, org);
             if (action === "save_handoff_alerts") {
+              // Batch 69: a number without its country code takes the
+              // workspace's default code (read only when one needs it).
+              let code: string | null = null;
+              if (alerts.alertPhonesNeedCountry(payload["phones"])) {
+                const { loadDefaultCountryCode } = await import("@/lib/default-country");
+                const read = await loadDefaultCountryCode(supabase, org);
+                if ("error" in read) return jsonError(read.error, 503);
+                code = read.code;
+              }
               const checked = alerts.validateAlertSettings(
                 { phones: payload["phones"], email: payload["email"] },
                 own,
+                code,
               );
               if (!checked.ok) return jsonError(checked.error, 400);
               const { error } = await supabase.from("organization_ai_settings").upsert(

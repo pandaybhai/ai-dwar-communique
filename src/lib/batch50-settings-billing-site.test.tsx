@@ -440,7 +440,9 @@ describe("flag off: today's Settings, Billing and journey", () => {
         /<h2 className="text-xl font-bold tracking-tight text-foreground">\n\s*\{heading\}\n\s*<\/h2>/,
         '<h2 className="text-xl font-bold tracking-tight text-foreground">{heading}</h2>',
       );
-    expect(sha(plan)).toBe("3f1bebc59b27f08f08be2f57734e889d806aa826de290a330d5669b91f7e8b1d");
+    // Re-pinned in Batch 69: the Billing WhatsApp hint adds "Without a country
+    // code, +91 is added." (the workspace's own code, useDefaultCountryCode).
+    expect(sha(plan)).toBe("c7ef9da6c4d19c928d3c752c10efc1d0cc75bba806c62c075ddd7f47dea21af4");
   });
 
   it('nd: classes do nothing without the new design (the variant needs data-design="new")', () => {

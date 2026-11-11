@@ -27,6 +27,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { callApi } from "@/lib/whatsapp-client";
+import { useDefaultCountryCode } from "@/hooks/use-default-country-code";
 import { OrgFeatureControls } from "@/components/admin/org-feature-controls";
 import { InternalWorkspaceCard } from "@/components/admin/internal-workspace-card";
 import { RecordPlanPayment } from "@/components/admin/record-plan-payment";
@@ -164,6 +165,7 @@ export function OrgBillingSheet({
   const [refundAmount, setRefundAmount] = useState("");
   const [refundReason, setRefundReason] = useState("");
   const keepOnReload = useRef(false);
+  const countryCode = useDefaultCountryCode(organizationId);
 
 
   const load = useCallback(async () => {
@@ -592,7 +594,14 @@ export function OrgBillingSheet({
                       onChange={(e) => setAccount((p) => ({ ...p, billing_email: e.target.value }))}
                     />
                   </Field>
-                  <Field label="Billing number" hint="Where money notices go">
+                  <Field
+                    label="Billing number"
+                    hint={`Where money notices go.${
+                      countryCode.code
+                        ? ` Without a country code, +${countryCode.code} is added.`
+                        : ""
+                    }`}
+                  >
                     <Input
                       value={account["billing_whatsapp"] ?? ""}
                       onChange={(e) =>

@@ -1,4 +1,4 @@
-import { DEFAULT_COUNTRY_CODE, isCountryCode } from "@/lib/phone";
+import { DEFAULT_COUNTRY_CODE, enteredPhone, isCountryCode, typedPhone } from "@/lib/phone";
 
 /**
  * Batch 66: a workspace's default country code (organizations.default_country_code,
@@ -66,4 +66,22 @@ export async function loadDefaultCountryCode(
   } catch {
     return { error: DEFAULT_COUNTRY_READ_ERROR };
   }
+}
+
+/**
+ * Batch 69: a number typed into a form for this workspace, through the one
+ * rule (typedPhone). The workspace's code is read only when the number needs
+ * it, so a number that already has its country code is stored exactly as
+ * before, without a read. A failed read refuses the number (never a guess).
+ */
+export async function workspaceTypedPhone(
+  client: unknown,
+  organizationId: string,
+  typed: unknown,
+): Promise<{ phone: string; addedCountry: boolean } | { error: string }> {
+  const first = enteredPhone(typed, null);
+  if (first.ok || first.problem !== "needs_country") return typedPhone(typed, null);
+  const code = await loadDefaultCountryCode(client, organizationId);
+  if ("error" in code) return { error: code.error };
+  return typedPhone(typed, code.code);
 }

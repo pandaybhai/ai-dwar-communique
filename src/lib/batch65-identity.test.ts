@@ -222,8 +222,11 @@ describe("only the audited places call the phone rule", () => {
       }
     };
     walk(root);
+    // Batch 69 added typedPhone (the form wording) and its callers: the
+    // billing WhatsApp (Super Admin, the customer's plan purchase), staff
+    // alert numbers, the onboarding and sign-up numbers.
     const rule =
-      /\b(enteredPhone|apiPhoneNumber|apiPhoneError|needsDefaultCountry|requestNeedsDefaultCountry|pathPhone|planImportRows)\b/;
+      /\b(enteredPhone|apiPhoneNumber|apiPhoneError|needsDefaultCountry|requestNeedsDefaultCountry|pathPhone|planImportRows|typedPhone|workspaceTypedPhone|alertPhonesNeedCountry|signupPhone)\b/;
     const callers = files
       .filter((f) => rule.test(readFileSync(f, "utf8")))
       .map((f) => relative(root, f))
@@ -234,8 +237,12 @@ describe("only the audited places call the phone rule", () => {
       "components/customers-v2/import-guided.tsx",
       "components/settings/api-copies-card.tsx",
       "lib/add-contact-phone.ts",
+      "lib/billing-admin.server.ts",
       "lib/contact-import.ts",
+      "lib/default-country.ts",
+      "lib/handoff-alerts.server.ts",
       "lib/phone.ts",
+      "lib/plan-purchase.server.ts",
       "lib/public-api-account.server.ts",
       "lib/public-api-campaigns.server.ts",
       "lib/public-api-cc.server.ts",
@@ -245,7 +252,10 @@ describe("only the audited places call the phone rule", () => {
       "lib/public-api-inbox.server.ts",
       "lib/public-api-send.server.ts",
       "lib/public-api-session.server.ts",
+      "routes/api/ai/employee.ts",
       "routes/api/contacts/import.ts",
+      "routes/api/onboarding/start.ts",
+      "routes/signup.tsx",
     ]);
     for (const f of [
       "lib/whatsapp-webhook.server.ts",
