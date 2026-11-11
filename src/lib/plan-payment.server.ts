@@ -245,7 +245,7 @@ export async function planPaymentPreview(
           .eq("id", paymentId)
           .maybeSingle()
       : { data: null };
-    const raw = ((payment?.["raw"] ?? {}) as Record<string, unknown>) ?? {};
+    const raw = (payment?.["raw"] ?? {}) as Record<string, unknown>;
     const provider = (payment?.["provider"] as string | null) ?? null;
     paid = {
       invoice_number: invoice.invoice_number,
