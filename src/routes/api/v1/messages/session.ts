@@ -16,7 +16,12 @@ export const Route = createFileRoute("/api/v1/messages/session")({
         const { sendSessionViaApi } = await import("@/lib/public-api-session.server");
         return runApiRoute(
           request,
-          { step: "session_send", body: { maxBytes: MAX_REQUEST_BYTES } },
+          {
+            step: "session_send",
+            body: { maxBytes: MAX_REQUEST_BYTES },
+            // Batch 67: a refused send is recorded for the shop (api-refusals.server.ts).
+            refusals: "session",
+          },
           ({ supabase, caller, body }) =>
             sendSessionViaApi(supabase, caller, body, {
               idempotencyHeader: request.headers.get("idempotency-key"),

@@ -46,6 +46,9 @@ const TEMPLATE_FOR: Record<string, string> = {
   // Batch 40: "Need help? We'll call you" on the first-run journey
   // (onboarding-journey-api.server.ts): same approved template.
   "admin:onboarding_callback": "admin_ai_provider_alert",
+  // Batch 67: the daily failure summary's WhatsApp copy (send-failure-digest.server.ts),
+  // queued only while the template is APPROVED; the email goes either way.
+  "client:send_failures": "client_send_failures",
 };
 
 /**
@@ -268,7 +271,8 @@ export async function ensureBillingTemplates(
   const queue: BillingTemplateSpec[] = [];
   for (const spec of BILLING_TEMPLATES) {
     if (heldNames.has(spec.name)) outcomes.set(spec.name, { outcome: "skipped", error: null });
-    else if (only && !only.has(spec.name)) outcomes.set(spec.name, { outcome: "skipped", error: null });
+    else if (only && !only.has(spec.name))
+      outcomes.set(spec.name, { outcome: "skipped", error: null });
     else queue.push(spec);
   }
 
@@ -286,7 +290,9 @@ export async function ensureBillingTemplates(
       const result = await createBillingTemplate(supabase, orgId, actorId, spec, modules);
       outcomes.set(
         spec.name,
-        result.ok ? { outcome: "created", error: null } : { outcome: "failed", error: result.error },
+        result.ok
+          ? { outcome: "created", error: null }
+          : { outcome: "failed", error: result.error },
       );
     }
   };
@@ -401,6 +407,9 @@ function paramsFor(kind: string, orgName: string, payload: Record<string, unknow
       return [orgName, money(Number(payload["amount"] ?? 0)), link];
     case "trial_ending":
       return [orgName, String(payload["days"] ?? 3), "aidwar.in/app/billing"];
+    case "send_failures":
+      // Batch 67: the link is fixed (no token), whatever the payload says.
+      return [orgName, String(Number(payload["count"] ?? 0)), "https://aidwar.in/app/templates"];
     case "campaign_approval":
       return [orgName, money(Number(payload["estimate"] ?? 0)), link];
     case "ai_provider_alert":
@@ -674,10 +683,13 @@ export async function noticeNoLongerOwed(
   const kind = String(row["kind"] ?? "");
   const orgId = (row["organization_id"] as string | null) ?? null;
   try {
-    const { INTERNAL_SKIPPED_NOTICE_KINDS, isInternalWorkspace } = await import(
-      "@/lib/internal-workspace.server"
-    );
-    if (orgId && INTERNAL_SKIPPED_NOTICE_KINDS.has(kind) && (await isInternalWorkspace(supabase, orgId))) {
+    const { INTERNAL_SKIPPED_NOTICE_KINDS, isInternalWorkspace } =
+      await import("@/lib/internal-workspace.server");
+    if (
+      orgId &&
+      INTERNAL_SKIPPED_NOTICE_KINDS.has(kind) &&
+      (await isInternalWorkspace(supabase, orgId))
+    ) {
       return "internal_workspace";
     }
     const invoiceId = (row["payload"] as Record<string, unknown> | null)?.["invoice_id"];
@@ -717,7 +729,9 @@ export async function drainBillingNotifications(
   // take a place in this batch.
   const { data: rows } = await supabase
     .from("billing_notifications")
-    .select("id, organization_id, audience, kind, channel, recipient, payload, status, sent_at, created_at")
+    .select(
+      "id, organization_id, audience, kind, channel, recipient, payload, status, sent_at, created_at",
+    )
     .eq("channel", "whatsapp")
     .or(pendingNoticeFilter())
     .order("created_at", { ascending: true })
@@ -783,7 +797,10 @@ export async function drainBillingNotifications(
         counts.skipped += 1;
         continue;
       }
-      if (kind === "invoice_issued" && (row["payload"] as Record<string, unknown> | null)?.["invoice_id"]) {
+      if (
+        kind === "invoice_issued" &&
+        (row["payload"] as Record<string, unknown> | null)?.["invoice_id"]
+      ) {
         // The invoice as it stands now: already on the buyer's WhatsApp (a
         // super admin's resend went first) → never a second copy; otherwise
         // its PDF may have been filed after the notice was queued.
@@ -831,9 +848,8 @@ export async function drainBillingNotifications(
         .update({ sent_at: new Date().toISOString() })
         .eq("id", row["id"] as string)
         .eq("status", row["status"] as string);
-      const { data: claimed, error: claimError } = await (claimedAt
-        ? claim.eq("sent_at", claimedAt)
-        : claim.is("sent_at", null)
+      const { data: claimed, error: claimError } = await (
+        claimedAt ? claim.eq("sent_at", claimedAt) : claim.is("sent_at", null)
       ).select("id");
       if (claimError || !claimed?.length) {
         counts.skipped += 1;
@@ -963,6 +979,14 @@ export async function drainBillingNotifications(
       if (!template) {
         await mark(row, "failed", "template_missing");
         counts.failed += 1;
+        continue;
+      }
+      // Batch 67: the failure summary's copy goes only with an APPROVED template
+      // (it was queued that way; this holds if Meta paused it since). The
+      // email copy was sent on its own, so nothing is lost.
+      if (kind === "send_failures" && String(template.status ?? "") !== "APPROVED") {
+        await mark(row, "skipped", "template_not_approved");
+        counts.skipped += 1;
         continue;
       }
 

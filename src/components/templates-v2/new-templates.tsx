@@ -40,6 +40,7 @@ import { numberLabel } from "@/lib/whatsapp-numbers";
 import { cn } from "@/lib/utils";
 import { TemplateMessage } from "./template-phone";
 import { TemplateSentReport } from "@/components/templates/template-sent-report";
+import { RefusedNoTemplateLine } from "@/components/templates/refused-no-template-line";
 import {
   isDeletedTemplate,
   reviewStateOf,
@@ -208,6 +209,8 @@ export function NewTemplates() {
         />
       ) : (
         <div className="flex flex-col gap-7">
+          {/* Batch 67: API sends refused with no template name. */}
+          <RefusedNoTemplateLine organizationId={orgId} variant="new" />
           {canManage ? (
             <section aria-labelledby="tpl-starters" className="flex flex-col gap-3">
               <h2 id="tpl-starters" className="m-0 font-display text-lg font-semibold">

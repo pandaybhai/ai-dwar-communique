@@ -230,18 +230,28 @@ export async function authenticateApiKey(
   if (!row || !hashesEqual(String(row.key_hash ?? ""), hash) || row.revoked_at)
     return unauthorized();
 
+  // Batch 67: a refusal after the key is known says whose it was (for the
+  // refusal record only; the answer is unchanged).
+  const owner = { keyId: row.id, organizationId: row.organization_id };
   if (!(await publicApiEnabled(supabase, row.organization_id))) {
-    return apiError(
-      403,
-      "public_api_disabled",
-      "The Public API isn't switched on for this workspace. It is part of the Scale plan — contact AiDwar support to turn it on.",
+    const { tagRefusalOwner } = await import("@/lib/api-refusals.server");
+    return tagRefusalOwner(
+      apiError(
+        403,
+        "public_api_disabled",
+        "The Public API isn't switched on for this workspace. It is part of the Scale plan — contact AiDwar support to turn it on.",
+      ),
+      owner,
     );
   }
 
   // Batch 38: the endpoint must be in the workspace's plan (public-api-plans.ts).
   const { endpointPlanGate } = await import("@/lib/public-api-plans.server");
   const notInPlan = await endpointPlanGate(supabase, row.organization_id, request);
-  if (notInPlan) return notInPlan;
+  if (notInPlan) {
+    const { tagRefusalOwner } = await import("@/lib/api-refusals.server");
+    return tagRefusalOwner(notInPlan, owner);
+  }
 
   const lastUsed = row.last_used_at ? Date.parse(row.last_used_at) : 0;
   if (!lastUsed || Date.now() - lastUsed >= LAST_USED_EVERY_MS) {
@@ -660,7 +670,12 @@ export async function cleanupApiRecords(
  */
 export async function runApiRoute(
   request: Request,
-  options: { step: string; body?: { maxBytes: number } },
+  options: {
+    step: string;
+    body?: { maxBytes: number };
+    /** Batch 67: a send endpoint — record a refusal (api-refusals.server.ts). */
+    refusals?: import("@/lib/api-refusals").RefusalEndpoint;
+  },
   handle: (input: {
     supabase: SupabaseClient;
     caller: ApiCaller;
@@ -669,8 +684,31 @@ export async function runApiRoute(
 ): Promise<Response> {
   const { getServiceClient } = await import("@/lib/whatsapp-webhook.server");
   const supabase = getServiceClient();
+  if (options.refusals) {
+    // Batch 67: the same answer, recorded when it is a refusal.
+    const endpoint = options.refusals;
+    let seen: { caller: ApiCaller | null; body: unknown } = { caller: null, body: null };
+    const answer = await answerApiRoute(supabase, request, options, handle, (s) => (seen = s));
+    const { recordRefusal } = await import("@/lib/api-refusals.server");
+    return recordRefusal(request, supabase, { endpoint, ...seen }, answer);
+  }
+  return answerApiRoute(supabase, request, options, handle, () => {});
+}
+
+async function answerApiRoute(
+  supabase: SupabaseClient,
+  request: Request,
+  options: { step: string; body?: { maxBytes: number } },
+  handle: (input: {
+    supabase: SupabaseClient;
+    caller: ApiCaller;
+    body: unknown;
+  }) => Promise<ApiReply | Response>,
+  see: (seen: { caller: ApiCaller | null; body: unknown }) => void,
+): Promise<Response> {
   const caller = await authenticateApiKey(supabase, request);
   if (caller instanceof Response) return caller;
+  see({ caller, body: null });
   const limited = await takeRateLimit(supabase, caller);
   if (limited) return limited;
 
@@ -696,6 +734,7 @@ export async function runApiRoute(
     }
   }
 
+  see({ caller, body });
   try {
     const answer = await handle({ supabase, caller, body });
     if (answer instanceof Response) return answer;

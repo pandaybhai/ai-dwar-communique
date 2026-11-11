@@ -173,8 +173,10 @@ describe("flag off: today's Campaigns, Templates and Cards, unchanged", () => {
       // Re-pinned in Batch 63: each template card gained one new row, a "Sent"
       // button that opens the template's Sent report (and the report sheet
       // itself); nothing else in the file changed (batch63-template-sent.test.ts).
+      // Re-pinned in Batch 67: one import and one line at the top of the list, the
+      // "Refused (no template)" line (refused-no-template-line.tsx); nothing else changed.
       "components/templates/templates-view.tsx":
-        "dd2b8d35e352e9aaf86faffb16f06ccee194a1250726f01c23d7aff1a48da7c9",
+        "f37b479a7e5ff5d78e47141d4d3b25cc9802c89dd4863b5cc254077dff6e584c",
       "components/templates/template-preview.tsx":
         "963895bfb149639b57875696703bab2c0a59b9e3ffcf94f7a05cc664b0b97c6f",
       "components/templates/format-toolbar.tsx":

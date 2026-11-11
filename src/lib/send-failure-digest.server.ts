@@ -19,6 +19,16 @@ import { sendSourceOf, SEND_SOURCE_LABEL } from "@/lib/template-sends";
  *
  * Run by the billing sweep (every 30 minutes); the summary goes once per
  * workspace per India day, from 09:00 IST.
+ *
+ * Batch 67: the summary also lists the Public API sends we refused before
+ * sending in the same 24 hours (public.api_refusals: number, template,
+ * reason, time), so a day with only refusals has a summary too. And a
+ * WhatsApp copy goes to the workspace owner's phone on file, through the same
+ * notice path (kind "send_failures", channel "whatsapp", the platform's
+ * client_send_failures template), only while that template is APPROVED and
+ * the workspace hasn't turned it off (branding.send_failure_summary_whatsapp
+ * === false is off). Without the template, a phone or the table, the email
+ * goes exactly as before and nothing fails.
  */
 
 export const DIGEST_KIND = "send_failures";
@@ -36,6 +46,15 @@ export function istDayStart(now: number): number {
 export function istHour(now: number): number {
   return Math.floor(((now + IST_OFFSET_MS) % 864e5) / 3600_000);
 }
+
+/** Batch 67: one refused API send in the summary. */
+export type RefusalDigestLine = { at: string; number: string; template: string; reason: string };
+
+/** The link the WhatsApp copy and the email point to (no token in it). */
+export const DIGEST_LINK = "https://aidwar.in/app/templates";
+
+/** The platform template the WhatsApp copy uses (platform-notice-templates.ts). */
+export const DIGEST_WHATSAPP_TEMPLATE = "client_send_failures";
 
 export type DigestLine = {
   at: string;
@@ -77,6 +96,75 @@ export function digestLines(rows: FailedRow[]): DigestLine[] {
 
 export function summaryOn(branding: unknown): boolean {
   return ((branding ?? {}) as Record<string, unknown>)["send_failure_summary"] !== false;
+}
+
+/** Batch 67: the WhatsApp copy, on unless the workspace turned it off (only false is off). */
+export function whatsappSummaryOn(branding: unknown): boolean {
+  return ((branding ?? {}) as Record<string, unknown>)["send_failure_summary_whatsapp"] !== false;
+}
+
+type RefusalRow = {
+  organization_id: string;
+  created_at: string;
+  template_name: string | null;
+  to_received: string | null;
+  reason: string;
+  endpoint: string;
+};
+
+/** Batch 67: one line per refused API send, newest first. */
+export function refusalDigestLines(rows: RefusalRow[]): RefusalDigestLine[] {
+  return [...rows]
+    .sort((a, b) => b.created_at.localeCompare(a.created_at))
+    .map((r) => ({
+      at: r.created_at,
+      number: String(r.to_received ?? "").trim() || "no number given",
+      template: r.template_name ?? (r.endpoint === "session" ? "free-form message" : "no template"),
+      reason: r.reason,
+    }));
+}
+
+/** The workspace owner's phone on file (profiles.phone of the first owner), else null. */
+async function ownerPhone(
+  supabase: SupabaseClient,
+  organizationId: string,
+): Promise<string | null> {
+  const { data: owners } = await supabase
+    .from("organization_members")
+    .select("user_id")
+    .eq("organization_id", organizationId)
+    .eq("role", "owner")
+    .order("created_at", { ascending: true })
+    .limit(1);
+  const ownerId = (owners as Array<{ user_id: string }> | null)?.[0]?.user_id ?? null;
+  if (!ownerId) return null;
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("phone")
+    .eq("id", ownerId)
+    .maybeSingle();
+  const phone = String((profile as { phone?: string | null } | null)?.phone ?? "").trim();
+  // As the notice drain reads it (recipientFor): the stored number, normalised.
+  const { normalizePhone } = await import("@/lib/phone");
+  return phone ? normalizePhone(phone) || null : null;
+}
+
+/** Whether the platform's client_send_failures template is APPROVED (any failed read: no). */
+async function whatsappTemplateApproved(supabase: SupabaseClient): Promise<boolean> {
+  try {
+    const { resolvePlatformOrg } = await import("@/lib/billing-notify.server");
+    const platformOrgId = await resolvePlatformOrg(supabase);
+    if (!platformOrgId) return false;
+    const { data, error } = await supabase
+      .from("message_templates")
+      .select("status")
+      .eq("organization_id", platformOrgId)
+      .eq("name", DIGEST_WHATSAPP_TEMPLATE)
+      .maybeSingle();
+    return !error && String((data as { status?: string } | null)?.status ?? "") === "APPROVED";
+  } catch {
+    return false;
+  }
 }
 
 /** Who gets it: the hand-off alert email, else the owners' and admins' emails (≤ 3). */
@@ -144,9 +232,31 @@ export async function runSendFailureDigest(
     list.push(r);
     byOrg.set(r.organization_id, list);
   }
+  // Batch 67: refused API sends in the same 24 hours. Without the table (or
+  // on a failed read) there are none and the summary is what it was.
+  const refusedByOrg = new Map<string, RefusalRow[]>();
+  try {
+    const { data: refused, error: refusedError } = await supabase
+      .from("api_refusals")
+      .select("organization_id, created_at, template_name, to_received, reason, endpoint")
+      .gte("created_at", since)
+      .order("created_at", { ascending: false })
+      .limit(MAX_ROWS);
+    if (!refusedError)
+      for (const r of (refused ?? []) as RefusalRow[]) {
+        const list = refusedByOrg.get(r.organization_id) ?? [];
+        list.push(r);
+        refusedByOrg.set(r.organization_id, list);
+      }
+  } catch {
+    // no refusals today
+  }
   const today = new Date(istDayStart(now)).toISOString();
   const { notify } = await import("@/lib/billing.server");
-  for (const [organizationId, rows] of byOrg) {
+  let approved: boolean | null = null;
+  for (const organizationId of new Set([...byOrg.keys(), ...refusedByOrg.keys()])) {
+    const rows = byOrg.get(organizationId) ?? [];
+    const refusedRows = refusedByOrg.get(organizationId) ?? [];
     counts.workspaces += 1;
     const { data: org } = await supabase
       .from("organizations")
@@ -171,13 +281,18 @@ export async function runSendFailureDigest(
       continue;
     }
     const lines = digestLines(rows);
+    const refusedLines = refusalDigestLines(refusedRows);
     const payload = {
       workspace: String(o.name ?? "").trim() || "your workspace",
       day: today,
       total: lines.length,
       copies: lines.filter((l) => l.copy).length,
       lines: lines.slice(0, MAX_LINES),
-      link: "https://aidwar.in/app/templates",
+      // Batch 67 (only when there were refusals, so a day without them is as before).
+      ...(refusedLines.length
+        ? { refused_total: refusedLines.length, refused_lines: refusedLines.slice(0, MAX_LINES) }
+        : {}),
+      link: DIGEST_LINK,
     };
     for (const to of await recipients(supabase, organizationId)) {
       await notify(supabase, {
@@ -189,6 +304,41 @@ export async function runSendFailureDigest(
         payload,
       });
       counts.queued += 1;
+    }
+    // Batch 67: the WhatsApp copy to the owner, only with an APPROVED template.
+    // Any failure here is logged and never stops the email (already queued).
+    try {
+      if (whatsappSummaryOn(o.branding)) {
+        const phone = await ownerPhone(supabase, organizationId);
+        if (phone) {
+          approved ??= await whatsappTemplateApproved(supabase);
+          if (approved) {
+            await notify(supabase, {
+              organizationId,
+              audience: "client",
+              kind: DIGEST_KIND,
+              channel: "whatsapp",
+              recipient: phone,
+              payload: {
+                workspace: payload.workspace,
+                day: today,
+                count: lines.length + refusedLines.length,
+                link: DIGEST_LINK,
+              },
+            });
+            counts.queued += 1;
+          }
+        }
+      }
+    } catch (whatsappError) {
+      console.warn(
+        JSON.stringify({
+          scope: "send_failure_digest",
+          step: "whatsapp_copy",
+          organization_id: organizationId,
+          error: whatsappError instanceof Error ? whatsappError.message : String(whatsappError),
+        }),
+      );
     }
   }
   return counts;
@@ -219,11 +369,34 @@ export function sendFailuresEmail(payload: Record<string, unknown>): {
     )
     .join("\n");
   const more = total > lines.length ? `\n…and ${total - lines.length} more.` : "";
+  // Batch 67: refused API sends (absent on a day without any: the email is as before).
+  const refusedTotal = Number(payload["refused_total"] ?? 0);
+  const refusedLines = (
+    Array.isArray(payload["refused_lines"]) ? payload["refused_lines"] : []
+  ) as RefusalDigestLine[];
+  const refusedList = refusedLines
+    .map((l) => `• ${when(l.at)} — ${l.number} — ${l.template} — ${l.reason}`)
+    .join("\n");
+  const refusedMore =
+    refusedTotal > refusedLines.length ? `\n…and ${refusedTotal - refusedLines.length} more.` : "";
+  const refusedBlock = refusedTotal
+    ? `In the same 24 hours we refused ${refusedTotal} API send${refusedTotal === 1 ? "" : "s"} from your software before sending (nothing went out):\n\n${refusedList}${refusedMore}\n\n`
+    : "";
+  const failedSubject = `${total} WhatsApp message${total === 1 ? "" : "s"} couldn't be delivered`;
+  const refusedSubject = `${refusedTotal} API send${refusedTotal === 1 ? " was" : "s were"} refused`;
+  const subject = refusedTotal
+    ? total
+      ? `${failedSubject}, ${refusedSubject} — ${workspace}`
+      : `${refusedSubject} — ${workspace}`
+    : `${failedSubject} — ${workspace}`;
+  const failedBlock = total
+    ? `Hello — in the last 24 hours ${total} template message${total === 1 ? "" : "s"} from ${workspace} couldn't be delivered:\n\n${list}${more}\n\n`
+    : `Hello — here is today's summary for ${workspace}.\n\n`;
   return {
-    subject: `${total} WhatsApp message${total === 1 ? "" : "s"} couldn't be delivered — ${workspace}`,
+    subject,
     body:
-      `Hello — in the last 24 hours ${total} template message${total === 1 ? "" : "s"} from ${workspace} couldn't be delivered:\n\n` +
-      `${list}${more}\n\n` +
+      failedBlock +
+      refusedBlock +
       `A number WhatsApp says isn't on WhatsApp is marked "Not on WhatsApp" on the customer until a message to it is delivered. ` +
       `See every send of a template, with its status, under Templates → Sent: ${String(payload["link"] ?? "https://aidwar.in/app/templates")}\n\n` +
       `You can turn this daily summary off in Settings → Notifications.`,

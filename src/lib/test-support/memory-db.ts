@@ -99,6 +99,8 @@ export function memoryDb(seed: Record<string, Row[]> = {}, rpcs: Record<string, 
       let single = false;
       let returning = false;
       let limit = Infinity;
+      // Batch 67: range(from, to) skips `from` rows, as PostgREST does.
+      let offset = 0;
       let order: { col: string; asc: boolean } | null = null;
       const b: Record<string, unknown> = {};
       const add = (f: Filter) => {
@@ -161,6 +163,7 @@ export function memoryDb(seed: Record<string, Row[]> = {}, rpcs: Record<string, 
         return b;
       };
       b["range"] = (from: number, to: number) => {
+        offset = Math.max(from, 0);
         limit = to - from + 1;
         return b;
       };
@@ -197,7 +200,7 @@ export function memoryDb(seed: Record<string, Row[]> = {}, rpcs: Record<string, 
             out = [...out].sort((x, y) => (asc ? 1 : -1) * cmp(field(x, col), field(y, col)));
           }
           const count = out.length;
-          out = out.slice(0, limit);
+          out = out.slice(offset, offset + limit);
           if (head) return { data: null, error: null, count };
           if (single) return { data: out[0] ? { ...out[0] } : null, error: null, count };
           return { data: out.map((r) => ({ ...r })), error: null, count: countMode ? count : null };
