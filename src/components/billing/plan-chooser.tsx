@@ -20,6 +20,8 @@ import { money } from "@/lib/billing";
 import { chargeFor } from "@/lib/gst-mode";
 import { callApi } from "@/lib/whatsapp-client";
 import { useDefaultCountryCode } from "@/hooks/use-default-country-code";
+import { fireFromServer } from "@/lib/meta-pixel";
+import type { BrowserMetaEvent } from "@/lib/meta-events";
 import {
   confirmCashfreeReturn,
   openCashfreeCheckout,
@@ -142,22 +144,25 @@ export function PlanChooser({
   async function pay() {
     if (!selected) return;
     setBusy(true);
-    const { data, error } = await callApi<{ url: string; checkout?: CashfreeCheckout }>(
-      "/api/billing/plan",
-      {
-        body: {
-          organization_id: organizationId,
-          plan_key: selected.key,
-          gstin: gstin.trim() || null,
-          billing_whatsapp: whatsapp.trim() || null,
-        },
+    const { data, error } = await callApi<{
+      url: string;
+      checkout?: CashfreeCheckout;
+      meta?: BrowserMetaEvent | null;
+    }>("/api/billing/plan", {
+      body: {
+        organization_id: organizationId,
+        plan_key: selected.key,
+        gstin: gstin.trim() || null,
+        billing_whatsapp: whatsapp.trim() || null,
       },
-    );
+    });
     if (error || !data?.url) {
       setBusy(false);
       toast.error(error ?? "We couldn't start the payment.");
       return;
     }
+    // Batch 70: InitiateCheckout (the server already sent its copy).
+    fireFromServer(data.meta);
     if (data.checkout) {
       const problem = await openCashfreeCheckout(data.checkout);
       setBusy(false);

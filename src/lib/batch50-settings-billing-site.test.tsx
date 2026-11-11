@@ -403,16 +403,20 @@ describe("flag off: today's Settings, Billing and journey", () => {
     const from = (text: string, marker: string) => text.slice(text.indexOf(marker));
     // Re-pinned in Batch 66: Settings > Workspace (GeneralTab, both designs) shows
     // "Default country code: +91" read-only — the brief's one UI line; nothing else moved.
+    // Re-pinned in Batch 70: the Workspace section (GeneralTab, both designs) adds
+    // the person's own "Don't share my activity with Meta" card under its form.
     expect(sha(from(src("routes/app/settings.tsx"), "function SettingsPage()"))).toBe(
-      "ec8bf120ec66ffad3d276e1ee1c276d377ab15064243854a47ccad3cca91bc95",
+      "d1766727470cd8cba2466599970c13314664b3c0c5302b0b5e14e25928c4e69f",
     );
     // Re-pinned in Batch 61 after Lovable c1ee4bd ("Fixed trial plan picker", asked for by
     // the founder): a trial workspace now gets the plan picker (`|| org?.plan_status === "trial"`).
     expect(sha(from(src("routes/app/billing.tsx"), "function BillingPage()"))).toBe(
       "48d656410d4d3d9456752e15be859df4573250ceaf3bbb837f09b012f65df50d",
     );
+    // Re-pinned in Batch 70: Buy credits fires the InitiateCheckout the server
+    // returns (`meta`, fireFromServer); the request and everything else as before.
     expect(sha(withoutNd(src("components/billing/billing-view.tsx")))).toBe(
-      "89aa2f5973575c215bba742c2646bcb4fbac4cd2a92aa1d1ecac79d5b830e038",
+      "e13a56dd3fd2a93edef6a2c0f6b5d23b08a24470a138fe03803391530dce33e3",
     );
     // Batch 58: re-pinned — an unpaid invoice whose credit notes cover its
     // total reads "Cancelled (credit note CN/…)" with no Pay button
@@ -442,7 +446,9 @@ describe("flag off: today's Settings, Billing and journey", () => {
       );
     // Re-pinned in Batch 69: the Billing WhatsApp hint adds "Without a country
     // code, +91 is added." (the workspace's own code, useDefaultCountryCode).
-    expect(sha(plan)).toBe("c7ef9da6c4d19c928d3c752c10efc1d0cc75bba806c62c075ddd7f47dea21af4");
+    // Re-pinned in Batch 70: Pay fires the InitiateCheckout the server returns
+    // (`meta`, fireFromServer); the plan request is unchanged.
+    expect(sha(plan)).toBe("4ed6c71dd527a75a418f08aad191ca61f3eb95ae43e9822cb4b1e7cea4b743cb");
   });
 
   it('nd: classes do nothing without the new design (the variant needs data-design="new")', () => {
@@ -531,7 +537,8 @@ describe("the public site: new_site switch, default off", () => {
     const MAIN: Record<string, string> = {
       "routes/terms.tsx": "e660541f1acb896ece7951f466f05f5af9ce28ef0a8fd6f04246991cf0b298fb",
       // Batch 56: + section 5 "AI assistants you connect" (batch56-privacy.test.tsx); nothing else changed in words.
-      "routes/privacy.tsx": "6b54528f30b7638fe690a4ade75bd4d45eb86a1296dc93788b4f641854da230f",
+      // Batch 70: + the Meta Pixel / Conversions API paragraph in section 6 (batch70-meta.test.ts).
+      "routes/privacy.tsx": "d6beafea9f4e2ba017f60d62ac906847f209a068c93faafb63026987165373cb",
       "routes/refunds.tsx": "5c607bfde33a444b086b4ac8a56548580307d33bf7c3eac5412a4108f0e385ab",
       "routes/refund-policy.tsx":
         "804c9591fb15bec80f1fd8aa537cac15cc4a111e387a3b86a49024d2369ee382",

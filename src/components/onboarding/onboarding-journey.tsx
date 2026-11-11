@@ -18,6 +18,7 @@ import {
   type SiteBrand,
 } from "@/lib/onboarding-client";
 import { landingStep, resumeStep, type JourneyStep } from "@/lib/onboarding-journey";
+import { trackStartTrial } from "@/lib/meta-pixel";
 
 /**
  * Batch 40: the whole first run, full screen — Your business → Connect
@@ -95,6 +96,9 @@ export function OnboardingJourney({
       if (error || !created) return "We couldn't create your workspace. Please try again.";
       orgId = created as string;
       await logActivity("organization.created", orgId, { name: input.name });
+      // Batch 70: trial started — the server sends its copy and says what the
+      // pixel fires. Never awaited by setup.
+      trackStartTrial(orgId);
     }
     const begun = await journeyApi<{ source_id?: string }>({
       action: "begin",

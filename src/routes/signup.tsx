@@ -1,5 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { DEFAULT_COUNTRY_CODE, typedPhone } from "@/lib/phone";
+import { trackRegistration } from "@/lib/meta-pixel";
 import { useEffect, useState } from "react";
 import { Eye, EyeOff, Loader2, MailCheck } from "lucide-react";
 import { AuthShell } from "@/components/auth-shell";
@@ -131,6 +132,9 @@ function SignupPage() {
       setError(err.message);
       return;
     }
+    // Batch 70: account created (pixel after cookie consent; the server copy
+    // under the sign-up terms below). Never blocks sign-up.
+    if (data.user?.id) trackRegistration(data.user.id);
     if (data.session) {
       void goNext();
       return;
@@ -329,6 +333,9 @@ function SignupPage() {
             privacy policy
           </Link>
           .
+        </p>
+        <p className="text-center text-xs text-muted-foreground">
+          We share sign-up and purchase events with Meta to measure our ads.
         </p>
       </form>
     </AuthShell>

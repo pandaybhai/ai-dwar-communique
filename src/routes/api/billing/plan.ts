@@ -46,7 +46,21 @@ export const Route = createFileRoute("/api/billing/plan")({
           billingWhatsapp: (payload["billing_whatsapp"] as string | null) ?? null,
         });
         if ("error" in result) return jsonError(result.error);
-        return Response.json(result);
+        // Batch 70: InitiateCheckout (server copy now, the browser fires `meta`).
+        // The checkout's answer never depends on it.
+        let meta: import("@/lib/meta-events").BrowserMetaEvent | null = null;
+        try {
+          const { getServiceClient } = await import("@/lib/whatsapp-webhook.server");
+          const { metaCheckoutStarted } = await import("@/lib/meta-capi.server");
+          meta = await metaCheckoutStarted(getServiceClient(), {
+            paymentId: result.payment_id,
+            userId: auth.userId,
+            request,
+          });
+        } catch {
+          meta = null;
+        }
+        return Response.json({ ...result, meta });
       },
     },
   },

@@ -19,6 +19,7 @@ import {
   ENQUIRY_BANDS,
   PRIMARY_NEEDS,
 } from "@/lib/leads";
+import { randomEventId, readConsent, track } from "@/lib/meta-pixel";
 
 type Values = {
   business_type: string;
@@ -167,6 +168,9 @@ export function DemoForm({
     setSending(true);
     setError(null);
 
+    // Batch 70: Lead — one id for the pixel and the server copy (the server
+    // sends it only when this visitor accepted the cookie banner).
+    const leadEventId = randomEventId("Lead");
     let res: Response;
     try {
       res = await fetch("/api/public/demo-leads", {
@@ -179,6 +183,8 @@ export function DemoForm({
           landing_path: window.location.pathname,
           attribution: readAttribution(),
           company_website_confirm: "",
+          meta_event_id: leadEventId,
+          meta_consent: readConsent() === "accepted",
         }),
       });
     } catch {
@@ -195,6 +201,8 @@ export function DemoForm({
       return;
     }
     // Success only after the enquiry is durably saved.
+    if (!(body as { duplicate?: boolean }).duplicate)
+      track("Lead", leadEventId, {}, { once: true });
     setDone(true);
     onComplete?.();
     trackMarketing("demo_lead_submitted", {

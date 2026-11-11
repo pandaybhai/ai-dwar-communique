@@ -115,6 +115,17 @@ function PrivacyPage() {
             "Professional advisers, authorities or acquirers, where required by law, to protect our rights, or in connection with a merger, acquisition or restructuring.",
           ]}
         />
+        {/* Batch 70: the Meta Pixel and the Conversions API, for AiDwar's own ads. */}
+        <p>
+          <strong>Meta Pixel and Conversions API.</strong> To measure our own ads on Facebook and
+          Instagram, our public website loads the Meta Pixel only after you press Accept on the
+          cookie banner (Decline means it never loads). When you sign up, start a trial or pay us,
+          we also tell Meta about it from our servers, with your email, phone, first name and
+          account id hashed (never in plain text). This is only about you as an AiDwar customer:
+          your own customers, contacts, messages and workspace content are never shared with Meta
+          for this. You can opt out at any time: press Decline on the banner (or clear this site's
+          cookies), and in Settings turn on "Don't share my activity with Meta".
+        </p>
       </Section>
 
       <Section heading="7. Security">

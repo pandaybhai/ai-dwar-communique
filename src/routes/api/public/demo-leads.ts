@@ -35,6 +35,22 @@ export const Route = createFileRoute("/api/public/demo-leads")({
         });
 
         if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
+        // Batch 70: Lead's server copy, only when the visitor accepted the
+        // cookie banner (the pixel fired with this same id) and it isn't a repeat.
+        // The lead's own details are never sent.
+        if (!result.duplicate && body["meta_consent"] === true) {
+          const { isEventId } = await import("@/lib/meta-events");
+          const id = body["meta_event_id"];
+          if (isEventId(id) && id.startsWith("Lead.")) {
+            const { queueMetaEvent } = await import("@/lib/meta-capi.server");
+            await queueMetaEvent(getServiceClient(), {
+              event: "Lead",
+              eventId: id,
+              sourceUrl: request.headers.get("referer"),
+              request,
+            });
+          }
+        }
         return Response.json({ ok: true, duplicate: result.duplicate });
       },
     },
