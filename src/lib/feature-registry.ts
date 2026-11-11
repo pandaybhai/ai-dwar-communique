@@ -1078,6 +1078,8 @@ export const FEATURES: readonly FeatureManifest[] = [
       "invoice_cancelled",
       "internal_workspace_on",
       "internal_workspace_off",
+      // Batch 68: a plan fee paid offline, recorded by a super admin.
+      "plan_payment_recorded",
       // Batch 23: invoice actions by a super admin, with the actor.
       "invoice_resent",
       "invoice_pdf_regenerated",

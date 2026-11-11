@@ -335,6 +335,43 @@ export const Route = createFileRoute("/api/admin/billing")({
                 }),
               );
 
+            // Batch 68: a plan fee paid outside the gateway (bank transfer,
+            // UPI, cheque, cash). The preview shows the figures; the save
+            // goes through the plan-fee invoice and settlePayment.
+            case "plan_payment_preview": {
+              const { planPaymentPreview } = await import("@/lib/plan-payment.server");
+              return Response.json(
+                await planPaymentPreview(supabase, {
+                  actorId,
+                  organizationId: orgId,
+                  periodStart: (payload["period_start"] as string) || null,
+                  amount:
+                    payload["amount"] === null ||
+                    payload["amount"] === undefined ||
+                    payload["amount"] === ""
+                      ? null
+                      : Number(payload["amount"]),
+                  reference: (payload["reference"] as string) || null,
+                }),
+              );
+            }
+
+            case "record_plan_payment": {
+              const { recordPlanPayment } = await import("@/lib/plan-payment.server");
+              return Response.json(
+                await recordPlanPayment(supabase, {
+                  actorId,
+                  organizationId: orgId,
+                  periodStart: String(payload["period_start"] ?? ""),
+                  amount: Number(payload["amount"] ?? 0),
+                  method: String(payload["method"] ?? ""),
+                  reference: String(payload["reference"] ?? ""),
+                  paidOn: String(payload["paid_on"] ?? ""),
+                  note: (payload["note"] as string) || null,
+                }),
+              );
+            }
+
             case "adjustment":
               return Response.json(
                 await admin.adminAdjustment(supabase, {

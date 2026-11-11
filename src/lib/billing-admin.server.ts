@@ -939,6 +939,15 @@ export async function adminOrgPayments(
         requested_at: x["requested_at"],
       })),
       failure_reason: (failure["reason"] as string | undefined) ?? null,
+      // Batch 68: a plan fee recorded by hand — its period, reference and
+      // what was received beyond the invoice (left unapplied).
+      ...(row["provider"] === "manual" && row["purpose"] === "plan_fee"
+        ? {
+            plan_period: (r["period"] as string | undefined) ?? null,
+            reference: (r["reference"] as string | undefined) ?? null,
+            unapplied_amount: Number(r["excess"] ?? 0),
+          }
+        : {}),
     };
   });
 }
