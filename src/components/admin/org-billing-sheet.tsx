@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2, RefreshCw, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -29,6 +29,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { callApi } from "@/lib/whatsapp-client";
 import { OrgFeatureControls } from "@/components/admin/org-feature-controls";
 import { InternalWorkspaceCard } from "@/components/admin/internal-workspace-card";
+import { RecordPlanPayment } from "@/components/admin/record-plan-payment";
 import { MESSAGE_CATEGORIES, money, rateMoney, ledgerLabel } from "@/lib/billing";
 import { GST_STATES, gstinStateMismatch } from "@/lib/gst-states";
 
@@ -162,10 +163,14 @@ export function OrgBillingSheet({
   const [refunding, setRefunding] = useState<AnyRow | null>(null);
   const [refundAmount, setRefundAmount] = useState("");
   const [refundReason, setRefundReason] = useState("");
+  const keepOnReload = useRef(false);
 
 
   const load = useCallback(async () => {
-    setData(null);
+    // A reload asked to keep the sheet (keepOnReload) skips the skeleton, so
+    // Record plan payment's own summary stays on screen.
+    if (!keepOnReload.current) setData(null);
+    keepOnReload.current = false;
     const result = await callApi<OrgBilling>("/api/admin/billing", {
       body: { action: "org", organization_id: organizationId },
     });
@@ -447,6 +452,19 @@ export function OrgBillingSheet({
                   {busy === "plan" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                   Assign plan
                 </Button>
+              </Section>
+
+              <Section
+                title="Record plan payment"
+                description="A plan fee they paid outside the payment link: bank transfer, UPI, cheque or cash. It uses (or raises) that period's invoice, marks it paid and sends them the paid invoice once."
+              >
+                <RecordPlanPayment
+                  organizationId={organizationId}
+                  onRecorded={() => {
+                    keepOnReload.current = true;
+                    void load();
+                  }}
+                />
               </Section>
 
               {data.organization?.["plan_status"] === "trial" ? (
@@ -1107,6 +1125,18 @@ export function OrgBillingSheet({
                             </td>
                             <td className="py-2">
                               {money(Number(p["amount"] ?? 0))}
+                              {p["plan_period"] ? (
+                                <div className="text-xs text-muted-foreground">
+                                  Plan fee {String(p["plan_period"])}
+                                  {p["reference"] ? ` · ref ${String(p["reference"])}` : ""}
+                                </div>
+                              ) : null}
+                              {Number(p["unapplied_amount"] ?? 0) > 0 ? (
+                                <div className="text-xs text-amber-700 dark:text-amber-300">
+                                  {money(Number(p["unapplied_amount"]))} unapplied (not in the
+                                  wallet)
+                                </div>
+                              ) : null}
                               {gross !== null && gross > Number(p["amount"] ?? 0) ? (
                                 <div className="text-xs text-muted-foreground">
                                   {money(gross)} incl. GST

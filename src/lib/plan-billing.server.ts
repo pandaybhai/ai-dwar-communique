@@ -153,12 +153,76 @@ export async function invoicePlanFee(
   if (existingError) return { error: existingError.message };
   if (existing?.length) return { error: "already_invoiced" };
 
+  const raised = await raisePlanFeeInvoice(supabase, organizationId, period);
+  if ("error" in raised) {
+    if (raised.stage !== "build") return { error: raised.error };
+    // Another run raised this period's invoice at the same moment (the
+    // plan_fee_invoice_period_uidx unique index, 20261026, refused ours).
+    const { data: raced } = await periodInvoices();
+    return { error: raced?.length ? "already_invoiced" : raised.error };
+  }
+  const { invoice_id: invoiceId, invoice_number: invoiceNumber, base, supplier, org } = raised;
+
+  // Batch 55: the same GST mode the invoice was built with (supplier above).
+  const gross = chargeFor(Number(base), supplier.gst_registered).total;
+  const payUrl = await createPlanPaymentLink(supabase, {
+    organizationId,
+    invoiceId,
+    invoiceNumber,
+    amount: Number(base),
+    gross,
+    orgName: String(org["name"] ?? "your workspace"),
+    billingAccountId: (org["billing_account_id"] as string | null) ?? null,
+  });
+
+  if (payUrl) {
+    const { data: current } = await supabase
+      .from("invoices")
+      .select("sent")
+      .eq("id", invoiceId)
+      .maybeSingle();
+    await supabase
+      .from("invoices")
+      .update({ sent: { ...((current?.["sent"] ?? {}) as Record<string, unknown>), pay_url: payUrl } })
+      .eq("id", invoiceId);
+  }
+
+  const { deliverInvoice } = await import("@/lib/invoices.server");
+  await deliverInvoice(supabase, invoiceId, { fallbackToQueue: true });
+
+  return { invoice_id: invoiceId, pay_url: payUrl };
+}
+
+/**
+ * Batch 68: the plan-fee invoice itself — the plan line for this period and
+ * the statement lines for the month before, built and numbered (never
+ * delivered, no payment link). invoicePlanFee and the Super Admin's "Record
+ * plan payment" (plan-payment.server.ts) both raise it here, so there is one
+ * plan-fee invoice implementation. The caller checks this period's existing
+ * invoices first; a "build" failure may be another run's unique-index refusal.
+ */
+export async function raisePlanFeeInvoice(
+  supabase: SupabaseClient,
+  organizationId: string,
+  period: { start: string; end: string },
+  options: { createdBy?: string | null } = {},
+): Promise<
+  | {
+      invoice_id: string;
+      invoice_number: string;
+      base: number;
+      plan_name: string;
+      supplier: import("@/lib/invoices.server").SupplierProfile;
+      org: Record<string, unknown>;
+    }
+  | { error: string; stage: "plan" | "build" | "issue" }
+> {
   const { data: org } = await supabase
     .from("organizations")
     .select("id, name, plan_version_id, billing_account_id")
     .eq("id", organizationId)
     .maybeSingle();
-  if (!org?.["plan_version_id"]) return { error: "no_plan" };
+  if (!org?.["plan_version_id"]) return { error: "no_plan", stage: "plan" };
 
   const [{ data: version }, { data: settings }] = await Promise.all([
     supabase
@@ -176,8 +240,8 @@ export async function invoicePlanFee(
   const listed = version?.["price_monthly"] as number | null | undefined;
   const override = settings?.["plan_fee_override"] as number | null | undefined;
   const base = override ?? (listed === null || listed === undefined ? null : Number(listed));
-  if (base === null || base === undefined) return { error: "no_price" };
-  if (Number(base) <= 0) return { error: "free_plan" };
+  if (base === null || base === undefined) return { error: "no_price", stage: "plan" };
+  if (Number(base) <= 0) return { error: "free_plan", stage: "plan" };
 
   const planName =
     ((version?.["plans"] as unknown as Record<string, unknown>)?.["name"] as string) ?? "Plan";
@@ -207,6 +271,7 @@ export async function invoicePlanFee(
     supplier,
     period,
     roi_snapshot: roi,
+    ...(options.createdBy ? { created_by: options.createdBy } : {}),
     lines: [
       {
         line_type: "plan",
@@ -217,46 +282,21 @@ export async function invoicePlanFee(
       ...statement,
     ],
   });
-  if ("error" in built) {
-    // Another run raised this period's invoice at the same moment (the
-    // plan_fee_invoice_period_uidx unique index, 20261026, refused ours).
-    const { data: raced } = await periodInvoices();
-    return { error: raced?.length ? "already_invoiced" : built.error };
-  }
+  if ("error" in built) return { error: built.error, stage: "build" };
 
-  // Number and file it first, then attach the payment link, then send the
-  // PDF once — with the link inside the message.
+  // Number and file it first (the caller attaches a payment link or a
+  // payment, then sends the PDF once).
   const issued = await issueInvoice(supabase, built.invoice_id, { deliver: false });
-  if ("error" in issued) return { error: issued.error };
+  if ("error" in issued) return { error: issued.error, stage: "issue" };
 
-  // Batch 55: the same GST mode the invoice was built with (supplier above).
-  const gross = chargeFor(Number(base), supplier.gst_registered).total;
-  const payUrl = await createPlanPaymentLink(supabase, {
-    organizationId,
-    invoiceId: built.invoice_id,
-    invoiceNumber: issued.invoice_number,
-    amount: Number(base),
-    gross,
-    orgName: String(org["name"] ?? "your workspace"),
-    billingAccountId: (org["billing_account_id"] as string | null) ?? null,
-  });
-
-  if (payUrl) {
-    const { data: current } = await supabase
-      .from("invoices")
-      .select("sent")
-      .eq("id", built.invoice_id)
-      .maybeSingle();
-    await supabase
-      .from("invoices")
-      .update({ sent: { ...((current?.["sent"] ?? {}) as Record<string, unknown>), pay_url: payUrl } })
-      .eq("id", built.invoice_id);
-  }
-
-  const { deliverInvoice } = await import("@/lib/invoices.server");
-  await deliverInvoice(supabase, built.invoice_id, { fallbackToQueue: true });
-
-  return { invoice_id: built.invoice_id, pay_url: payUrl };
+  return {
+    invoice_id: built.invoice_id,
+    invoice_number: issued.invoice_number,
+    base: Number(base),
+    plan_name: planName,
+    supplier,
+    org: org as Record<string, unknown>,
+  };
 }
 
 async function createPlanPaymentLink(
