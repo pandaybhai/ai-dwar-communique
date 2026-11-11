@@ -1,11 +1,16 @@
 import { useEffect, useState } from "react";
-import { Link, useRouterState } from "@tanstack/react-router";
+import { useRouterState } from "@tanstack/react-router";
+import { ConsentBanner } from "@/components/consent-banner";
 import { pixelZone } from "@/lib/meta-events";
 import {
+  SIGNUP_SUBMITTED_EVENT,
+  bannerVisible,
   contactClicked,
   ensurePixel,
   pageChanged,
   readConsent,
+  scheduleBanner,
+  signupWasSubmitted,
   writeConsent,
   type Consent,
 } from "@/lib/meta-pixel";
@@ -16,15 +21,33 @@ import {
  * Contact on a click of our email / phone / WhatsApp links. On /login, the
  * onboarding and billing steps: nothing here (those steps fire their one
  * conversion themselves). On /app working pages and /admin: nothing at all.
+ *
+ * Batch 71: the banner is not shown on first paint. It comes after 30% of the
+ * page is scrolled or after 6 seconds, whichever is first, and on /signup only
+ * once the form was submitted (never while it is being filled in).
  */
 export function MetaPixelRuntime() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const zone = pixelZone(pathname);
   const [consent, setConsent] = useState<Consent | "unread">("unread");
 
+  const [due, setDue] = useState(false);
+  const [signupDone, setSignupDone] = useState(false);
+
   useEffect(() => {
     setConsent(readConsent());
+    setSignupDone(signupWasSubmitted());
+    const onSignup = () => setSignupDone(true);
+    window.addEventListener(SIGNUP_SUBMITTED_EVENT, onSignup);
+    return () => window.removeEventListener(SIGNUP_SUBMITTED_EVENT, onSignup);
   }, []);
+
+  // Once a public page has been read for a moment (scrolled 30% or 6 s).
+  const waiting = zone === "public" && consent === null && !due;
+  useEffect(() => {
+    if (!waiting) return;
+    return scheduleBanner(window, () => setDue(true));
+  }, [waiting]);
 
   useEffect(() => {
     if (consent === "accepted" && zone === "public") pageChanged(pathname);
@@ -40,7 +63,7 @@ export function MetaPixelRuntime() {
     return () => document.removeEventListener("click", onClick, { capture: true });
   }, [consent, zone]);
 
-  if (zone !== "public" || consent !== null) return null;
+  if (!bannerVisible({ zone, consent, due, pathname, signupSubmitted: signupDone })) return null;
 
   const choose = (value: "accepted" | "declined") => {
     writeConsent(value);
@@ -48,37 +71,5 @@ export function MetaPixelRuntime() {
     if (value === "accepted") ensurePixel();
   };
 
-  return (
-    <div
-      role="region"
-      aria-label="Cookies"
-      data-testid="meta-consent-banner"
-      className="fixed inset-x-0 bottom-0 z-50 border-t border-border bg-background/95 px-4 py-3 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/80"
-    >
-      <div className="mx-auto flex max-w-5xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm text-foreground">
-          We use cookies to measure our ads.{" "}
-          <Link to="/privacy" className="text-primary underline underline-offset-2">
-            Privacy
-          </Link>
-        </p>
-        <div className="flex shrink-0 gap-2">
-          <button
-            type="button"
-            onClick={() => choose("declined")}
-            className="min-h-10 rounded-full border border-input bg-background px-4 text-sm font-medium text-foreground hover:bg-muted"
-          >
-            Decline
-          </button>
-          <button
-            type="button"
-            onClick={() => choose("accepted")}
-            className="min-h-10 rounded-full bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
-          >
-            Accept
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+  return <ConsentBanner onChoose={choose} />;
 }
