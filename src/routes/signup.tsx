@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { DEFAULT_COUNTRY_CODE, typedPhone } from "@/lib/phone";
-import { trackRegistration } from "@/lib/meta-pixel";
+import { signupSubmitted, trackRegistration } from "@/lib/meta-pixel";
 import { useEffect, useState } from "react";
 import { Eye, EyeOff, Loader2, MailCheck } from "lucide-react";
 import { AuthShell } from "@/components/auth-shell";
@@ -128,6 +128,8 @@ function SignupPage() {
       },
     });
     setPending(false);
+    // Batch 71: the cookie banner waits until the form has been sent.
+    signupSubmitted();
     if (err) {
       setError(err.message);
       return;

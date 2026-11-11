@@ -50,21 +50,125 @@ const storage = () => {
   }
 };
 
-export function readConsent(): Consent {
+/** Batch 71: a choice (Accept or Decline) is kept this long; then the banner asks again. */
+export const CONSENT_DAYS = 180;
+const CONSENT_MS = CONSENT_DAYS * 864e5;
+
+/**
+ * The visitor's choice, in the same storage key as Batch 70, now with the
+ * time it was made ("accepted:1731300000000"). A choice older than 180 days
+ * reads as no choice (the banner asks again; the pixel waits for a new
+ * Accept). A Batch 70 value without a time counts from now.
+ */
+export function readConsent(now: number = Date.now()): Consent {
   try {
-    const v = storage()?.getItem(CONSENT_KEY);
-    return v === "accepted" || v === "declined" ? v : null;
+    const raw = storage()?.getItem(CONSENT_KEY) ?? null;
+    if (raw === "accepted" || raw === "declined") {
+      storage()?.setItem(CONSENT_KEY, `${raw}:${now}`);
+      return raw;
+    }
+    const m = /^(accepted|declined):(\d{10,16})$/.exec(raw ?? "");
+    if (!m) return null;
+    const at = Number(m[2]);
+    if (!(now - at < CONSENT_MS) || at > now + 864e5) return null;
+    return m[1] as "accepted" | "declined";
   } catch {
     return null;
   }
 }
 
-export function writeConsent(value: "accepted" | "declined"): void {
+export function writeConsent(value: "accepted" | "declined", now: number = Date.now()): void {
   try {
-    storage()?.setItem(CONSENT_KEY, value);
+    storage()?.setItem(CONSENT_KEY, `${value}:${now}`);
   } catch {
     // a blocked store just asks again next visit
   }
+}
+
+// ------------------------------------------------------------ banner timing
+
+/** Batch 71: the banner waits for 30% of the page scrolled or 6 seconds, whichever comes first. */
+export const BANNER_SCROLL_FRACTION = 0.3;
+export const BANNER_DELAY_MS = 6000;
+
+type ScrollWindow = {
+  scrollY: number;
+  innerHeight: number;
+  document: { documentElement: { scrollHeight: number } };
+  addEventListener: (t: string, fn: () => void, o?: AddEventListenerOptions) => void;
+  removeEventListener: (t: string, fn: () => void, o?: AddEventListenerOptions) => void;
+  setTimeout: (fn: () => void, ms: number) => number;
+  clearTimeout: (id: number) => void;
+};
+
+/** How far down the page the visitor is: 0 at the top, 1 at the bottom (0 when it can't scroll). */
+export function scrolledFraction(
+  win: Pick<ScrollWindow, "scrollY" | "innerHeight" | "document">,
+): number {
+  const room = win.document.documentElement.scrollHeight - win.innerHeight;
+  return room > 0 ? Math.min(1, Math.max(0, win.scrollY / room)) : 0;
+}
+
+/**
+ * Calls `onDue` once: when 30% of the page has been scrolled, or after 6
+ * seconds, whichever comes first. Returns the clean-up.
+ */
+export function scheduleBanner(win: ScrollWindow, onDue: () => void): () => void {
+  let done = false;
+  let timer: number | null = null;
+  const fire = () => {
+    if (done) return;
+    done = true;
+    cleanup();
+    onDue();
+  };
+  const onScroll = () => {
+    if (scrolledFraction(win) >= BANNER_SCROLL_FRACTION) fire();
+  };
+  const cleanup = () => {
+    win.removeEventListener("scroll", onScroll, { passive: true });
+    if (timer !== null) win.clearTimeout(timer);
+  };
+  win.addEventListener("scroll", onScroll, { passive: true });
+  timer = win.setTimeout(fire, BANNER_DELAY_MS);
+  return () => {
+    done = true;
+    cleanup();
+  };
+}
+
+/** Sign-up tells the banner its form was submitted (it never shows while the form is being filled). */
+export const SIGNUP_SUBMITTED_EVENT = "aidwar:signup-submitted";
+let signupSubmittedFlag = false;
+
+export function signupSubmitted(): void {
+  signupSubmittedFlag = true;
+  try {
+    window.dispatchEvent(new Event(SIGNUP_SUBMITTED_EVENT));
+  } catch {
+    // never breaks sign-up
+  }
+}
+
+export function signupWasSubmitted(): boolean {
+  return signupSubmittedFlag;
+}
+
+/**
+ * Whether the banner is on screen: a public page, no choice yet, its time has
+ * come (scroll / 6 s), and on /signup only once the form was submitted.
+ */
+export function bannerVisible(input: {
+  zone: "public" | "quiet" | null;
+  consent: Consent | "unread";
+  due: boolean;
+  pathname: string;
+  signupSubmitted: boolean;
+}): boolean {
+  if (input.zone !== "public" || input.consent !== null) return false;
+  const signup = (input.pathname.replace(/\/+$/, "") || "/") === "/signup";
+  if (signup) return input.signupSubmitted;
+  return input.due;
 }
 
 export function debugMode(): boolean {
