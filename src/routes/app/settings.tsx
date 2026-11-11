@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { MetaSharingCard } from "@/components/settings/meta-sharing-card";
 import {
   Select,
   SelectContent,
@@ -215,38 +216,42 @@ function GeneralTab() {
   }
 
   return (
-    <Card>
-      <h2 className="text-base font-semibold text-foreground">Workspace</h2>
-      <p className="mt-1 text-sm text-muted-foreground">
-        {canManage
-          ? "Change how your workspace appears across AiDwar."
-          : "Only owners and admins can change workspace details."}
-      </p>
-      <form onSubmit={save} className="mt-6 max-w-md space-y-4">
-        <div className="space-y-2">
-          <Label htmlFor="org_name">Organization name</Label>
-          <Input
-            id="org_name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            disabled={!canManage || saving}
-          />
-        </div>
-        <div className="space-y-1">
-          <p className="text-sm font-medium text-foreground" data-testid="default-country-code">
-            Default country code: {country.code ? `+${country.code}` : "…"}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            Added to a 10-digit number you import, add or send through the API.
-          </p>
-        </div>
-        {canManage ? (
-          <Button type="submit" className="rounded-full" disabled={saving}>
-            {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-            Save changes
-          </Button>
-        ) : null}
-      </form>
-    </Card>
+    <div className="space-y-6">
+      <Card>
+        <h2 className="text-base font-semibold text-foreground">Workspace</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {canManage
+            ? "Change how your workspace appears across AiDwar."
+            : "Only owners and admins can change workspace details."}
+        </p>
+        <form onSubmit={save} className="mt-6 max-w-md space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="org_name">Organization name</Label>
+            <Input
+              id="org_name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              disabled={!canManage || saving}
+            />
+          </div>
+          <div className="space-y-1">
+            <p className="text-sm font-medium text-foreground" data-testid="default-country-code">
+              Default country code: {country.code ? `+${country.code}` : "…"}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Added to a 10-digit number you import, add or send through the API.
+            </p>
+          </div>
+          {canManage ? (
+            <Button type="submit" className="rounded-full" disabled={saving}>
+              {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Save changes
+            </Button>
+          ) : null}
+        </form>
+      </Card>
+      {/* Batch 70: the person's own "Don't share my activity with Meta". */}
+      <MetaSharingCard />
+    </div>
   );
 }

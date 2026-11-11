@@ -24,6 +24,7 @@ import { TopupsDrawer, type TopupTask } from "@/components/admin/topups-drawer";
 import { AiRunsDialog } from "@/components/admin/ai-runs-dialog";
 import { InvoicesTab } from "@/components/admin/invoices-tab";
 import { GstTab } from "@/components/admin/gst-tab";
+import { MetaCapiStatus } from "@/components/admin/meta-capi-status";
 import { callApi } from "@/lib/whatsapp-client";
 import { downloadCsv } from "@/lib/csv";
 import { fineMoney, money } from "@/lib/billing";
@@ -405,10 +406,14 @@ function AdminBilling() {
     <TooltipProvider delayDuration={150}>
     <div>
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <PageHeader
-          title="Billing"
-          description="What every workspace holds, spends and earns us — and what we still owe Meta."
-        />
+        <div>
+          <PageHeader
+            title="Billing"
+            description="What every workspace holds, spends and earns us — and what we still owe Meta."
+          />
+          {/* Batch 70: is the Conversions API token set here, and the last send. */}
+          <MetaCapiStatus />
+        </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={() => setDrawer(true)}>
             <Wallet className="mr-2 h-4 w-4" />

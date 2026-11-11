@@ -1080,6 +1080,10 @@ export const FEATURES: readonly FeatureManifest[] = [
       "internal_workspace_off",
       // Batch 68: a plan fee paid offline, recorded by a super admin.
       "plan_payment_recorded",
+      // Batch 70: Meta Conversions API sends, on the platform workspace's log
+      // (the once-per-event marker and Super Admin's status line).
+      "meta_event_sent",
+      "meta_event_failed",
       // Batch 23: invoice actions by a super admin, with the actor.
       "invoice_resent",
       "invoice_pdf_regenerated",

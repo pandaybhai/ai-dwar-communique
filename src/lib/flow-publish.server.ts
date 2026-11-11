@@ -22,7 +22,16 @@ export async function publishFlowVersion(
     p_graph: args.graph,
     p_user: args.userId,
   });
-  if (!error) return { ok: true };
+  if (!error) {
+    // Batch 70: the workspace's first live flow, to Meta (once; never blocks).
+    try {
+      const { metaWorkspaceFirst } = await import("@/lib/meta-capi.server");
+      await metaWorkspaceFirst(db, args.organizationId, "FirstFlowActivated", "website");
+    } catch {
+      // publishing is done; measurement never changes that
+    }
+    return { ok: true };
+  }
   console.error("[flows-v2] publish failed", error.message);
   return { ok: false, error: FAILED };
 }

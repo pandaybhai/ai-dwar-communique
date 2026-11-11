@@ -705,6 +705,20 @@ async function creditOnce(
 }
 
 /**
+ * Batch 70: a settled plan fee (Subscribe) or credit pack (Purchase) to Meta's
+ * Conversions API. Runs after the payment is marked paid and can never throw,
+ * so it can never release a claim or fail a settle that already happened.
+ */
+async function metaSettled(supabase: SupabaseClient, paymentId: string): Promise<void> {
+  try {
+    const { metaPaymentSettled } = await import("@/lib/meta-capi.server");
+    await metaPaymentSettled(supabase, paymentId);
+  } catch {
+    // measurement never touches money
+  }
+}
+
+/**
  * Credits a paid payment exactly once, then queues the follow-up work.
  *
  * Order: verify the captured amount -> claim the payment (one delivery at a
@@ -868,6 +882,8 @@ export async function settlePayment(
       });
       if (!activated) throw new SettleError("plan activation failed");
       await markPaidNow();
+      // Batch 70: Subscribe to Meta (once per payment; never throws or blocks).
+      await metaSettled(supabase, payment.id as string);
       try {
         const { invoiceForPayment } = await import("@/lib/invoices.server");
         const result = await invoiceForPayment(supabase, payment.id as string);
@@ -904,6 +920,8 @@ export async function settlePayment(
       );
       if (settled.error) throw new SettleError(settled.error);
       await markPaidNow();
+      // Batch 70: Subscribe to Meta (once per payment; never throws or blocks).
+      await metaSettled(supabase, payment.id as string);
       return { credited: false };
     }
 
@@ -981,6 +999,8 @@ export async function settlePayment(
     }
 
     await markPaidNow();
+    // Batch 70: Purchase to Meta (once per payment; never throws or blocks).
+    await metaSettled(supabase, payment.id as string);
   } catch (error) {
     const message = String((error as Error)?.message ?? error).slice(0, 300);
     // Release the claim so the next delivery can finish the job; tell an
@@ -1731,6 +1751,9 @@ export async function assignPlan(
   const trialEndsAt =
     status === "trial" ? new Date(Date.now() + trialDays * 864e5).toISOString() : null;
 
+  // Batch 70: the plan before, for PlanUpgraded (a failed read = no event).
+  const { currentPlanVersion, metaPlanChangeSafe } = await import("@/lib/plan-purchase.server");
+  const planBefore = await currentPlanVersion(supabase, input.organizationId);
   const { error } = await supabase
     .from("organizations")
     .update({
@@ -1741,6 +1764,7 @@ export async function assignPlan(
     })
     .eq("id", input.organizationId);
   if (error) return { error: "We couldn't change the plan. Please try again." };
+  await metaPlanChangeSafe(supabase, input.organizationId, planBefore, String(row["id"]));
 
   // Batch 58: the plan-assigned trigger stamped billing_enabled_at again; an
   // internal workspace stays unbilled (a no-op for every other workspace).

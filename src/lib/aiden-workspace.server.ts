@@ -35,6 +35,16 @@ export async function stampAidenWorkspaceUnlock(
   } catch {
     // Recording the unlock must never touch Aiden's own switch.
   }
+  // Batch 70: Aiden replying to customers for the first time, to Meta (once
+  // per workspace; never blocks or touches the switch).
+  if (mode === "replying") {
+    try {
+      const { metaWorkspaceFirst } = await import("@/lib/meta-capi.server");
+      await metaWorkspaceFirst(supabase, organizationId, "AidenEnabled", "website");
+    } catch {
+      // never touches Aiden
+    }
+  }
 }
 
 export type DesignState = {

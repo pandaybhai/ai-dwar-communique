@@ -1,3 +1,5 @@
+import { trackPaidPayment } from "@/lib/meta-pixel";
+
 /**
  * Opens Cashfree's own checkout in the browser (@cashfreepayments/cashfree-js).
  * The server hands over only the session id and the mode (sandbox or
@@ -63,6 +65,9 @@ export async function confirmCashfreeReturn(
     });
     const body = (await res.json().catch(() => ({}))) as { status?: string };
     const status = body.status;
+    // Batch 70: a payment our server confirmed paid → Subscribe / Purchase in
+    // the pixel (once per payment; only with cookie consent on an allowed page).
+    if (status === "paid") trackPaidPayment(paymentId).catch(() => undefined);
     return status === "paid" || status === "pending" || status === "failed" ? status : "unknown";
   } catch {
     return "unknown";

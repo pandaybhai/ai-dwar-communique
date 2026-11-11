@@ -145,6 +145,7 @@ import { Route as ApiPublicCashfreePayRouteImport } from './routes/api/public/ca
 import { Route as ApiPublicCashfreeWebhookRouteImport } from './routes/api/public/cashfree-webhook'
 import { Route as ApiPublicDemoLeadsRouteImport } from './routes/api/public/demo-leads'
 import { Route as ApiPublicGoogleOauthCallbackRouteImport } from './routes/api/public/google-oauth-callback'
+import { Route as ApiPublicMetaEventRouteImport } from './routes/api/public/meta-event'
 import { Route as ApiPublicPlansRouteImport } from './routes/api/public/plans'
 import { Route as ApiPublicRazorpayWebhookRouteImport } from './routes/api/public/razorpay-webhook'
 import { Route as ApiPublicShopifyCallbackRouteImport } from './routes/api/public/shopify-callback'
@@ -909,6 +910,11 @@ const ApiPublicGoogleOauthCallbackRoute =
     path: '/api/public/google-oauth-callback',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicMetaEventRoute = ApiPublicMetaEventRouteImport.update({
+  id: '/api/public/meta-event',
+  path: '/api/public/meta-event',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicPlansRoute = ApiPublicPlansRouteImport.update({
   id: '/api/public/plans',
   path: '/api/public/plans',
@@ -1393,6 +1399,7 @@ export interface FileRoutesByFullPath {
   '/api/public/cashfree-webhook': typeof ApiPublicCashfreeWebhookRoute
   '/api/public/demo-leads': typeof ApiPublicDemoLeadsRoute
   '/api/public/google-oauth-callback': typeof ApiPublicGoogleOauthCallbackRoute
+  '/api/public/meta-event': typeof ApiPublicMetaEventRoute
   '/api/public/plans': typeof ApiPublicPlansRoute
   '/api/public/razorpay-webhook': typeof ApiPublicRazorpayWebhookRoute
   '/api/public/shopify-callback': typeof ApiPublicShopifyCallbackRoute
@@ -1592,6 +1599,7 @@ export interface FileRoutesByTo {
   '/api/public/cashfree-webhook': typeof ApiPublicCashfreeWebhookRoute
   '/api/public/demo-leads': typeof ApiPublicDemoLeadsRoute
   '/api/public/google-oauth-callback': typeof ApiPublicGoogleOauthCallbackRoute
+  '/api/public/meta-event': typeof ApiPublicMetaEventRoute
   '/api/public/plans': typeof ApiPublicPlansRoute
   '/api/public/razorpay-webhook': typeof ApiPublicRazorpayWebhookRoute
   '/api/public/shopify-callback': typeof ApiPublicShopifyCallbackRoute
@@ -1795,6 +1803,7 @@ export interface FileRoutesById {
   '/api/public/cashfree-webhook': typeof ApiPublicCashfreeWebhookRoute
   '/api/public/demo-leads': typeof ApiPublicDemoLeadsRoute
   '/api/public/google-oauth-callback': typeof ApiPublicGoogleOauthCallbackRoute
+  '/api/public/meta-event': typeof ApiPublicMetaEventRoute
   '/api/public/plans': typeof ApiPublicPlansRoute
   '/api/public/razorpay-webhook': typeof ApiPublicRazorpayWebhookRoute
   '/api/public/shopify-callback': typeof ApiPublicShopifyCallbackRoute
@@ -1999,6 +2008,7 @@ export interface FileRouteTypes {
     | '/api/public/cashfree-webhook'
     | '/api/public/demo-leads'
     | '/api/public/google-oauth-callback'
+    | '/api/public/meta-event'
     | '/api/public/plans'
     | '/api/public/razorpay-webhook'
     | '/api/public/shopify-callback'
@@ -2198,6 +2208,7 @@ export interface FileRouteTypes {
     | '/api/public/cashfree-webhook'
     | '/api/public/demo-leads'
     | '/api/public/google-oauth-callback'
+    | '/api/public/meta-event'
     | '/api/public/plans'
     | '/api/public/razorpay-webhook'
     | '/api/public/shopify-callback'
@@ -2400,6 +2411,7 @@ export interface FileRouteTypes {
     | '/api/public/cashfree-webhook'
     | '/api/public/demo-leads'
     | '/api/public/google-oauth-callback'
+    | '/api/public/meta-event'
     | '/api/public/plans'
     | '/api/public/razorpay-webhook'
     | '/api/public/shopify-callback'
@@ -2563,6 +2575,7 @@ export interface RootRouteChildren {
   ApiPublicCashfreeWebhookRoute: typeof ApiPublicCashfreeWebhookRoute
   ApiPublicDemoLeadsRoute: typeof ApiPublicDemoLeadsRoute
   ApiPublicGoogleOauthCallbackRoute: typeof ApiPublicGoogleOauthCallbackRoute
+  ApiPublicMetaEventRoute: typeof ApiPublicMetaEventRoute
   ApiPublicPlansRoute: typeof ApiPublicPlansRoute
   ApiPublicRazorpayWebhookRoute: typeof ApiPublicRazorpayWebhookRoute
   ApiPublicShopifyCallbackRoute: typeof ApiPublicShopifyCallbackRoute
@@ -3567,6 +3580,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicGoogleOauthCallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/meta-event': {
+      id: '/api/public/meta-event'
+      path: '/api/public/meta-event'
+      fullPath: '/api/public/meta-event'
+      preLoaderRoute: typeof ApiPublicMetaEventRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/plans': {
       id: '/api/public/plans'
       path: '/api/public/plans'
@@ -4313,6 +4333,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicCashfreeWebhookRoute: ApiPublicCashfreeWebhookRoute,
   ApiPublicDemoLeadsRoute: ApiPublicDemoLeadsRoute,
   ApiPublicGoogleOauthCallbackRoute: ApiPublicGoogleOauthCallbackRoute,
+  ApiPublicMetaEventRoute: ApiPublicMetaEventRoute,
   ApiPublicPlansRoute: ApiPublicPlansRoute,
   ApiPublicRazorpayWebhookRoute: ApiPublicRazorpayWebhookRoute,
   ApiPublicShopifyCallbackRoute: ApiPublicShopifyCallbackRoute,

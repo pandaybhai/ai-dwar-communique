@@ -11,6 +11,7 @@ import { useEffect, type ReactNode } from "react";
 import type { ErrorComponentProps } from "@tanstack/router-core";
 
 import { Toaster } from "@/components/ui/sonner";
+import { MetaPixelRuntime } from "@/components/meta-pixel-runtime";
 
 import appCss from "../styles.css?url";
 import { APP_THEME_SCRIPT } from "../lib/theme";
@@ -168,6 +169,8 @@ function RootComponent() {
       {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
       <Outlet />
       <Toaster />
+      {/* Batch 70: the Meta Pixel and its cookie banner — public pages only. */}
+      <MetaPixelRuntime />
     </QueryClientProvider>
   );
 }

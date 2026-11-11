@@ -338,6 +338,13 @@ export const Route = createFileRoute("/api/admin/billing")({
             // Batch 68: a plan fee paid outside the gateway (bank transfer,
             // UPI, cheque, cash). The preview shows the figures; the save
             // goes through the plan-fee invoice and settlePayment.
+            // Batch 70: the Conversions API's status line (token set?, last
+            // send) for Super Admin. Never the token itself.
+            case "meta_capi_status": {
+              const { metaCapiStatus } = await import("@/lib/meta-capi.server");
+              return Response.json(await metaCapiStatus(supabase));
+            }
+
             case "plan_payment_preview": {
               const { planPaymentPreview } = await import("@/lib/plan-payment.server");
               return Response.json(

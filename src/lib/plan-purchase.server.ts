@@ -432,6 +432,8 @@ export async function activatePlanFromPayment(
     return false;
   }
 
+  // Batch 70: the plan before, for PlanUpgraded (a failed read = no event).
+  const before = await currentPlanVersion(supabase, payment.organization_id);
   const { error } = await supabase
     .from("organizations")
     .update({ plan_version_id: planVersionId, plan_status: "active", trial_ends_at: null })
@@ -457,7 +459,40 @@ export async function activatePlanFromPayment(
   });
 
   await startFullSiteRead(supabase, payment.organization_id);
+  await metaPlanChangeSafe(supabase, payment.organization_id, before, planVersionId);
   return true;
+}
+
+/** The workspace's plan version now, or null (never throws). */
+export async function currentPlanVersion(
+  supabase: SupabaseClient,
+  organizationId: string,
+): Promise<string | null> {
+  try {
+    const { data } = await supabase
+      .from("organizations")
+      .select("plan_version_id")
+      .eq("id", organizationId)
+      .maybeSingle();
+    return (data?.["plan_version_id"] as string | null) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Batch 70: PlanUpgraded to Meta when the new plan is dearer than a paid old one. Never throws. */
+export async function metaPlanChangeSafe(
+  supabase: SupabaseClient,
+  organizationId: string,
+  from: string | null,
+  to: string | null,
+): Promise<void> {
+  try {
+    const { metaPlanChanged } = await import("@/lib/meta-capi.server");
+    await metaPlanChanged(supabase, organizationId, from, to);
+  } catch {
+    // a plan change is never affected by measurement
+  }
 }
 
 /**

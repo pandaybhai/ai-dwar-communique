@@ -96,12 +96,37 @@ function rowFor(input: AnalyticsEventInput) {
  * Writes one event. Awaited by every caller — a dropped await is a build error.
  * Never throws.
  */
+/**
+ * Batch 70: two workspace milestones to Meta's Conversions API, once per
+ * workspace (metaWorkspaceFirst): the first WhatsApp number connected (the
+ * owner's own request) and the first campaign that actually sent (the
+ * campaign worker's request, so system_generated). Never throws or blocks.
+ */
+async function metaFromEvent(supabase: SupabaseClient, event: AnalyticsEventInput): Promise<void> {
+  if (event.eventType !== "whatsapp.connected" && event.eventType !== "campaign.completed") return;
+  try {
+    const orgId = event.organizationId;
+    if (!orgId) return;
+    const { metaWorkspaceFirst } = await import("@/lib/meta-capi.server");
+    if (event.eventType === "whatsapp.connected") {
+      await metaWorkspaceFirst(supabase, orgId, "WhatsAppConnected", "website");
+      return;
+    }
+    const props = (event.properties ?? {}) as Record<string, unknown>;
+    if (Number(props["sent_count"] ?? 0) > 0)
+      await metaWorkspaceFirst(supabase, orgId, "FirstCampaignSent", "system_generated");
+  } catch {
+    // measurement never breaks the operation it describes
+  }
+}
+
 export async function emitEvent(
   supabase: SupabaseClient,
   eventType: string,
   input: Omit<AnalyticsEventInput, "eventType">,
 ): Promise<void> {
   const event: AnalyticsEventInput = { ...input, eventType };
+  await metaFromEvent(supabase, event);
   try {
     warnIfDimensionless(event);
     const { error } = await supabase.from("analytics_events").insert(rowFor(event));

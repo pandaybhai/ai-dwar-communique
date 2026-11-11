@@ -29,6 +29,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { callApi } from "@/lib/whatsapp-client";
+import { fireFromServer } from "@/lib/meta-pixel";
+import type { BrowserMetaEvent } from "@/lib/meta-events";
 import {
   confirmCashfreeReturn,
   openCashfreeCheckout,
@@ -505,15 +507,20 @@ export function BuyCreditsDialog({
   const buy = async () => {
     if (!packId) return;
     setBusy(true);
-    const { data, error } = await callApi<{ url: string; checkout?: CashfreeCheckout }>(
-      "/api/billing/purchase",
-      { body: { organization_id: organizationId, pack_id: packId, coupon_code: coupon || null } },
-    );
+    const { data, error } = await callApi<{
+      url: string;
+      checkout?: CashfreeCheckout;
+      meta?: BrowserMetaEvent | null;
+    }>("/api/billing/purchase", {
+      body: { organization_id: organizationId, pack_id: packId, coupon_code: coupon || null },
+    });
     if (error || !data?.url) {
       setBusy(false);
       toast.error(error ?? "We couldn't start that payment. Please try again.");
       return;
     }
+    // Batch 70: InitiateCheckout (the server already sent its copy).
+    fireFromServer(data.meta);
     if (data.checkout) {
       const problem = await openCashfreeCheckout(data.checkout);
       setBusy(false);
