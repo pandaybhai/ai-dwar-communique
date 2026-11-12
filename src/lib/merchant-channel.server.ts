@@ -19,6 +19,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getScript } from "@/lib/scripts.server";
 import { normalizePhone } from "@/lib/phone";
 import { CODE_RE as CODE_PATTERN } from "@/lib/teach-guard";
+import { WA_AUTH_CODE_RE } from "@/lib/wa-auth";
 import {
   sendServiceText,
   sendServiceImage,
@@ -350,6 +351,61 @@ function looksLikeQuestion(text: string): boolean {
 }
 
 /**
+ * Batch 74: the Day One introduction (the employee's ID card and the
+ * "day_one_intro" script with its one button), then the session moves to
+ * await_site. Moved out of handleMerchantInbound unchanged so a verified
+ * WhatsApp sign-up can be greeted in the chat it just verified from; the
+ * AD-code path calls it with exactly what it used before.
+ */
+export async function sendDayOneIntro(
+  supabase: SupabaseClient,
+  args: {
+    channel: {
+      organizationId: string;
+      phoneNumberId: string;
+      accessToken: string;
+      conversationId: string;
+      to: string;
+    };
+    session: { id: string; organization_id: string; code: string };
+    businessName: string;
+    firstName: string;
+    prefix: string;
+    renderCard?: (typeof import("@/lib/onboarding-cards.server"))["renderCard"];
+  },
+): Promise<void> {
+  const { session, businessName, firstName } = args;
+  const renderCard =
+    args.renderCard ?? (await import("@/lib/onboarding-cards.server")).renderCard;
+  const persona = await personaNameFor(supabase, session.organization_id);
+  const idCard = await renderCard(supabase, "id-card", {
+    sessionId: session.id,
+    vars: {
+      name: persona,
+      persona_name: persona,
+      owner_first_name: firstName,
+      business_name: businessName || "your business",
+      joined_date: istDate(),
+      session_code: session.code,
+    },
+  });
+  await sendServiceButtons(supabase, {
+    ...args.channel,
+    body: withPrefix(
+      args.prefix,
+      await getScript(supabase, "day_one_intro", {
+        first_name: firstName,
+        persona,
+        business: businessName || "your business",
+      }),
+    ),
+    buttons: [{ id: "start", title: "Your own AI employee" }],
+    imageUrl: idCard,
+  });
+  await patchSession(supabase, session.id, { status: "bound", step: "await_site" });
+}
+
+/**
  * One inbound message from an owner, taken in a strict order. Each stage that
  * matches answers and returns: a code is never a fact, a link is never an
  * answer, a tap is never teaching. Getting this order wrong is how the
@@ -416,6 +472,16 @@ export async function handleMerchantInbound(
     text: string,
     rows: Array<{ id: string; title: string; description?: string }>,
   ) => sendServiceList(supabase, { ...channel, body: withPrefix(prefix, text), buttonText: "Choose", rows });
+
+  // Batch 74: "VERIFY V-XXXX" / "LOGIN L-XXXX" — proof that this WhatsApp
+  // number is the one typed on /start or /login. Before codes, owners and
+  // strangers, so it is never read as an AD code, a question or a greeting.
+  // Anything else costs nothing here (one regex).
+  if (!interactiveId && WA_AUTH_CODE_RE.test(body)) {
+    const { handleWaAuthMessage } = await import("@/lib/wa-auth.server");
+    const handled = await handleWaAuthMessage(supabase, { channel, waId: args.waId, body });
+    if (handled) return;
+  }
 
   // Which businesses this number speaks for. More than one and every message
   // says which one it is about.
@@ -530,28 +596,14 @@ export async function handleMerchantInbound(
   /** The Day One script: meeting the employee, then asking for the website. */
   const dayOneStep = async (): Promise<void> => {
     if (currentStatus === "bound" && session.step !== "await_site") {
-      const persona = await personaNameFor(supabase, session.organization_id);
-      const idCard = await renderCard(supabase, "id-card", {
-        sessionId: session.id,
-        vars: {
-          name: persona,
-          persona_name: persona,
-          owner_first_name: firstName,
-          business_name: businessName || "your business",
-          joined_date: istDate(),
-          session_code: session.code,
-        },
+      await sendDayOneIntro(supabase, {
+        channel,
+        session,
+        businessName,
+        firstName,
+        prefix,
+        renderCard,
       });
-      await replyButtons(
-        await getScript(supabase, "day_one_intro", {
-          first_name: firstName,
-          persona,
-          business: businessName || "your business",
-        }),
-        [{ id: "start", title: "Your own AI employee" }],
-        idCard,
-      );
-      await patchSession(supabase, session.id, { status: "bound", step: "await_site" });
       return;
     }
     await reply(await getScript(supabase, "ask_website", { business: businessName || "your business" }));
