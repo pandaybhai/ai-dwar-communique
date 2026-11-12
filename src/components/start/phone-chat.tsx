@@ -2,7 +2,10 @@ import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 
 /**
- * Batch 72: the /start hero's phone — a WhatsApp chat that plays itself.
+ * Batch 72: the /start hero's phone — an example WhatsApp chat that plays
+ * itself. The store and the chat are illustrative, so the header is a generic
+ * "Your Jewellery Store", never a real customer's name (ZOORI appears only in
+ * the logo strip and the case study, which are true).
  * HTML/CSS only. Every bubble has its space from the start (it only fades and
  * rises 12px in), so nothing below it ever moves: no layout shift. Reduced
  * motion shows the finished chat, still.
@@ -96,16 +99,16 @@ export function PhoneChat() {
     <div
       className="relative mx-auto w-full max-w-[300px] lg:max-w-[340px]"
       role="img"
-      aria-label="A WhatsApp chat: the shop sends a Diwali offer, a customer asks for a 22k gold chain, Aiden replies with the price and offers to hold it, the customer says yes, and the order is held."
+      aria-label="An example WhatsApp chat: a jewellery store sends a Diwali offer, a customer asks for a 22k gold chain, Aiden replies with the price and offers to hold it, the customer says yes, and the order is held."
     >
       <div className="rounded-[2.4rem] bg-[#0b1f17] p-2.5 shadow-[0_40px_80px_-30px_rgba(6,40,28,0.55)] ring-1 ring-black/5">
         <div className="overflow-hidden rounded-[1.9rem] bg-[#efeae2]">
           <div className="flex items-center gap-2.5 bg-[#075e54] px-4 pb-3 pt-4 text-white">
             <span className="grid h-8 w-8 place-items-center rounded-full bg-white/15 text-xs font-bold">
-              ZJ
+              YS
             </span>
             <span className="leading-tight">
-              <span className="block text-sm font-semibold">ZOORI Jewels</span>
+              <span className="block text-sm font-semibold">Your Jewellery Store</span>
               <span className="block text-[11px] text-white/80">
                 {step.typing === "business" ? "Aiden is typing…" : "Business account"}
               </span>

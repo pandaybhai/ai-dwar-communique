@@ -598,3 +598,107 @@ describe("(browser) the Lead pixel: only after Accept, same id", () => {
     expect(lead[2]).toEqual({ content_name: "signup", lead_source: "signup" });
   });
 });
+
+describe("/start: the hero phone is an example, not a real customer's chat", () => {
+  it("the chat header is 'Your Jewellery Store' (YS); ZOORI appears only in the logo strip and the case study", async () => {
+    const { PhoneChat } = await import("@/components/start/phone-chat");
+    const chat = renderToStaticMarkup(<PhoneChat />);
+    expect(chat).toContain("Your Jewellery Store");
+    expect(chat).toMatch(/>\s*YS\s*</);
+    expect(chat).not.toMatch(/ZOORI|>\s*ZJ\s*</);
+    expect(chat).toContain("An example WhatsApp chat");
+
+    const page = renderToStaticMarkup(<StartPage plans={PLANS} gstRegistered={false} />);
+    const text = page.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+    // Exactly two: the logo strip ("ZOORI Jewels") and the case study ("ZOORI Jewels, Hyderabad").
+    expect(text.match(/ZOORI/g)).toHaveLength(2);
+    expect(text).toContain("Live on AiDwar Growth");
+  });
+});
+
+describe("Super Admin > Leads: a /start lead with only a number", () => {
+  beforeEach(() => vi.spyOn(console, "log").mockImplementation(() => undefined));
+
+  it("the list renders and searches with a landing_start row that has only a phone (null answers read '—')", async () => {
+    const w = world();
+    const { submitLead, listLeads } = await import("./leads.server");
+    const meta = { ip: "203.0.113.5", referrer: null };
+    // The sticky bar: a number and nothing else.
+    expect(
+      await submitLead(w.supabase, { source: "landing_start", phone: "9876543210" } as never, meta),
+    ).toMatchObject({ ok: true });
+    // A /demo lead next to it, with every answer.
+    expect(
+      await submitLead(
+        w.supabase,
+        {
+          business_type: "retail",
+          enquiry_band: "21-100",
+          primary_need: "campaigns",
+          name: "Ravi Kumar",
+          business_name: "Kumar Sarees",
+          phone: "+91 91234 56789",
+          consent: true,
+          consent_version: "2026-09-15",
+        } as never,
+        { ip: "198.51.100.7", referrer: null },
+      ),
+    ).toMatchObject({ ok: true });
+
+    const { leads } = await listLeads(w.supabase as never);
+    // The database fills these in; the in-memory fake doesn't.
+    const rows = leads.map((l) => ({
+      ...l,
+      status: "new" as const,
+      created_at: "2026-11-12T10:05:00.000Z",
+      updated_at: "2026-11-12T10:05:00.000Z",
+      assigned_to: null,
+    }));
+    const start = rows.find((l) => l.source === "landing_start")!;
+    expect(start).toMatchObject({
+      phone: PHONE,
+      name: null,
+      business_name: null,
+      business_type: null,
+    });
+
+    const { filterLeads, labelFor, BUSINESS_TYPES, leadTitle } = await import("./leads");
+    const { LeadsTable, LeadSummary } = await import("@/components/admin/lead-views");
+
+    const html = renderToStaticMarkup(<LeadsTable leads={rows} onOpen={() => undefined} />);
+    expect(html).toContain(PHONE);
+    expect(html).toContain("From /start");
+    expect(html).toContain("Kumar Sarees");
+    expect(html).toContain("Campaigns and follow-ups");
+    expect(html).not.toMatch(/null|undefined/);
+    // The /start row: the number is its heading, and its two answer cells read "—".
+    const startRow = html.slice(
+      html.indexOf(PHONE),
+      html.indexOf("Kumar Sarees") > html.indexOf(PHONE) ? html.indexOf("Kumar Sarees") : undefined,
+    );
+    expect(startRow.match(/—/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
+    expect(html.match(/From \/start/g)).toHaveLength(1);
+
+    // Search: by name / business / number, never throwing on a missing name or business.
+    const search = (q: string) =>
+      filterLeads(rows, { status: "all", search: q, unassignedOnly: false }).map((l) => l.phone);
+    expect(search("")).toHaveLength(2);
+    expect(search("98765")).toEqual([PHONE]);
+    expect(search("kumar")).toEqual(["+919123456789"]);
+    expect(search("sarees")).toEqual(["+919123456789"]);
+    expect(search("nobody")).toEqual([]);
+    expect(filterLeads(rows, { status: "new", search: "", unassignedOnly: true })).toHaveLength(2);
+
+    // The side sheet's summary.
+    const sheet = renderToStaticMarkup(<LeadSummary lead={start} />);
+    expect(sheet).toContain(PHONE);
+    expect(sheet).toContain("Business type");
+    expect(sheet).toContain("/start");
+    expect(sheet).toContain("vstart-2026-11-12");
+    expect(sheet.match(/>—</g)?.length ?? 0).toBeGreaterThanOrEqual(3);
+    expect(sheet).not.toMatch(/null|undefined/);
+    expect(leadTitle(start)).toBe(PHONE);
+    expect(labelFor(BUSINESS_TYPES, null)).toBe("—");
+    expect(labelFor(BUSINESS_TYPES, "retail")).toBe("Retail / D2C store");
+  });
+});

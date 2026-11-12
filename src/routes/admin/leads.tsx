@@ -11,15 +11,16 @@ import { NoResults, TableSkeleton } from "@/components/data-pagination";
 import { callApi } from "@/lib/whatsapp-client";
 import { cn } from "@/lib/utils";
 import {
-  BUSINESS_TYPES,
-  ENQUIRY_BANDS,
   LEAD_STATUSES,
-  PRIMARY_NEEDS,
-  labelFor,
+  filterLeads,
+  isStartLead,
+  leadTime,
+  leadTitle,
   type LeadNote,
   type LeadRow,
   type LeadStatus,
 } from "@/lib/leads";
+import { LeadSummary, LeadsTable, StartBadge } from "@/components/admin/lead-views";
 
 const DESCRIPTION = "Demo enquiries from the website — who asked, what they need, and where they are.";
 
@@ -41,25 +42,6 @@ type Payload = {
   leads: LeadRow[];
   new_count: number;
   admins: Array<{ id: string; name: string }>;
-};
-
-function when(value: string | null): string {
-  if (!value) return "—";
-  return new Date(value).toLocaleString("en-IN", {
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-const STATUS_CLASS: Record<LeadStatus, string> = {
-  new: "bg-primary/10 text-primary",
-  contacted: "bg-amber-50 text-amber-800",
-  qualified: "bg-sky-50 text-sky-800",
-  demo_booked: "bg-violet-50 text-violet-800",
-  won: "bg-emerald-50 text-emerald-800",
-  lost: "bg-muted text-muted-foreground",
 };
 
 function AdminLeads() {
@@ -98,18 +80,10 @@ function AdminLeads() {
     return c;
   }, [data]);
 
-  const visible = useMemo(() => {
-    const needle = search.trim().toLowerCase();
-    return (data?.leads ?? []).filter(
-      (l) =>
-        (status === "all" || l.status === status) &&
-        (!unassignedOnly || (l.status === "new" && !l.assigned_to)) &&
-        (!needle ||
-          l.name.toLowerCase().includes(needle) ||
-          l.business_name.toLowerCase().includes(needle) ||
-          l.phone.includes(needle)),
-    );
-  }, [data, status, search, unassignedOnly]);
+  const visible = useMemo(
+    () => filterLeads(data?.leads ?? [], { status, search, unassignedOnly }),
+    [data, status, search, unassignedOnly],
+  );
 
   const unassignedNew = (data?.leads ?? []).filter((l) => l.status === "new" && !l.assigned_to).length;
 
@@ -171,64 +145,7 @@ function AdminLeads() {
       ) : !visible.length ? (
         <NoResults message="No enquiries match this filter." />
       ) : (
-        <div className="overflow-hidden rounded-2xl border border-border bg-card">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
-              <tr>
-                <th className="px-4 py-3 font-medium">Business</th>
-                <th className="px-4 py-3 font-medium">Needs</th>
-                <th className="px-4 py-3 font-medium">Enquiries/day</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium">Received</th>
-              </tr>
-            </thead>
-            <tbody>
-              {visible.map((lead) => (
-                <tr
-                  key={lead.id}
-                  tabIndex={0}
-                  onClick={() => setOpenId(lead.id)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      setOpenId(lead.id);
-                    }
-                  }}
-                  className="cursor-pointer border-t border-border/70 transition-colors hover:bg-muted/40 focus:bg-muted/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                >
-                  <td className="px-4 py-3">
-                    <p className="font-medium text-foreground">
-                      {lead.business_name}
-                      {lead.is_test ? (
-                        <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase text-muted-foreground">
-                          QA
-                        </span>
-                      ) : null}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {lead.name} · {lead.phone}
-                    </p>
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">
-                    {labelFor(PRIMARY_NEEDS, lead.primary_need)}
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">{lead.enquiry_band}</td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={cn(
-                        "rounded-full px-2.5 py-1 text-xs font-medium",
-                        STATUS_CLASS[lead.status],
-                      )}
-                    >
-                      {labelFor(LEAD_STATUSES, lead.status)}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">{when(lead.created_at)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <LeadsTable leads={visible} onOpen={setOpenId} />
       )}
 
       <LeadSheet
@@ -295,52 +212,11 @@ function LeadSheet({
       <SheetContent side="right" className="w-full overflow-y-auto p-6 sm:max-w-lg">
         {lead ? (
           <>
-            <SheetTitle className="text-left">{lead.business_name}</SheetTitle>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {lead.name} · {lead.phone}
-              {lead.website ? (
-                <>
-                  {" · "}
-                  <a
-                    className="underline underline-offset-2"
-                    href={lead.website}
-                    target="_blank"
-                    rel="noreferrer noopener"
-                  >
-                    website
-                  </a>
-                </>
-              ) : null}
-            </p>
-
-            <dl className="mt-5 grid grid-cols-2 gap-3 text-sm">
-              <Detail label="Business type" value={labelFor(BUSINESS_TYPES, lead.business_type)} />
-              <Detail label="Enquiries a day" value={labelFor(ENQUIRY_BANDS, lead.enquiry_band)} />
-              <Detail label="Main need" value={labelFor(PRIMARY_NEEDS, lead.primary_need)} />
-              <Detail label="Received" value={when(lead.created_at)} />
-              <Detail label="Page" value={lead.landing_path ?? "—"} />
-              <Detail label="Came from" value={lead.referrer_host ?? "direct"} />
-              <Detail
-                label="Campaign"
-                value={
-                  [
-                    lead.first_attribution?.["utm_source"],
-                    lead.first_attribution?.["utm_medium"],
-                    lead.first_attribution?.["utm_campaign"],
-                  ]
-                    .filter(Boolean)
-                    .join(" / ") || "—"
-                }
-              />
-              <Detail
-                label="Permission"
-                value={`Given ${when(lead.consent_at)} (v${lead.consent_version})`}
-              />
-              <Detail
-                label="Workspace"
-                value={lead.organization_id ? "Linked to a signed-up workspace" : "Not linked"}
-              />
-            </dl>
+            <SheetTitle className="text-left">
+              {leadTitle(lead)}
+              {isStartLead(lead) ? <StartBadge /> : null}
+            </SheetTitle>
+            <LeadSummary lead={lead} />
 
             <div className="mt-6 grid gap-4">
               <label className="grid gap-1.5 text-sm">
@@ -406,7 +282,9 @@ function LeadSheet({
                 <span className="font-medium">Demo attended</span>
                 {lead.demo_attended_at ? (
                   <div className="flex items-center gap-3">
-                    <p className="text-muted-foreground">Attended {when(lead.demo_attended_at)}</p>
+                    <p className="text-muted-foreground">
+                      Attended {leadTime(lead.demo_attended_at)}
+                    </p>
                     <Button
                       variant="outline"
                       size="sm"
@@ -462,7 +340,7 @@ function LeadSheet({
                   <li key={n.id} className="rounded-xl border border-border bg-muted/30 p-3 text-sm">
                     <p className="whitespace-pre-wrap">{n.body}</p>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      {n.author_name ?? "Admin"} · {when(n.created_at)}
+                      {n.author_name ?? "Admin"} · {leadTime(n.created_at)}
                     </p>
                   </li>
                 ))}
@@ -474,14 +352,5 @@ function LeadSheet({
         ) : null}
       </SheetContent>
     </Sheet>
-  );
-}
-
-function Detail({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <dt className="text-xs uppercase tracking-wide text-muted-foreground">{label}</dt>
-      <dd className="mt-0.5 break-words text-foreground">{value}</dd>
-    </div>
   );
 }
