@@ -15,6 +15,7 @@ import {
   filterLeads,
   isStartLead,
   leadTime,
+  metaStageLines,
   leadTitle,
   type LeadNote,
   type LeadRow,
@@ -270,6 +271,16 @@ function LeadSheet({
                     </option>
                   ))}
                 </select>
+                {/* Batch 77: which stages already went to Meta (once each). */}
+                {metaStageLines(lead).map((m) => (
+                  <span
+                    key={m.stage}
+                    className="text-xs text-muted-foreground"
+                    data-testid="meta-stage-sent"
+                  >
+                    Sent to Meta ✓ {m.event} · {leadTime(m.at)}
+                  </span>
+                ))}
               </label>
 
               <label className="grid gap-1.5 text-sm">

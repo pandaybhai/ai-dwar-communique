@@ -62,6 +62,8 @@ export type MetaServerEvent = {
   lead?: { phone: string | null; name: string | null; leadId: string } | null;
   /** Batch 72: fbc built from the fbclid the visitor arrived with (used when no _fbc cookie). */
   fbc?: string | null;
+  /** Batch 77: the _fbp cookie stored from the lead's own visit (used when no request has one). */
+  fbp?: string | null;
 };
 
 let tokenMissingLogged = false;
@@ -209,6 +211,7 @@ export async function capiBody(input: {
   testCode: string | null;
   lead?: MetaServerEvent["lead"];
   fbc?: string | null;
+  fbp?: string | null;
 }): Promise<Record<string, unknown>> {
   const userData: Record<string, unknown> = {
     ...(input.person
@@ -230,6 +233,7 @@ export async function capiBody(input: {
   // The _fbc cookie when the visitor has one (cookie consent), else the one
   // built from the fbclid they arrived with.
   if (!userData["fbc"] && input.fbc) userData["fbc"] = input.fbc;
+  if (!userData["fbp"] && input.fbp) userData["fbp"] = input.fbp;
   const event: Record<string, unknown> = {
     event_name: input.event,
     event_time: input.eventTime,
@@ -330,6 +334,7 @@ export async function sendMetaEvent(
       testCode: capiTestCode(env),
       lead: person ? null : (ev.lead ?? null),
       fbc: ev.fbc ?? null,
+      fbp: ev.fbp ?? null,
     });
 
     const { GRAPH_VERSION } = await import("@/lib/whatsapp-api.server");
