@@ -12,8 +12,7 @@ import { useNewSite } from "@/lib/new-site";
 import { logActivity } from "@/lib/activity";
 
 const TITLE = "Log in — AiDwar";
-const DESCRIPTION =
-  "Log in to your AiDwar workspace to manage campaigns, contacts and conversations.";
+const DESCRIPTION = "Log in to your AiDwar workspace to manage campaigns, contacts and conversations.";
 
 export const Route = createFileRoute("/login")({
   ssr: false,
@@ -42,12 +41,8 @@ function LoginPage() {
   useDesignSurface(newSite);
   const navigate = useNavigate();
   const { redirect } = Route.useSearch();
-  const goNext = async () => {
-    if (redirect) return navigate({ href: redirect, replace: true });
-    // Batch 76: a sales-only person lands on Leads & Demos, not /app onboarding.
-    const { landingAfterLogin } = await import("@/lib/admin-landing");
-    return navigate({ to: await landingAfterLogin(), replace: true });
-  };
+  const goNext = () =>
+    redirect ? navigate({ href: redirect, replace: true }) : navigate({ to: "/app", replace: true });
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -92,31 +87,14 @@ function LoginPage() {
       <form onSubmit={onSubmit} className="space-y-4">
         <div className="space-y-2">
           <Label htmlFor="email">Work email</Label>
-          <Input
-            id="email"
-            name="email"
-            type="email"
-            autoComplete="email"
-            required
-            placeholder="you@company.com"
-            className="h-12 rounded-xl text-base"
-          />
+          <Input id="email" name="email" type="email" autoComplete="email" required placeholder="you@company.com" className="h-12 rounded-xl text-base" />
         </div>
         <div className="space-y-2">
           <Label htmlFor="password">Password</Label>
-          <Input
-            id="password"
-            name="password"
-            type="password"
-            autoComplete="current-password"
-            required
-            className="h-12 rounded-xl text-base"
-          />
+          <Input id="password" name="password" type="password" autoComplete="current-password" required className="h-12 rounded-xl text-base" />
         </div>
         {error ? (
-          <p className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger-soft-foreground">
-            {error}
-          </p>
+          <p className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger-soft-foreground">{error}</p>
         ) : null}
         <PrimaryAction type="submit" className="sm:w-full" disabled={pending}>
           {pending ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}

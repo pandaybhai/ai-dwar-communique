@@ -224,6 +224,9 @@ export async function runStartReminders(
         .update({ linked_user_id: existing })
         .eq("id", lead.id)
         .is("linked_user_id", null);
+      // Batch 76: signed_up on the lead's contact in AiDwar's workspace.
+      const { mirrorLead } = await import("@/lib/lead-mirror.server");
+      await mirrorLead(supabase, lead.id, { now });
       continue;
     }
     // Opted out of AiDwar's own number: never.

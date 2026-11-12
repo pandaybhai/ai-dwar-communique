@@ -33,6 +33,11 @@ export const Route = createFileRoute("/api/public/start-link")({
           userId,
           recentMs: RECENT_USER_MS,
         });
+        if (linked) {
+          // Batch 76: signed_up on the lead's contact in AiDwar's workspace.
+          const { mirrorLead } = await import("@/lib/lead-mirror.server");
+          await mirrorLead(getServiceClient(), leadId);
+        }
         return Response.json({ linked });
       },
     },

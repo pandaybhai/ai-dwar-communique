@@ -108,25 +108,41 @@ export async function saveLeadAlertNumbers(
 
 /* ------------------------------------------------------------- the alert --- */
 
-/** {{1}} name, {{2}} number, {{3}} sells, {{4}} customers, {{5}} source — "—" when unanswered. */
-export function alertVariables(lead: LeadRow): Record<string, string> {
-  const dash = "—";
-  const sells =
-    sellsLabel(lead.qualification?.sells) ??
-    (lead.source === "landing"
-      ? (BUSINESS_TYPES.find((b) => b.value === lead.business_type)?.label ?? null)
-      : null);
+/**
+ * What a lead told us, as people read it: "Jewellery", "500–5,000", "/start".
+ * null when not answered. Shared by the alert and the workspace mirror.
+ */
+export function leadAnswers(lead: {
+  source: string;
+  business_type: string | null;
+  qualification: { sells?: string; customers?: string } | null;
+}): { sells: string | null; customers: string | null; source: string } {
   return {
-    "1": (lead.name ?? "").trim() || dash,
-    "2": lead.phone,
-    "3": sells ?? dash,
-    "4": customersLabel(lead.qualification?.customers) ?? dash,
-    "5":
+    sells:
+      sellsLabel(lead.qualification?.sells) ??
+      (lead.source === "landing"
+        ? (BUSINESS_TYPES.find((b) => b.value === lead.business_type)?.label ?? null)
+        : null),
+    customers: customersLabel(lead.qualification?.customers) ?? null,
+    source:
       lead.source === "landing_start"
         ? "/start"
         : lead.source === "landing"
           ? "/demo"
           : lead.source,
+  };
+}
+
+/** {{1}} name, {{2}} number, {{3}} sells, {{4}} customers, {{5}} source — "—" when unanswered. */
+export function alertVariables(lead: LeadRow): Record<string, string> {
+  const dash = "—";
+  const a = leadAnswers(lead);
+  return {
+    "1": (lead.name ?? "").trim() || dash,
+    "2": lead.phone,
+    "3": a.sells ?? dash,
+    "4": a.customers ?? dash,
+    "5": a.source,
   };
 }
 
@@ -138,6 +154,14 @@ export function leadAdminUrl(leadId: string): string {
 export function alertText(lead: LeadRow): string {
   const v = alertVariables(lead);
   return `New AiDwar lead: ${v["1"]} (${v["2"]}). Sells: ${v["3"]}. Customers: ${v["4"]}. Source: ${v["5"]}.\nOpen lead: ${leadAdminUrl(lead.id)}`;
+}
+
+/** Answers are in, or we've waited long enough for them (/demo: they came with the form). */
+export function leadSettled(
+  lead: { source: string; created_at: string; qualification: { answered_at?: string } | null },
+  now: number,
+): boolean {
+  return readyToAlert(lead as LeadRow, now);
 }
 
 function readyToAlert(lead: LeadRow, now: number): boolean {

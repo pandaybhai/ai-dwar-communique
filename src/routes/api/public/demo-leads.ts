@@ -68,6 +68,12 @@ export const Route = createFileRoute("/api/public/demo-leads")({
         } catch {
           meta = null; // the lead is saved; measurement never changes the answer
         }
+        // Batch 76: the lead appears in AiDwar's own workspace (contact, tag
+        // "AiDwar lead", attributes). Sends nothing; never fails the answer.
+        if (result.id) {
+          const { mirrorLead } = await import("@/lib/lead-mirror.server");
+          await mirrorLead(getServiceClient(), result.id);
+        }
         // Batch 75: the /start lead this browser created (or repeated) is
         // signed into an httpOnly cookie, so the two questions that follow
         // can answer for this lead and no other.

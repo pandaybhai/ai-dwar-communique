@@ -1,14 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import {
-  BellRing,
-  Download,
-  MessageCircle,
-  MessageSquarePlus,
-  RefreshCw,
-  Search,
-  Sparkles,
-} from "lucide-react";
+import { BellRing, MessageSquarePlus, RefreshCw, Search, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -17,12 +9,10 @@ import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { EmptyState, ErrorState, PageHeader } from "@/components/empty-state";
 import { NoResults, TableSkeleton } from "@/components/data-pagination";
 import { callApi } from "@/lib/whatsapp-client";
-import { aidwar } from "@/integrations/aidwar/client";
 import { cn } from "@/lib/utils";
 import {
   LEAD_STATUSES,
   filterLeads,
-  leadWhatsAppLink,
   isStartLead,
   leadTime,
   leadTitle,
@@ -33,13 +23,15 @@ import {
 import { LeadSummary, LeadsTable, StartBadge } from "@/components/admin/lead-views";
 import { CUSTOMERS, SELLS } from "@/lib/start-qualify";
 
-const DESCRIPTION =
-  "Demo enquiries from the website — who asked, what they need, and where they are.";
+const DESCRIPTION = "Demo enquiries from the website — who asked, what they need, and where they are.";
 
 export const Route = createFileRoute("/admin/leads")({
   // Batch 76: ?lead=<id> opens that lead (the new-lead alert's "Open lead" button).
-  validateSearch: (search: Record<string, unknown>): { lead?: string } =>
-    typeof search["lead"] === "string" ? { lead: search["lead"].slice(0, 64) } : {},
+  // (The search parser may read an all-digit value as a number.)
+  validateSearch: (search: Record<string, unknown>): { lead?: string } => {
+    const v = search["lead"];
+    return typeof v === "string" || typeof v === "number" ? { lead: String(v).slice(0, 64) } : {};
+  },
   head: () => ({
     meta: [
       { title: "Leads & Demos — AiDwar Admin" },
@@ -57,10 +49,8 @@ type Payload = {
   leads: LeadRow[];
   new_count: number;
   admins: Array<{ id: string; name: string }>;
-  /** Batch 76: what the caller may do here — "sales" works leads; only "super_admin" exports or edits alerts. */
-  role?: "super_admin" | "sales";
-  me?: string;
-  alert_numbers?: string[] | null;
+  /** Batch 76: who gets the new-lead WhatsApp alert. */
+  alert_numbers?: string[];
 };
 
 function AdminLeads() {
@@ -71,17 +61,11 @@ function AdminLeads() {
   const [search, setSearch] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
   // The sheet always shows the freshest copy of the lead from the list.
-  const open = useMemo(
-    () => (data?.leads ?? []).find((l) => l.id === openId) ?? null,
-    [data, openId],
-  );
+  const open = useMemo(() => (data?.leads ?? []).find((l) => l.id === openId) ?? null, [data, openId]);
   const [unassignedOnly, setUnassignedOnly] = useState(false);
   // Batch 75: the /start answers ("all", a value, or "none" = skipped).
   const [sells, setSells] = useState("all");
   const [customers, setCustomers] = useState("all");
-  // Batch 76: where the lead came from, and whether the reminder went.
-  const [source, setSource] = useState("all");
-  const [reminded, setReminded] = useState("all");
   const { lead: linkedLead } = Route.useSearch();
 
   const load = useCallback(async () => {
@@ -115,44 +99,16 @@ function AdminLeads() {
   }, [data]);
 
   const visible = useMemo(
-    () =>
-      filterLeads(data?.leads ?? [], {
-        status,
-        search,
-        unassignedOnly,
-        sells,
-        customers,
-        source,
-        reminded,
-      }),
-    [data, status, search, unassignedOnly, sells, customers, source, reminded],
+    () => filterLeads(data?.leads ?? [], { status, search, unassignedOnly, sells, customers }),
+    [data, status, search, unassignedOnly, sells, customers],
   );
 
-  // Batch 76: super admin only (the server refuses everyone else).
-  async function exportCsv() {
-    const { data: session } = await aidwar.auth.getSession();
-    const token = session.session?.access_token;
-    if (!token) return;
-    const res = await fetch("/api/admin/leads?format=csv", {
-      headers: { authorization: `Bearer ${token}` },
-    });
-    if (!res.ok) return;
-    const url = URL.createObjectURL(await res.blob());
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "aidwar-leads.csv";
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
-  const unassignedNew = (data?.leads ?? []).filter(
-    (l) => l.status === "new" && !l.assigned_to,
-  ).length;
+  const unassignedNew = (data?.leads ?? []).filter((l) => l.status === "new" && !l.assigned_to).length;
 
   return (
     <>
       <PageHeader title="Leads & Demos" description={DESCRIPTION} />
-      {data?.role === "super_admin" ? (
+      {data ? (
         <LeadAlertNumbers
           numbers={data.alert_numbers ?? []}
           onSaved={(alert_numbers) => setData((d) => (d ? { ...d, alert_numbers } : d))}
@@ -202,37 +158,6 @@ function AdminLeads() {
           options={CUSTOMERS}
           testId="filter-customers"
         />
-        <PlainFilter
-          label="Source"
-          value={source}
-          onChange={setSource}
-          testId="filter-source"
-          options={[
-            { value: "landing_start", label: "/start" },
-            { value: "landing", label: "/demo" },
-          ]}
-        />
-        <PlainFilter
-          label="Reminded"
-          value={reminded}
-          onChange={setReminded}
-          testId="filter-reminded"
-          options={[
-            { value: "yes", label: "Reminded" },
-            { value: "no", label: "Not reminded" },
-          ]}
-        />
-        {data?.role === "super_admin" ? (
-          <Button
-            variant="outline"
-            size="sm"
-            className="rounded-full"
-            data-testid="export-csv"
-            onClick={() => void exportCsv()}
-          >
-            <Download className="mr-2 h-3.5 w-3.5" /> Export CSV
-          </Button>
-        ) : null}
         <div className="relative ml-auto w-full max-w-xs">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -264,14 +189,10 @@ function AdminLeads() {
       <LeadSheet
         lead={open}
         admins={data?.admins ?? []}
-        role={data?.role ?? "super_admin"}
-        me={data?.me ?? ""}
         onClose={() => setOpenId(null)}
         onSaved={(id, changes) => {
           // Show the change at once, then confirm it with a fresh read.
-          setData((d) =>
-            d ? { ...d, leads: d.leads.map((l) => (l.id === id ? { ...l, ...changes } : l)) } : d,
-          );
+          setData((d) => (d ? { ...d, leads: d.leads.map((l) => (l.id === id ? { ...l, ...changes } : l)) } : d));
           void load();
         }}
       />
@@ -282,15 +203,11 @@ function AdminLeads() {
 function LeadSheet({
   lead,
   admins,
-  role,
-  me,
   onClose,
   onSaved,
 }: {
   lead: LeadRow | null;
   admins: Array<{ id: string; name: string }>;
-  role: "super_admin" | "sales";
-  me: string;
   onClose: () => void;
   onSaved: (id: string, changes: Partial<LeadRow>) => void;
 }) {
@@ -304,9 +221,10 @@ function LeadSheet({
     setNote("");
     setErr(null);
     void (async () => {
-      const { data } = await callApi<{ notes: LeadNote[] }>(`/api/admin/leads?lead_id=${lead.id}`, {
-        method: "GET",
-      });
+      const { data } = await callApi<{ notes: LeadNote[] }>(
+        `/api/admin/leads?lead_id=${lead.id}`,
+        { method: "GET" },
+      );
       setNotes(data?.notes ?? []);
     })();
   }, [lead?.id]);
@@ -337,22 +255,6 @@ function LeadSheet({
               {isStartLead(lead) ? <StartBadge /> : null}
             </SheetTitle>
             <LeadSummary lead={lead} />
-            {leadWhatsAppLink(lead.phone) ? (
-              <Button
-                asChild
-                size="sm"
-                className="mt-4 rounded-full bg-success text-success-foreground hover:bg-success/90"
-              >
-                <a
-                  href={leadWhatsAppLink(lead.phone)!}
-                  target="_blank"
-                  rel="noreferrer"
-                  data-testid="lead-whatsapp"
-                >
-                  <MessageCircle className="mr-1.5 h-4 w-4" /> WhatsApp
-                </a>
-              </Button>
-            ) : null}
 
             <div className="mt-6 grid gap-4">
               <label className="grid gap-1.5 text-sm">
@@ -370,56 +272,21 @@ function LeadSheet({
                 </select>
               </label>
 
-              {role === "sales" ? (
-                <div className="grid gap-1.5 text-sm" data-testid="assign-self">
-                  <span className="font-medium">Assigned to</span>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-muted-foreground">
-                      {lead.assigned_to
-                        ? lead.assigned_to === me
-                          ? "You"
-                          : (admins.find((a) => a.id === lead.assigned_to)?.name ?? "Someone else")
-                        : "Nobody yet"}
-                    </span>
-                    {lead.assigned_to === me ? (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="rounded-full"
-                        disabled={saving}
-                        onClick={() => void patch({ assigned_to: null })}
-                      >
-                        Unassign
-                      </Button>
-                    ) : (
-                      <Button
-                        size="sm"
-                        className="rounded-full"
-                        disabled={saving}
-                        onClick={() => void patch({ assigned_to: me })}
-                      >
-                        Assign to me
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              ) : (
-                <label className="grid gap-1.5 text-sm">
-                  <span className="font-medium">Assigned to</span>
-                  <select
-                    className="h-10 rounded-xl border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                    value={lead.assigned_to ?? ""}
-                    onChange={(e) => void patch({ assigned_to: e.target.value || null })}
-                  >
-                    <option value="">Nobody yet</option>
-                    {admins.map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
+              <label className="grid gap-1.5 text-sm">
+                <span className="font-medium">Assigned to</span>
+                <select
+                  className="h-10 rounded-xl border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  value={lead.assigned_to ?? ""}
+                  onChange={(e) => void patch({ assigned_to: e.target.value || null })}
+                >
+                  <option value="">Nobody yet</option>
+                  {admins.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
               <label className="grid gap-1.5 text-sm">
                 <span className="font-medium">Demo date (optional)</span>
@@ -508,10 +375,7 @@ function LeadSheet({
 
               <ul className="mt-4 space-y-3">
                 {notes.map((n) => (
-                  <li
-                    key={n.id}
-                    className="rounded-xl border border-border bg-muted/30 p-3 text-sm"
-                  >
+                  <li key={n.id} className="rounded-xl border border-border bg-muted/30 p-3 text-sm">
                     <p className="whitespace-pre-wrap">{n.body}</p>
                     <p className="mt-1 text-xs text-muted-foreground">
                       {n.author_name ?? "Admin"} · {leadTime(n.created_at)}
@@ -559,40 +423,6 @@ function AnswerFilter({
           </option>
         ))}
         <option value="none">— (skipped)</option>
-      </select>
-    </label>
-  );
-}
-
-/** Batch 76: a small "any / one value" filter (source, reminded). */
-function PlainFilter({
-  label,
-  value,
-  onChange,
-  options,
-  testId,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  options: ReadonlyArray<{ value: string; label: string }>;
-  testId: string;
-}) {
-  return (
-    <label className="inline-flex items-center gap-2 text-sm">
-      <span className="font-medium text-muted-foreground">{label}</span>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        data-testid={testId}
-        className="h-9 rounded-full border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-      >
-        <option value="all">Any</option>
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
       </select>
     </label>
   );

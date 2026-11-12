@@ -11,10 +11,7 @@ import {
   Send,
   Menu,
   ShieldCheck,
-  Users,
-  Sparkles,
-  Filter,
-} from "lucide-react";
+  Users, Sparkles, Filter } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { aidwar } from "@/integrations/aidwar/client";
@@ -35,22 +32,11 @@ const NAV = [
   { to: "/admin/activity", label: "Activity", icon: Activity },
 ] as const;
 
-/** Batch 76: a sales member sees Leads & Demos only (the server enforces it too). */
-export function navFor(role: "super_admin" | "sales") {
-  return role === "sales" ? NAV.filter((item) => item.to === "/admin/leads") : NAV;
-}
-
-function AdminNav({
-  onNavigate,
-  role,
-}: {
-  onNavigate?: () => void;
-  role: "super_admin" | "sales";
-}) {
+function AdminNav({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   return (
     <nav className="space-y-1">
-      {navFor(role).map((item) => {
+      {NAV.map((item) => {
         const isActive = pathname === item.to || pathname.startsWith(`${item.to}/`);
         return (
           <Link
@@ -73,13 +59,7 @@ function AdminNav({
   );
 }
 
-export function AdminShell({
-  children,
-  role = "super_admin",
-}: {
-  children: ReactNode;
-  role?: "super_admin" | "sales";
-}) {
+export function AdminShell({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
 
@@ -94,20 +74,13 @@ export function AdminShell({
         <div className="flex h-16 items-center gap-3 px-4 sm:px-6">
           <Sheet open={open} onOpenChange={setOpen}>
             <SheetTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="lg:hidden"
-                aria-label="Open the admin menu"
-              >
+              <Button variant="ghost" size="icon" className="lg:hidden" aria-label="Open the admin menu">
                 <Menu className="h-5 w-5" aria-hidden="true" />
               </Button>
             </SheetTrigger>
             <SheetContent side="left" className="w-72 p-6">
-              <SheetTitle className="mb-6 text-left">
-                {role === "sales" ? "Sales" : "Super Admin"}
-              </SheetTitle>
-              <AdminNav role={role} onNavigate={() => setOpen(false)} />
+              <SheetTitle className="mb-6 text-left">Super Admin</SheetTitle>
+              <AdminNav onNavigate={() => setOpen(false)} />
             </SheetContent>
           </Sheet>
 
@@ -115,7 +88,7 @@ export function AdminShell({
             Ai<span className="text-brand-700">Dwar</span>
           </span>
           <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-800">
-            <ShieldCheck className="h-3.5 w-3.5" /> {role === "sales" ? "Sales" : "Super Admin"}
+            <ShieldCheck className="h-3.5 w-3.5" /> Super Admin
           </span>
 
           <div className="ml-auto flex items-center gap-2">
@@ -131,10 +104,10 @@ export function AdminShell({
 
       <div className="mx-auto flex w-full max-w-[1500px]">
         <aside className="hidden w-64 shrink-0 border-r border-border/70 bg-background px-4 py-6 lg:block">
-          <AdminNav role={role} />
+          <AdminNav />
         </aside>
         <main className="min-w-0 flex-1 px-4 py-8 sm:px-6 lg:px-10">
-          {role === "super_admin" ? <AiProviderBanner /> : null}
+          <AiProviderBanner />
           {children}
         </main>
       </div>

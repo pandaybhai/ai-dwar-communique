@@ -17,7 +17,7 @@
 -- query_to_xml only when to_regclass('cron.job') finds it, so the query
 -- still runs where pg_cron is absent (every cron job is then listed).
 --
--- Expected objects: table 97, column 1149, view 2, function 124, index 175, trigger 72, cron_job 14.
+-- Expected objects: table 97, column 1149, view 2, function 123, index 175, trigger 71, cron_job 14.
 WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, introduced_in_file) AS (
   VALUES
     ('table', 'aidwar_private', 'mcp_db_proof', NULL, NULL, NULL, '20261300_batch56_mcp_hardening.sql'),
@@ -597,6 +597,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('column', 'public', 'demo_leads', 'landing_path', NULL, 'text', '20260915_demo_leads.sql'),
     ('column', 'public', 'demo_leads', 'latest_attribution', NULL, 'jsonb', '20260915_demo_leads.sql'),
     ('column', 'public', 'demo_leads', 'linked_user_id', NULL, 'uuid', '20260915_demo_leads.sql'),
+    ('column', 'public', 'demo_leads', 'mirrored_at', NULL, 'timestamp with time zone', '20261400_batch76.sql'),
     ('column', 'public', 'demo_leads', 'name', NULL, 'text', '20260915_demo_leads.sql'),
     ('column', 'public', 'demo_leads', 'next_follow_up_at', NULL, 'timestamp with time zone', '20260915_demo_proof.sql'),
     ('column', 'public', 'demo_leads', 'nudged_at', NULL, 'timestamp with time zone', '20261390_batch75.sql'),
@@ -1061,7 +1062,6 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('column', 'public', 'products', 'synced_at', NULL, 'timestamp with time zone', '20260821_shopify_integration.sql'),
     ('column', 'public', 'products', 'title', NULL, 'text', '20260821_shopify_integration.sql'),
     ('column', 'public', 'products', 'updated_at', NULL, 'timestamp with time zone', '20260910_catalog.sql'),
-    ('column', 'public', 'profiles', 'is_sales', NULL, 'boolean', '20261400_batch76.sql'),
     ('column', 'public', 'profiles', 'phone', NULL, 'text', '20260907_profiles_phone.sql'),
     ('column', 'public', 'reader_usage', 'calls', NULL, 'integer', '20260924090000_reader_engines.sql'),
     ('column', 'public', 'reader_usage', 'credits', NULL, 'integer', '20260924090000_reader_engines.sql'),
@@ -1352,7 +1352,6 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('function', 'public', 'platform_ai_month_spend', NULL, '{}'::text[], 'public.platform_ai_month_spend()', '20260906_platform_cap_and_tool_outcomes.sql'),
     ('function', 'public', 'platform_set_ai_key', NULL, ARRAY['text', 'text'], 'public.platform_set_ai_key(text, text)', '20260903_ai_resale.sql'),
     ('function', 'public', 'price_message', NULL, ARRAY['uuid'], 'public.price_message(uuid)', '20260831_message_cost_receipts.sql'),
-    ('function', 'public', 'protect_profile_insert_privileges', NULL, '{}'::text[], 'public.protect_profile_insert_privileges()', '20261400_batch76.sql'),
     ('function', 'public', 'protect_profile_privileges', NULL, '{}'::text[], 'public.protect_profile_privileges()', '20261008_security_guards.sql'),
     ('function', 'public', 'purge_deleted_flows', NULL, ARRAY['interval', 'integer'], 'public.purge_deleted_flows(interval, integer)', '20261130_batch35_merchant_asks.sql'),
     ('function', 'public', 'read_vault_secret', NULL, ARRAY['text'], 'public.read_vault_secret(text)', '20260905_ai_credential_registry.sql'),
@@ -1630,7 +1629,6 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('trigger', 'public', 'organizations', 'trg_organizations_chat_media_purge', NULL, 'on public.organizations', '20261110_batch32_media.sql'),
     ('trigger', 'public', 'product_collections', 'product_collections_set_updated_at', NULL, 'on public.product_collections', '20260910_catalog.sql'),
     ('trigger', 'public', 'products', 'products_set_updated_at', NULL, 'on public.products', '20260910_catalog.sql'),
-    ('trigger', 'public', 'profiles', 'protect_profile_insert_privileges', NULL, 'on public.profiles', '20261400_batch76.sql'),
     ('trigger', 'public', 'profiles', 'protect_profile_privileges', NULL, 'on public.profiles', '20261008_security_guards.sql'),
     ('trigger', 'public', 'revenue_attributions', 'revenue_attributions_updated_at', NULL, 'on public.revenue_attributions', '20260828_revenue_attribution.sql'),
     ('trigger', 'public', 'scheduled_sends', 'update_scheduled_sends_updated_at', NULL, 'on public.scheduled_sends', '20260825_flows.sql'),

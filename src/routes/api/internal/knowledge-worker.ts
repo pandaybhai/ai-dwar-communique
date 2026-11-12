@@ -234,6 +234,26 @@ export const Route = createFileRoute("/api/internal/knowledge-worker")({
             );
           }
 
+          // Batch 76: leads not yet mirrored into AiDwar's workspace (the
+          // inline mirror failed, or a /start lead's answers never came).
+          let leadMirror: { mirrored: number; skipped: string | null } = {
+            mirrored: 0,
+            skipped: null,
+          };
+          try {
+            const { catchUpLeadMirror } = await import("@/lib/lead-mirror.server");
+            if (tickEnds - Date.now() >= NUDGES_MIN_MS) {
+              leadMirror = await catchUpLeadMirror(supabase);
+            } else {
+              leadMirror = { mirrored: 0, skipped: "deadline" };
+            }
+          } catch (error) {
+            console.error(
+              "[lead-mirror] failed",
+              error instanceof Error ? error.message : String(error),
+            );
+          }
+
           return Response.json({
             claimed: claimed.length,
             done,
@@ -241,6 +261,7 @@ export const Route = createFileRoute("/api/internal/knowledge-worker")({
             nudges,
             start_reminders: startReminders,
             lead_alerts: leadAlerts,
+            lead_mirror: leadMirror,
             embeddings,
             ...(personaDeferred > 0 ? { persona_deferred: personaDeferred } : {}),
             ...(personaCaughtUp > 0 ? { persona_caught_up: personaCaughtUp } : {}),

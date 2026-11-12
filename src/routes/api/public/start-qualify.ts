@@ -41,6 +41,12 @@ export const Route = createFileRoute("/api/public/start-qualify")({
         const result = await qualifyStartLead(supabase, leadId, body["sells"], body["customers"]);
         if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
 
+        if (result.saved) {
+          // Batch 76: the answers reach the lead's contact in AiDwar's workspace.
+          const { mirrorLead } = await import("@/lib/lead-mirror.server");
+          await mirrorLead(supabase, leadId);
+        }
+
         let meta: import("@/lib/meta-events").BrowserMetaEvent | null = null;
         if (result.saved) {
           try {
