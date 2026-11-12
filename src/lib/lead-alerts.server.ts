@@ -133,16 +133,38 @@ export function leadAnswers(lead: {
   };
 }
 
+/**
+ * The submitted template's body, word for word (Ai Dwar workspace, utility,
+ * en). The free text inside the 24-hour window says exactly this too.
+ */
+export const LEAD_ALERT_BODY =
+  "You have a new lead on AiDwar.\nName: {{1}}\nWhatsApp: {{2}}\nSells: {{3}}\nCustomers: {{4}}\nSource: {{5}}\nPlease follow up with them today.";
+
+/** "+919812345670" → "+91 98123 45670"; any other number stays as stored (E.164). */
+export function alertPhone(phone: string): string {
+  const m = /^\+91(\d{5})(\d{5})$/.exec(phone.replace(/[\s()-]/g, ""));
+  return m ? `+91 ${m[1]} ${m[2]}` : phone;
+}
+
+/** {{5}}: where the lead came from, as the sales team reads it. */
+export function alertSourceLabel(source: string): string {
+  return source === "landing_start"
+    ? "Website /start"
+    : source === "landing"
+      ? "Demo form"
+      : source;
+}
+
 /** {{1}} name, {{2}} number, {{3}} sells, {{4}} customers, {{5}} source — "—" when unanswered. */
 export function alertVariables(lead: LeadRow): Record<string, string> {
   const dash = "—";
   const a = leadAnswers(lead);
   return {
     "1": (lead.name ?? "").trim() || dash,
-    "2": lead.phone,
+    "2": alertPhone(lead.phone),
     "3": a.sells ?? dash,
     "4": a.customers ?? dash,
-    "5": a.source,
+    "5": alertSourceLabel(lead.source),
   };
 }
 
@@ -153,7 +175,8 @@ export function leadAdminUrl(leadId: string): string {
 /** The same words as the template, for a free text inside the 24-hour window. */
 export function alertText(lead: LeadRow): string {
   const v = alertVariables(lead);
-  return `New AiDwar lead: ${v["1"]} (${v["2"]}). Sells: ${v["3"]}. Customers: ${v["4"]}. Source: ${v["5"]}.\nOpen lead: ${leadAdminUrl(lead.id)}`;
+  const body = LEAD_ALERT_BODY.replace(/\{\{([1-5])\}\}/g, (_, n: string) => v[n] ?? "—");
+  return `${body}\nOpen lead: ${leadAdminUrl(lead.id)}`;
 }
 
 /** Answers are in, or we've waited long enough for them (/demo: they came with the form). */

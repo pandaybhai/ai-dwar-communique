@@ -52,7 +52,14 @@ vi.mock("@/lib/service-text.server", () => ({
   },
 }));
 
-import { ALERT_WAIT_MS, alertText, alertVariables, runLeadAlerts } from "./lead-alerts.server";
+import {
+  ALERT_WAIT_MS,
+  LEAD_ALERT_BODY,
+  alertPhone,
+  alertText,
+  alertVariables,
+  runLeadAlerts,
+} from "./lead-alerts.server";
 import { isPlatformNoticeTemplate } from "./platform-notice-templates";
 
 const NOW = Date.parse("2026-11-12T12:00:00Z");
@@ -154,10 +161,10 @@ describe("the new-lead alert", () => {
       name: "aidwar_new_lead_alert",
       variables: {
         "1": "Asha Rao",
-        "2": "+919812345670",
+        "2": "+91 98123 45670",
         "3": "Jewellery",
         "4": "500–5,000",
-        "5": "/start",
+        "5": "Website /start",
       },
       button: "lead-1",
     });
@@ -186,10 +193,10 @@ describe("the new-lead alert", () => {
     });
     expect(h.templates[0]!.variables).toEqual({
       "1": "—",
-      "2": "+919812345670",
+      "2": "+91 98123 45670",
       "3": "—",
       "4": "—",
-      "5": "/start",
+      "5": "Website /start",
     });
   });
 
@@ -208,7 +215,7 @@ describe("the new-lead alert", () => {
     expect(h.templates[0]!.variables).toMatchObject({
       "3": "Services / appointments",
       "4": "—",
-      "5": "/demo",
+      "5": "Demo form",
     });
   });
 
@@ -218,7 +225,7 @@ describe("the new-lead alert", () => {
     expect(h.texts).toEqual([
       {
         to: "917981223192",
-        body: "New AiDwar lead: Asha Rao (+919812345670). Sells: Jewellery. Customers: 500–5,000. Source: /start.\nOpen lead: https://aidwar.in/admin/leads?lead=lead-1",
+        body: "You have a new lead on AiDwar.\nName: Asha Rao\nWhatsApp: +91 98123 45670\nSells: Jewellery\nCustomers: 500–5,000\nSource: Website /start\nPlease follow up with them today.\nOpen lead: https://aidwar.in/admin/leads?lead=lead-1",
       },
     ]);
     expect(h.templates.map((t) => t.phone)).toEqual([B]);
@@ -318,7 +325,24 @@ describe("the new-lead alert", () => {
     expect(worker).toContain('await import("@/lib/lead-alerts.server")');
     expect(worker).toContain("lead_alerts: leadAlerts");
     expect(isPlatformNoticeTemplate("aidwar_new_lead_alert")).toBe(true);
-    expect(alertVariables(lead("z") as never)["5"]).toBe("/start");
+    expect(alertVariables(lead("z") as never)["5"]).toBe("Website /start");
     expect(alertText(lead("z") as never)).toContain("https://aidwar.in/admin/leads?lead=z");
+  });
+
+  it("matches the template already submitted in the Ai Dwar workspace, word for word", async () => {
+    expect(LEAD_ALERT_BODY).toBe(
+      "You have a new lead on AiDwar.\nName: {{1}}\nWhatsApp: {{2}}\nSells: {{3}}\nCustomers: {{4}}\nSource: {{5}}\nPlease follow up with them today.",
+    );
+    expect(alertPhone("+919812345670")).toBe("+91 98123 45670");
+    expect(alertPhone("+14155550123")).toBe("+14155550123");
+    // The button's {{1}} is the lead's own id (a uuid), as /admin/leads?lead= reads it.
+    const id = "3f2c9a1e-5b7d-4c11-9a2e-7d1f0c4b8e21";
+    world({ leads: [lead(id)] });
+    await runLeadAlerts(h.db!.supabase as never, { now: NOW });
+    expect(h.templates[0]).toMatchObject({ name: "aidwar_new_lead_alert", button: id });
+    expect(alertText(lead(id) as never)).toContain(`https://aidwar.in/admin/leads?lead=${id}`);
+    const page = readFileSync("src/routes/admin/leads.tsx", "utf8");
+    expect(page).toContain("validateSearch");
+    expect(page).toContain("setOpenId(linkedLead)");
   });
 });
