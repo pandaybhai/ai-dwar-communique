@@ -5,6 +5,8 @@ import { createFileRoute } from "@tanstack/react-router";
  * Grants only work for existing accounts; you can't remove yourself or the last one.
  * test_email sends a test email to the signed-in admin's own address and
  * answers with Resend's real error text when it fails.
+ * Batch 76: list_sales / grant_sales / revoke_sales manage the sales team
+ * (Leads & Demos only), for existing accounts, recorded in the activity log.
  */
 export const Route = createFileRoute("/api/admin/super-admins")({
   server: {
@@ -37,6 +39,48 @@ export const Route = createFileRoute("/api/admin/super-admins")({
         };
 
         if (body.action === "list") return Response.json({ admins: await list(), me: user.id });
+
+        // Batch 76: the sales team — Leads & Demos only (profiles.is_sales).
+        const salesList = async () => {
+          const { data } = await supabase
+            .from("profiles")
+            .select("id, full_name, email, created_at")
+            .eq("is_sales", true)
+            .order("created_at", { ascending: true });
+          return (data ?? []) as { id: string; full_name: string | null; email: string | null; created_at: string }[];
+        };
+        if (body.action === "list_sales") return Response.json({ sales: await salesList() });
+        if (body.action === "grant_sales") {
+          const email = String(body.email ?? "").trim().toLowerCase();
+          if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return jsonError("Enter a valid email address.", 400);
+          const { data: target } = await supabase
+            .from("profiles")
+            .select("id, email, is_sales")
+            .ilike("email", email)
+            .maybeSingle();
+          if (!target) return jsonError("No AiDwar account uses that email. Ask them to sign up first.", 404);
+          if ((target as { is_sales?: boolean }).is_sales) return jsonError("That person is already on the sales team.", 409);
+          const { error } = await supabase.from("profiles").update({ is_sales: true }).eq("id", target.id);
+          if (error) return jsonError("We couldn't save that. Please try again.", 500);
+          const { resolvePlatformOrg } = await import("@/lib/billing-notify.server");
+          const org = await resolvePlatformOrg(supabase).catch(() => null);
+          if (org)
+            await logServerActivity(supabase, org, user.id, "sales_member_added", { target_user_id: target.id }).catch(() => undefined);
+          return Response.json({ sales: await salesList() });
+        }
+        if (body.action === "revoke_sales") {
+          const targetId = String(body.user_id ?? "");
+          if (!targetId) return jsonError("Pick someone to remove.", 400);
+          const current = await salesList();
+          if (!current.some((m) => m.id === targetId)) return jsonError("That person isn't on the sales team.", 404);
+          const { error } = await supabase.from("profiles").update({ is_sales: false }).eq("id", targetId);
+          if (error) return jsonError("We couldn't save that. Please try again.", 500);
+          const { resolvePlatformOrg } = await import("@/lib/billing-notify.server");
+          const org = await resolvePlatformOrg(supabase).catch(() => null);
+          if (org)
+            await logServerActivity(supabase, org, user.id, "sales_member_removed", { target_user_id: targetId }).catch(() => undefined);
+          return Response.json({ sales: await salesList() });
+        }
 
         if (body.action === "test_email") {
           const { sendEmail, DEFAULT_EMAIL_FROM } = await import("@/lib/email.server");

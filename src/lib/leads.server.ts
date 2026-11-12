@@ -6,6 +6,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { normalizePhone } from "./phone";
+import { toCsv } from "./csv";
 import { checkRealNumber, qualificationFor } from "./start-qualify";
 import {
   BUSINESS_TYPES,
@@ -380,10 +381,11 @@ export async function listLeads(
 
   const leads = ((data ?? []) as LeadRow[]).map((l) => ({ ...l, ip_hash: undefined }) as LeadRow);
 
+  // Batch 76: leads can be assigned to super admins and to the sales team.
   const { data: admins } = await supabase
     .from("profiles")
     .select("id, full_name, email")
-    .eq("is_super_admin", true);
+    .or("is_super_admin.eq.true,is_sales.eq.true");
 
   return {
     leads,
@@ -392,6 +394,46 @@ export async function listLeads(
       (admins ?? []) as Array<{ id: string; full_name: string | null; email: string | null }>
     ).map((a) => ({ id: a.id, name: a.full_name || a.email || "Admin" })),
   };
+}
+
+/**
+ * Batch 76: the Leads list as CSV — super admin only (the route checks). The
+ * columns a person needs to follow up; never the IP hash.
+ */
+export function leadsCsv(leads: LeadRow[]): string {
+  const rows: (string | null)[][] = [
+    [
+      "received_at",
+      "source",
+      "name",
+      "business",
+      "phone",
+      "sells",
+      "customers",
+      "status",
+      "next_follow_up_at",
+      "reminded_at",
+      "utm_source",
+      "utm_campaign",
+    ],
+  ];
+  for (const l of leads) {
+    rows.push([
+      l.created_at,
+      l.source,
+      l.name,
+      l.business_name,
+      l.phone,
+      l.qualification?.sells ?? null,
+      l.qualification?.customers ?? null,
+      l.status,
+      l.next_follow_up_at,
+      l.nudged_at ?? null,
+      l.first_attribution?.["utm_source"] ?? null,
+      l.first_attribution?.["utm_campaign"] ?? null,
+    ]);
+  }
+  return toCsv(rows);
 }
 
 export async function listNotes(supabase: SupabaseClient, leadId: string): Promise<LeadNote[]> {

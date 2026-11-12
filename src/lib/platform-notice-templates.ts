@@ -144,12 +144,22 @@ export const BILLING_TEMPLATES: BillingTemplateSpec[] = [
  */
 export const FINISH_SIGNUP_TEMPLATE_NAME = "aidwar_finish_signup";
 
+/**
+ * Batch 76: the alert to the sales numbers for every new lead (utility, en;
+ * body "New AiDwar lead: {{1}} ({{2}}). Sells: {{3}}. Customers: {{4}}.
+ * Source: {{5}}.", URL button "Open lead" →
+ * https://aidwar.in/admin/leads?lead={{1}}). Created by hand in the Ai Dwar
+ * workspace; the code only reads it (lead-alerts.server.ts).
+ */
+export const LEAD_ALERT_TEMPLATE_NAME = "aidwar_new_lead_alert";
+
 export const PLATFORM_NOTICE_TEMPLATE_NAMES: ReadonlySet<string> = new Set([
   ...BILLING_TEMPLATES.map((t) => t.name),
   CODE_TEMPLATE_NAME,
   RESUME_TEMPLATE_NAME,
   RESUME_LINK_TEMPLATE_NAME,
   FINISH_SIGNUP_TEMPLATE_NAME,
+  LEAD_ALERT_TEMPLATE_NAME,
 ]);
 
 export function isPlatformNoticeTemplate(name: unknown): boolean {

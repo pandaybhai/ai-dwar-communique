@@ -185,6 +185,10 @@ export function filterLeads<T extends LeadRow>(
     unassignedOnly: boolean;
     sells?: AnswerFilter;
     customers?: AnswerFilter;
+    /** Batch 76: "all" | "landing_start" (/start) | "landing" (/demo). */
+    source?: string;
+    /** Batch 76: "all" | "yes" (the finish-sign-up reminder went) | "no". */
+    reminded?: string;
   },
 ): T[] {
   return leads.filter(
@@ -193,6 +197,16 @@ export function filterLeads<T extends LeadRow>(
       (!opts.unassignedOnly || (l.status === "new" && !l.assigned_to)) &&
       leadMatches(l, opts.search) &&
       answerMatches(l.qualification?.sells, opts.sells) &&
-      answerMatches(l.qualification?.customers, opts.customers),
+      answerMatches(l.qualification?.customers, opts.customers) &&
+      (!opts.source || opts.source === "all" || l.source === opts.source) &&
+      (!opts.reminded ||
+        opts.reminded === "all" ||
+        (opts.reminded === "yes" ? Boolean(l.nudged_at) : !l.nudged_at)),
   );
+}
+
+/** Batch 76: a wa.me link that opens the lead's chat in the salesperson's own WhatsApp (free). */
+export function leadWhatsAppLink(phone: string): string | null {
+  const digits = String(phone ?? "").replace(/\D/g, "");
+  return digits.length >= 8 ? `https://wa.me/${digits}` : null;
 }

@@ -84,6 +84,7 @@ import { Route as PayPaymentIdRouteImport } from './routes/pay.$paymentId'
 import { Route as RTokenRouteImport } from './routes/r.$token'
 import { Route as StartContinueRouteImport } from './routes/start_.continue'
 import { Route as DotwellKnownOauthProtectedResourceMcpRouteImport } from './routes/[.]well-known.oauth-protected-resource.mcp'
+import { Route as ApiAdminAccessRouteImport } from './routes/api/admin/access'
 import { Route as ApiAdminAiRouteImport } from './routes/api/admin/ai'
 import { Route as ApiAdminBillingRouteImport } from './routes/api/admin/billing'
 import { Route as ApiAdminCustomersRouteImport } from './routes/api/admin/customers'
@@ -596,6 +597,11 @@ const DotwellKnownOauthProtectedResourceMcpRoute =
     path: '/mcp',
     getParentRoute: () => DotwellKnownOauthProtectedResourceRoute,
   } as any)
+const ApiAdminAccessRoute = ApiAdminAccessRouteImport.update({
+  id: '/api/admin/access',
+  path: '/api/admin/access',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAdminAiRoute = ApiAdminAiRouteImport.update({
   id: '/api/admin/ai',
   path: '/api/admin/ai',
@@ -1368,6 +1374,7 @@ export interface FileRoutesByFullPath {
   '/app/': typeof AppIndexRoute
   '/developers/': typeof DevelopersIndexRoute
   '/.well-known/oauth-protected-resource/mcp': typeof DotwellKnownOauthProtectedResourceMcpRoute
+  '/api/admin/access': typeof ApiAdminAccessRoute
   '/api/admin/ai': typeof ApiAdminAiRoute
   '/api/admin/billing': typeof ApiAdminBillingRoute
   '/api/admin/customers': typeof ApiAdminCustomersRoute
@@ -1573,6 +1580,7 @@ export interface FileRoutesByTo {
   '/app': typeof AppIndexRoute
   '/developers': typeof DevelopersIndexRoute
   '/.well-known/oauth-protected-resource/mcp': typeof DotwellKnownOauthProtectedResourceMcpRoute
+  '/api/admin/access': typeof ApiAdminAccessRoute
   '/api/admin/ai': typeof ApiAdminAiRoute
   '/api/admin/billing': typeof ApiAdminBillingRoute
   '/api/admin/customers': typeof ApiAdminCustomersRoute
@@ -1782,6 +1790,7 @@ export interface FileRoutesById {
   '/app/': typeof AppIndexRoute
   '/developers/': typeof DevelopersIndexRoute
   '/.well-known/oauth-protected-resource/mcp': typeof DotwellKnownOauthProtectedResourceMcpRoute
+  '/api/admin/access': typeof ApiAdminAccessRoute
   '/api/admin/ai': typeof ApiAdminAiRoute
   '/api/admin/billing': typeof ApiAdminBillingRoute
   '/api/admin/customers': typeof ApiAdminCustomersRoute
@@ -1992,6 +2001,7 @@ export interface FileRouteTypes {
     | '/app/'
     | '/developers/'
     | '/.well-known/oauth-protected-resource/mcp'
+    | '/api/admin/access'
     | '/api/admin/ai'
     | '/api/admin/billing'
     | '/api/admin/customers'
@@ -2197,6 +2207,7 @@ export interface FileRouteTypes {
     | '/app'
     | '/developers'
     | '/.well-known/oauth-protected-resource/mcp'
+    | '/api/admin/access'
     | '/api/admin/ai'
     | '/api/admin/billing'
     | '/api/admin/customers'
@@ -2405,6 +2416,7 @@ export interface FileRouteTypes {
     | '/app/'
     | '/developers/'
     | '/.well-known/oauth-protected-resource/mcp'
+    | '/api/admin/access'
     | '/api/admin/ai'
     | '/api/admin/billing'
     | '/api/admin/customers'
@@ -2574,6 +2586,7 @@ export interface RootRouteChildren {
   PayPaymentIdRoute: typeof PayPaymentIdRoute
   RTokenRoute: typeof RTokenRoute
   StartContinueRoute: typeof StartContinueRoute
+  ApiAdminAccessRoute: typeof ApiAdminAccessRoute
   ApiAdminAiRoute: typeof ApiAdminAiRoute
   ApiAdminBillingRoute: typeof ApiAdminBillingRoute
   ApiAdminCustomersRoute: typeof ApiAdminCustomersRoute
@@ -3217,6 +3230,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/.well-known/oauth-protected-resource/mcp'
       preLoaderRoute: typeof DotwellKnownOauthProtectedResourceMcpRouteImport
       parentRoute: typeof DotwellKnownOauthProtectedResourceRoute
+    }
+    '/api/admin/access': {
+      id: '/api/admin/access'
+      path: '/api/admin/access'
+      fullPath: '/api/admin/access'
+      preLoaderRoute: typeof ApiAdminAccessRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/api/admin/ai': {
       id: '/api/admin/ai'
@@ -4372,6 +4392,7 @@ const rootRouteChildren: RootRouteChildren = {
   PayPaymentIdRoute: PayPaymentIdRoute,
   RTokenRoute: RTokenRoute,
   StartContinueRoute: StartContinueRoute,
+  ApiAdminAccessRoute: ApiAdminAccessRoute,
   ApiAdminAiRoute: ApiAdminAiRoute,
   ApiAdminBillingRoute: ApiAdminBillingRoute,
   ApiAdminCustomersRoute: ApiAdminCustomersRoute,

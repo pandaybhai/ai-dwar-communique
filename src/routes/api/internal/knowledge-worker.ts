@@ -218,12 +218,29 @@ export const Route = createFileRoute("/api/internal/knowledge-worker")({
             );
           }
 
+          // Batch 76: a WhatsApp alert to the sales numbers for each new lead.
+          let leadAlerts: { alerted: number; skipped: string | null } = { alerted: 0, skipped: null };
+          try {
+            const { runLeadAlerts } = await import("@/lib/lead-alerts.server");
+            if (tickEnds - Date.now() >= NUDGES_MIN_MS) {
+              leadAlerts = await runLeadAlerts(supabase);
+            } else {
+              leadAlerts = { alerted: 0, skipped: "deadline" };
+            }
+          } catch (error) {
+            console.error(
+              "[lead-alert] failed",
+              error instanceof Error ? error.message : String(error),
+            );
+          }
+
           return Response.json({
             claimed: claimed.length,
             done,
             failed,
             nudges,
             start_reminders: startReminders,
+            lead_alerts: leadAlerts,
             embeddings,
             ...(personaDeferred > 0 ? { persona_deferred: personaDeferred } : {}),
             ...(personaCaughtUp > 0 ? { persona_caught_up: personaCaughtUp } : {}),
