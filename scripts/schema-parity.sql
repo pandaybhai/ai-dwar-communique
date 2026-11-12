@@ -17,7 +17,7 @@
 -- query_to_xml only when to_regclass('cron.job') finds it, so the query
 -- still runs where pg_cron is absent (every cron job is then listed).
 --
--- Expected objects: table 97, column 1145, view 2, function 123, index 175, trigger 71, cron_job 14.
+-- Expected objects: table 97, column 1146, view 2, function 123, index 175, trigger 71, cron_job 14.
 WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, introduced_in_file) AS (
   VALUES
     ('table', 'aidwar_private', 'mcp_db_proof', NULL, NULL, NULL, '20261300_batch56_mcp_hardening.sql'),
@@ -598,6 +598,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('column', 'public', 'demo_leads', 'linked_user_id', NULL, 'uuid', '20260915_demo_leads.sql'),
     ('column', 'public', 'demo_leads', 'name', NULL, 'text', '20260915_demo_leads.sql'),
     ('column', 'public', 'demo_leads', 'next_follow_up_at', NULL, 'timestamp with time zone', '20260915_demo_proof.sql'),
+    ('column', 'public', 'demo_leads', 'nudged_at', NULL, 'timestamp with time zone', '20261390_batch75.sql'),
     ('column', 'public', 'demo_leads', 'organization_id', NULL, 'uuid', '20260915_demo_leads.sql'),
     ('column', 'public', 'demo_leads', 'phone', NULL, 'text', '20260915_demo_leads.sql'),
     ('column', 'public', 'demo_leads', 'primary_need', NULL, 'text', '20260915_demo_leads.sql'),

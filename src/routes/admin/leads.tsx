@@ -21,6 +21,7 @@ import {
   type LeadStatus,
 } from "@/lib/leads";
 import { LeadSummary, LeadsTable, StartBadge } from "@/components/admin/lead-views";
+import { CUSTOMERS, SELLS } from "@/lib/start-qualify";
 
 const DESCRIPTION = "Demo enquiries from the website — who asked, what they need, and where they are.";
 
@@ -54,6 +55,9 @@ function AdminLeads() {
   // The sheet always shows the freshest copy of the lead from the list.
   const open = useMemo(() => (data?.leads ?? []).find((l) => l.id === openId) ?? null, [data, openId]);
   const [unassignedOnly, setUnassignedOnly] = useState(false);
+  // Batch 75: the /start answers ("all", a value, or "none" = skipped).
+  const [sells, setSells] = useState("all");
+  const [customers, setCustomers] = useState("all");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -81,8 +85,8 @@ function AdminLeads() {
   }, [data]);
 
   const visible = useMemo(
-    () => filterLeads(data?.leads ?? [], { status, search, unassignedOnly }),
-    [data, status, search, unassignedOnly],
+    () => filterLeads(data?.leads ?? [], { status, search, unassignedOnly, sells, customers }),
+    [data, status, search, unassignedOnly, sells, customers],
   );
 
   const unassignedNew = (data?.leads ?? []).filter((l) => l.status === "new" && !l.assigned_to).length;
@@ -120,6 +124,20 @@ function AdminLeads() {
             ))}
           </TabsList>
         </Tabs>
+        <AnswerFilter
+          label="Sells"
+          value={sells}
+          onChange={setSells}
+          options={SELLS}
+          testId="filter-sells"
+        />
+        <AnswerFilter
+          label="Customers"
+          value={customers}
+          onChange={setCustomers}
+          options={CUSTOMERS}
+          testId="filter-customers"
+        />
         <div className="relative ml-auto w-full max-w-xs">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -352,5 +370,40 @@ function LeadSheet({
         ) : null}
       </SheetContent>
     </Sheet>
+  );
+}
+
+/** Batch 75: filter by a /start answer — any, one value, or skipped. */
+function AnswerFilter({
+  label,
+  value,
+  onChange,
+  options,
+  testId,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: ReadonlyArray<{ value: string; label: string }>;
+  testId: string;
+}) {
+  return (
+    <label className="inline-flex items-center gap-2 text-sm">
+      <span className="font-medium text-muted-foreground">{label}</span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        data-testid={testId}
+        className="h-9 rounded-full border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+      >
+        <option value="all">Any</option>
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+        <option value="none">— (skipped)</option>
+      </select>
+    </label>
   );
 }

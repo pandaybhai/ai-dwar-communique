@@ -9,6 +9,8 @@ import {
   type BrowserMetaEvent,
   type MetaParams,
   type MetaStandardEvent,
+  type MetaCustomEvent,
+  CUSTOM_EVENTS,
 } from "@/lib/meta-events";
 
 /**
@@ -252,7 +254,7 @@ function markFired(id: string): void {
  * events, sign-up, trial). Returns whether it went (or was logged in debug).
  */
 export function track(
-  event: MetaStandardEvent,
+  event: MetaStandardEvent | MetaCustomEvent,
   eventId: string,
   params: Record<string, unknown> = {},
   options: { once?: boolean } = {},
@@ -265,7 +267,9 @@ export function track(
       console.info("[meta-pixel]", event, { eventID: eventId, ...safe });
     } else {
       if (!ensurePixel()) return false;
-      (window as MetaWindow).fbq?.("track", event, safe, { eventID: eventId });
+      // Batch 75: a custom event (LeadQualified) goes as trackCustom.
+      const kind = (CUSTOM_EVENTS as readonly string[]).includes(event) ? "trackCustom" : "track";
+      (window as MetaWindow).fbq?.(kind, event, safe, { eventID: eventId });
     }
     if (options.once) markFired(eventId);
     return true;

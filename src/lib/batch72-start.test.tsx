@@ -38,8 +38,9 @@ import {
 import { fbcFromFbclid, leadEventId, pixelZone } from "./meta-events";
 
 const sha = (s: string) => createHash("sha256").update(s).digest("hex");
-const PHONE = "+919876543210";
-const LEAD_ID_FOR_PHONE = `Lead.${sha("919876543210")}`;
+// Batch 75: a realistic number — /start now refuses straight runs like 98765 43210.
+const PHONE = "+919812345670";
+const LEAD_ID_FOR_PHONE = `Lead.${sha("919812345670")}`;
 const FAKE_TOKEN = "TEST-not-a-real-token";
 const OWNER = "5c0f1a2b-3c4d-4e5f-8a9b-0c1d2e3f4a5b";
 
@@ -168,13 +169,13 @@ describe("/start: the sticky bar", () => {
 
 describe("/start: step 1 and the hand-over to /signup", () => {
   it("the form's own check: 10 digits get +91; a bad number is refused with Batch 66's sentence", () => {
-    expect(checkStartForm({ name: "Asha Rao", phone: "98765 43210" })).toEqual({
+    expect(checkStartForm({ name: "Asha Rao", phone: "98123 45670" })).toEqual({
       ok: true,
       name: "Asha Rao",
       phone: PHONE,
     });
     expect(checkStartForm({ phone: "12345" })).toMatchObject({ ok: false, field: "phone" });
-    expect(checkStartForm({ name: "A", phone: "9876543210" })).toMatchObject({
+    expect(checkStartForm({ name: "A", phone: "9812345670" })).toMatchObject({
       ok: false,
       field: "name",
     });
@@ -182,7 +183,7 @@ describe("/start: step 1 and the hand-over to /signup", () => {
 
   it("the number never goes in a URL: only campaign tags are carried to /signup", () => {
     expect(
-      signupSearchFrom("?utm_source=meta&utm_campaign=launch&phone=9876543210&name=Asha&fbclid=x"),
+      signupSearchFrom("?utm_source=meta&utm_campaign=launch&phone=9812345670&name=Asha&fbclid=x"),
     ).toEqual({
       utm_source: "meta",
       utm_campaign: "launch",
@@ -191,7 +192,9 @@ describe("/start: step 1 and the hand-over to /signup", () => {
     expect(form).toContain(
       'navigate({ to: "/signup", search: signupSearchFrom(window.location.search)',
     );
-    expect(form).toContain("writeStartPrefill({ name: checked.name, phone: checked.phone })");
+    // Batch 75: the hand-off moved into toSignup (after the two questions or Skip).
+    expect(form).toContain("const person = { name: checked.name, phone: checked.phone };");
+    expect(form).toContain("writeStartPrefill(person);");
   });
 
   it("sign-up reads the prefill from this tab's storage (editable fields)", async () => {
@@ -280,7 +283,7 @@ describe("(server) submitLead: the landing_start path, and /demo unchanged", () 
       {
         source: "landing_start",
         name: "Asha Rao",
-        phone: "98765 43210",
+        phone: "98123 45670",
         attribution: {
           utm_source: "meta",
           utm_campaign: "launch",
@@ -313,12 +316,12 @@ describe("(server) submitLead: the landing_start path, and /demo unchanged", () 
     const meta = { ip: "203.0.113.5", referrer: null };
     const a = await submitLead(
       w.supabase,
-      { source: "landing_start", phone: "9876543210" } as never,
+      { source: "landing_start", phone: "9812345670" } as never,
       meta,
     );
     const b = await submitLead(
       w.supabase,
-      { source: "landing_start", phone: "+91 98765 43210" } as never,
+      { source: "landing_start", phone: "+91 98123 45670" } as never,
       meta,
     );
     expect(a).toMatchObject({ ok: true, duplicate: false, name: null });
@@ -342,7 +345,7 @@ describe("(server) submitLead: the landing_start path, and /demo unchanged", () 
       primary_need: "replies",
       name: "Asha Rao",
       business_name: "ZOORI",
-      phone: "+91 98765 43210",
+      phone: "+91 98123 45670",
       consent: true,
       consent_version: "2026-09-15",
     };
@@ -357,7 +360,7 @@ describe("(server) submitLead: the landing_start path, and /demo unchanged", () 
       status: 400,
     });
     expect(
-      await submitLead(w.supabase, { ...full, phone: "9876543210" } as never, meta),
+      await submitLead(w.supabase, { ...full, phone: "9812345670" } as never, meta),
     ).toMatchObject({ ok: false, status: 400 });
     expect(await submitLead(w.supabase, full as never, meta)).toMatchObject({ ok: true });
     expect(w.rows("demo_leads")[0]).toMatchObject({
@@ -377,9 +380,9 @@ describe("(server) the Lead: one id per person, always sent, hashed matching onl
   });
 
   it("the id is 'Lead.' + sha256 of the E.164 number, however it was typed", async () => {
-    expect(await leadEventId("+91 98765 43210")).toBe(LEAD_ID_FOR_PHONE);
-    expect(await leadEventId("9876543210")).toBe(LEAD_ID_FOR_PHONE);
-    expect(await leadEventId("09876543210")).toBe(LEAD_ID_FOR_PHONE);
+    expect(await leadEventId("+91 98123 45670")).toBe(LEAD_ID_FOR_PHONE);
+    expect(await leadEventId("9812345670")).toBe(LEAD_ID_FOR_PHONE);
+    expect(await leadEventId("09812345670")).toBe(LEAD_ID_FOR_PHONE);
     expect(await leadEventId(null, OWNER)).toBe(`Lead.${OWNER}`);
     expect(fbcFromFbclid("IwAR0abcdefghij", 1794466925583)).toBe(
       "fb.1.1794466925583.IwAR0abcdefghij",
@@ -394,7 +397,7 @@ describe("(server) the Lead: one id per person, always sent, hashed matching onl
       request: post("https://aidwar.in/api/public/demo-leads", {
         source: "landing_start",
         name: "Asha Rao",
-        phone: "98765 43210",
+        phone: "98123 45670",
         meta_consent: false,
         fbclid: "IwAR0abcdefghij",
         fbclid_at: 1794466925583,
@@ -419,7 +422,7 @@ describe("(server) the Lead: one id per person, always sent, hashed matching onl
     });
     const leadId = String(w.rows("demo_leads")[0]!["id"]);
     expect(event["user_data"]).toEqual({
-      ph: [sha("919876543210")],
+      ph: [sha("919812345670")],
       fn: [sha("asha")],
       ln: [sha("rao")],
       external_id: [sha(leadId)],
@@ -429,7 +432,7 @@ describe("(server) the Lead: one id per person, always sent, hashed matching onl
       fbc: "fb.1.1794466925583.IwAR0abcdefghij",
     });
     // No raw personal data anywhere in what went to Meta.
-    expect(JSON.stringify(w.graph[0]!.body)).not.toMatch(/9876543210|98765|Asha|Rao|asha@/i);
+    expect(JSON.stringify(w.graph[0]!.body)).not.toMatch(/9812345670|98123|Asha|Rao|asha@/i);
   });
 
   it("/demo and sign-up send the same Lead id for the same number (Meta counts the person once)", async () => {
@@ -442,7 +445,7 @@ describe("(server) the Lead: one id per person, always sent, hashed matching onl
         primary_need: "replies",
         name: "Asha Rao",
         business_name: "ZOORI",
-        phone: "+91 98765 43210",
+        phone: "+91 98123 45670",
         consent: true,
         consent_version: "2026-09-15",
         meta_consent: false,
@@ -584,7 +587,7 @@ describe("Super Admin > Leads: a /start lead with only a number", () => {
     const meta = { ip: "203.0.113.5", referrer: null };
     // The sticky bar: a number and nothing else.
     expect(
-      await submitLead(w.supabase, { source: "landing_start", phone: "9876543210" } as never, meta),
+      await submitLead(w.supabase, { source: "landing_start", phone: "9812345670" } as never, meta),
     ).toMatchObject({ ok: true });
     // A /demo lead next to it, with every answer.
     expect(
@@ -642,7 +645,7 @@ describe("Super Admin > Leads: a /start lead with only a number", () => {
     const search = (q: string) =>
       filterLeads(rows, { status: "all", search: q, unassignedOnly: false }).map((l) => l.phone);
     expect(search("")).toHaveLength(2);
-    expect(search("98765")).toEqual([PHONE]);
+    expect(search("98123")).toEqual([PHONE]);
     expect(search("kumar")).toEqual(["+919123456789"]);
     expect(search("sarees")).toEqual(["+919123456789"]);
     expect(search("nobody")).toEqual([]);

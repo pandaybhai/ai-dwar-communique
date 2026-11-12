@@ -241,8 +241,6 @@ describe("only the audited places call the phone rule", () => {
       "lib/contact-import.ts",
       "lib/default-country.ts",
       "lib/handoff-alerts.server.ts",
-      // Batch 72: the /start form's number (server and the form's own check).
-      "lib/leads.server.ts",
       // Batch 70: the owner's own phone, normalised before hashing for Meta.
       "lib/meta-events.ts",
       "lib/phone.ts",
@@ -256,7 +254,9 @@ describe("only the audited places call the phone rule", () => {
       "lib/public-api-inbox.server.ts",
       "lib/public-api-send.server.ts",
       "lib/public-api-session.server.ts",
-      "lib/start-page.ts",
+      // Batch 75: the /start number rule (Batch 66's rule + fake numbers) lives
+      // here; leads.server.ts and start-page.ts (Batch 72) call checkRealNumber.
+      "lib/start-qualify.ts",
       "routes/api/ai/employee.ts",
       "routes/api/contacts/import.ts",
       "routes/api/onboarding/start.ts",
