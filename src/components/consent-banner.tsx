@@ -16,6 +16,8 @@ export function ConsentBanner({
       role="region"
       aria-label="Cookies"
       data-testid="meta-consent-banner"
+      // Batch 72: above /start's bottom bar when it is on screen (0 elsewhere).
+      style={{ bottom: "var(--aidwar-bottom-bar, 0px)" }}
       className="fixed inset-x-0 bottom-0 z-50 border-t border-border bg-background/95 px-4 py-3 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/80"
     >
       <div className="mx-auto flex max-w-5xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

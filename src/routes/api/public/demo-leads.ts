@@ -35,23 +35,37 @@ export const Route = createFileRoute("/api/public/demo-leads")({
         });
 
         if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
-        // Batch 70: Lead's server copy, only when the visitor accepted the
-        // cookie banner (the pixel fired with this same id) and it isn't a repeat.
-        // The lead's own details are never sent.
-        if (!result.duplicate && body["meta_consent"] === true) {
-          const { isEventId } = await import("@/lib/meta-events");
-          const id = body["meta_event_id"];
-          if (isEventId(id) && id.startsWith("Lead.")) {
-            const { queueMetaEvent } = await import("@/lib/meta-capi.server");
-            await queueMetaEvent(getServiceClient(), {
-              event: "Lead",
-              eventId: id,
-              sourceUrl: request.headers.get("referer"),
-              request,
-            });
-          }
+        // Batch 72: Lead to Meta's Conversions API for every lead, whatever
+        // the cookie banner said (as our other server events; the browser
+        // pixel still waits for Accept). One id per person — "Lead." +
+        // sha256 of the number — so /start, /demo and sign-up count once.
+        // Only hashed matching (number, name, lead id); fbc from the fbclid
+        // the visitor arrived with, never stored.
+        let meta: import("@/lib/meta-events").BrowserMetaEvent | null = null;
+        try {
+          const { fbcFromFbclid, leadEventId, safeParams } = await import("@/lib/meta-events");
+          const start = body["source"] === "landing_start";
+          const eventId = await leadEventId(result.phone ?? null, result.id);
+          const params = safeParams({
+            content_name: start ? "start_free_trial" : "demo",
+            lead_source: start ? "landing_start" : "landing",
+          });
+          const { queueMetaEvent } = await import("@/lib/meta-capi.server");
+          await queueMetaEvent(getServiceClient(), {
+            event: "Lead",
+            eventId,
+            params,
+            sourceUrl: request.headers.get("referer"),
+            request,
+            lead: { phone: result.phone ?? null, name: result.name ?? null, leadId: result.id },
+            fbc: fbcFromFbclid(body["fbclid"], body["fbclid_at"]),
+            once: true,
+          });
+          meta = { event: "Lead", event_id: eventId, params };
+        } catch {
+          meta = null; // the lead is saved; measurement never changes the answer
         }
-        return Response.json({ ok: true, duplicate: result.duplicate });
+        return Response.json({ ok: true, duplicate: result.duplicate, meta });
       },
     },
   },

@@ -38,11 +38,46 @@ export const LEAD_STATUSES: Array<{ value: LeadStatus; label: string }> = [
   { value: "lost", label: "Lost" },
 ];
 
+/** A missing answer (a /start lead has none) reads as "—". */
+export const NO_ANSWER = "—";
+
 export function labelFor(
   options: ReadonlyArray<{ value: string; label: string }>,
-  value: string,
+  value: string | null | undefined,
 ): string {
+  if (!value) return NO_ANSWER;
   return options.find((o) => o.value === value)?.label ?? value;
+}
+
+/** Batch 72: the ad landing page's source; its leads carry only a number (and maybe a name). */
+export const START_LEAD_SOURCE = "landing_start";
+
+export function isStartLead(lead: Pick<LeadRow, "source">): boolean {
+  return lead.source === START_LEAD_SOURCE;
+}
+
+/** The lead's heading: business, else the person's name, else the number. */
+export function leadTitle(lead: Pick<LeadRow, "business_name" | "name" | "phone">): string {
+  return lead.business_name?.trim() || lead.name?.trim() || lead.phone;
+}
+
+/** "Name · +91…", leaving out a name the lead didn't give. */
+export function leadContact(lead: Pick<LeadRow, "name" | "phone">): string {
+  return [lead.name?.trim(), lead.phone].filter(Boolean).join(" · ");
+}
+
+/** The admin search: name, business or number; any of them may be missing. */
+export function leadMatches(
+  lead: Pick<LeadRow, "name" | "business_name" | "phone">,
+  needle: string,
+): boolean {
+  const n = needle.trim().toLowerCase();
+  if (!n) return true;
+  return (
+    (lead.name ?? "").toLowerCase().includes(n) ||
+    (lead.business_name ?? "").toLowerCase().includes(n) ||
+    (lead.phone ?? "").includes(n)
+  );
 }
 
 export type LeadSubmission = {
@@ -65,11 +100,12 @@ export type LeadRow = {
   id: string;
   created_at: string;
   updated_at: string;
-  business_type: string;
-  enquiry_band: string;
-  primary_need: string;
-  name: string;
-  business_name: string;
+  /** Batch 72: NULL for a /start lead (source "landing_start"); every other source has them. */
+  business_type: string | null;
+  enquiry_band: string | null;
+  primary_need: string | null;
+  name: string | null;
+  business_name: string | null;
   phone: string;
   website: string | null;
   consent: boolean;
@@ -99,3 +135,27 @@ export type LeadNote = {
   body: string;
   created_at: string;
 };
+
+/** "12 Nov, 10:05 am" for the admin list and sheet; "—" when there is no time. */
+export function leadTime(value: string | null): string {
+  if (!value) return NO_ANSWER;
+  return new Date(value).toLocaleString("en-IN", {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+/** The admin list's filter: status tab, "unassigned new" toggle and the null-safe search. */
+export function filterLeads<T extends LeadRow>(
+  leads: T[],
+  opts: { status: LeadStatus | "all"; search: string; unassignedOnly: boolean },
+): T[] {
+  return leads.filter(
+    (l) =>
+      (opts.status === "all" || l.status === opts.status) &&
+      (!opts.unassignedOnly || (l.status === "new" && !l.assigned_to)) &&
+      leadMatches(l, opts.search),
+  );
+}

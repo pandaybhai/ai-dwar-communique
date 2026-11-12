@@ -124,7 +124,9 @@ function PrivacyPage() {
           account id hashed (never in plain text). This is only about you as an AiDwar customer:
           your own customers, contacts, messages and workspace content are never shared with Meta
           for this. You can opt out at any time: press Decline on the banner (or clear this site's
-          cookies), and in Settings turn on "Don't share my activity with Meta".
+          cookies), and in Settings turn on "Don't share my activity with Meta". When you submit a
+          form or create an account, we share a one-way hashed (encrypted) version of your phone
+          number and email with Meta to measure our ads. Meta cannot read the original.
         </p>
       </Section>
 

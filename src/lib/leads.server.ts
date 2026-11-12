@@ -5,7 +5,7 @@
  * never read another business's sales enquiries.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { normalizePhone } from "./phone";
+import { DEFAULT_COUNTRY_CODE, normalizePhone, typedPhone } from "./phone";
 import {
   BUSINESS_TYPES,
   CONSENT_VERSION,
@@ -34,8 +34,20 @@ const ATTRIBUTION_KEYS = [
  */
 
 export type LeadResult =
-  | { ok: true; id: string; duplicate: boolean }
+  | {
+      ok: true;
+      id: string;
+      duplicate: boolean;
+      /** Batch 72: the number as saved (E.164) and the name, for the Lead's hashed matching. */
+      phone?: string;
+      name?: string | null;
+    }
   | { ok: false; error: string; status: number };
+
+/** Batch 72: the /start ad landing page's form (name optional, number required). */
+export const START_SOURCE = "landing_start";
+/** The /start consent line ("By continuing you agree we may contact you on WhatsApp about your trial."). */
+export const START_CONSENT_VERSION = "start-2026-11-12";
 
 function str(value: unknown, max: number): string {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
@@ -89,6 +101,10 @@ export async function submitLead(
   // Honeypot — a real person never fills a hidden field.
   if (str(body.company_website_confirm, 200)) {
     return { ok: false, error: "We couldn't send that request.", status: 400 };
+  }
+  // Batch 72: the /start page has its own, shorter form.
+  if ((body as { source?: unknown }).source === START_SOURCE) {
+    return submitStartLead(supabase, body, meta);
   }
 
   const business_type = str(body.business_type, 40);
@@ -165,7 +181,8 @@ export async function submitLead(
     .gte("created_at", dedupeSince)
     .limit(1)
     .maybeSingle();
-  if (existing) return { ok: true, id: (existing as { id: string }).id, duplicate: true };
+  if (existing)
+    return { ok: true, id: (existing as { id: string }).id, duplicate: true, phone, name };
 
   const attribution = cleanAttribution(body.attribution as Record<string, unknown>);
 
@@ -194,7 +211,85 @@ export async function submitLead(
   if (error || !data) {
     return { ok: false, error: "We couldn't save that just now. Please try again.", status: 500 };
   }
-  return { ok: true, id: (data as { id: string }).id, duplicate: false };
+  return { ok: true, id: (data as { id: string }).id, duplicate: false, phone, name };
+}
+
+/**
+ * Batch 72: a /start lead — the WhatsApp number (Batch 66's rule: a 10-digit
+ * number gets +91) and, when given, a name. No qualification answers (NULL,
+ * allowed only for this source by 20261380); consent is the line under the
+ * button (START_CONSENT_VERSION). Same rate limit and same 10-minute
+ * duplicate rule as the /demo form; ad click ids are never stored.
+ */
+async function submitStartLead(
+  supabase: SupabaseClient,
+  body: Partial<LeadSubmission>,
+  meta: { ip: string | null; referrer: string | null },
+): Promise<LeadResult> {
+  const typed = typedPhone(str(body.phone, 30), DEFAULT_COUNTRY_CODE);
+  if ("error" in typed) return { ok: false, error: typed.error, status: 400 };
+  const phone = typed.phone;
+
+  const name = str(body.name, 100) || null;
+  if (name !== null && name.length < 2) {
+    return { ok: false, error: "Please enter your name.", status: 400 };
+  }
+
+  const ipHash = meta.ip ? await hashIp(meta.ip) : null;
+  if (ipHash) {
+    const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const { count } = await supabase
+      .from("demo_leads")
+      .select("id", { count: "exact", head: true })
+      .eq("ip_hash", ipHash)
+      .gte("created_at", since);
+    if ((count ?? 0) >= 5) {
+      return {
+        ok: false,
+        error: "We've already got a few requests from here. Please try again later.",
+        status: 429,
+      };
+    }
+  }
+
+  const dedupeSince = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+  const { data: existing } = await supabase
+    .from("demo_leads")
+    .select("id")
+    .eq("phone", phone)
+    .gte("created_at", dedupeSince)
+    .limit(1)
+    .maybeSingle();
+  if (existing)
+    return { ok: true, id: (existing as { id: string }).id, duplicate: true, phone, name };
+
+  const attribution = cleanAttribution(body.attribution as Record<string, unknown>);
+  const { data, error } = await supabase
+    .from("demo_leads")
+    .insert({
+      business_type: null,
+      enquiry_band: null,
+      primary_need: null,
+      name,
+      business_name: null,
+      phone,
+      website: null,
+      consent: true,
+      consent_version: START_CONSENT_VERSION,
+      consent_at: new Date().toISOString(),
+      landing_path: "/start",
+      referrer_host: referrerHost(meta.referrer),
+      first_attribution: attribution,
+      latest_attribution: attribution,
+      source: START_SOURCE,
+      ip_hash: ipHash,
+    })
+    .select("id")
+    .single();
+  if (error || !data) {
+    return { ok: false, error: "We couldn't save that just now. Please try again.", status: 500 };
+  }
+  return { ok: true, id: (data as { id: string }).id, duplicate: false, phone, name };
 }
 
 /* ---------------------------------------------------------------- admin --- */
