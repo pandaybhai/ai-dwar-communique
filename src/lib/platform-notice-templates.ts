@@ -146,10 +146,11 @@ export const FINISH_SIGNUP_TEMPLATE_NAME = "aidwar_finish_signup";
 
 /**
  * Batch 76: the alert to the sales numbers for every new lead (utility, en;
- * body "New AiDwar lead: {{1}} ({{2}}). Sells: {{3}}. Customers: {{4}}.
- * Source: {{5}}.", URL button "Open lead" →
- * https://aidwar.in/admin/leads?lead={{1}}). Created by hand in the Ai Dwar
- * workspace; the code only reads it (lead-alerts.server.ts).
+ * body "You have a new lead on AiDwar.\nName: {{1}}\nWhatsApp: {{2}}\nSells:
+ * {{3}}\nCustomers: {{4}}\nSource: {{5}}\nPlease follow up with them today.",
+ * URL button "Open lead" → https://aidwar.in/admin/leads?lead={{1}} with the
+ * lead id). Already submitted in the Ai Dwar workspace; the code only reads
+ * it (lead-alerts.server.ts, LEAD_ALERT_BODY).
  */
 export const LEAD_ALERT_TEMPLATE_NAME = "aidwar_new_lead_alert";
 
