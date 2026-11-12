@@ -66,58 +66,14 @@ describe("/start: the page", () => {
     expect(pixelZone("/start")).toBe("public");
   });
 
-  it("has the brief's copy, in order", () => {
-    const text = html
-      .replace(/<[^>]+>/g, " ")
-      .replace(/&#x27;|&#39;/g, "'")
-      .replace(/\s+/g, " ");
-    const inOrder = [
-      "Official WhatsApp Business API · Made in Hyderabad",
-      "Your customers read WhatsApp. Not your emails.",
-      "Send offers that get opened, let AI reply to every customer 24×7, and win back buyers who went quiet — all from your own WhatsApp number.",
-      "Free trial · No card needed · Set up in 10 minutes",
-      "Businesses already growing on AiDwar",
-      "ZOORI Jewels",
-      "TalentDwar",
-      "Meezoy",
-      "Fanzart",
-      "to go live",
-      "AI replies",
-      "customers reached in one Diwali campaign",
-      "Three leaks costing you sales — fixed",
-      "Your broadcasts get ignored or blocked.",
-      "Customers message at 11pm. Nobody replies.",
-      "Buyers come once and never return.",
-      "Live on AiDwar Growth",
-      "ZOORI Jewels, Hyderabad",
-      "Sent their Diwali offer to 1,900+ customers from one dashboard.",
-      "How it works",
-      "Connect your WhatsApp number",
-      "Import your customers",
-      "Send your first campaign",
-      "Campaigns",
-      "AI replies (Aiden)",
-      "Flows & automations",
-      "Shared team inbox",
-      "Shopify & API",
-      "Works with Claude/ChatGPT via MCP",
-      "Start free. Plans from ₹2,499/month. Pay for WhatsApp messages only when you send.",
-      "Is this the official WhatsApp API?",
-      "Will my number get banned?",
-      "Do I need a developer?",
-      "What does it cost?",
-      "Your next sale is already in your customers' WhatsApp.",
-    ];
-    let at = 0;
-    for (const phrase of inOrder) {
-      const next = text.indexOf(phrase.replace(/&/g, "&amp;"), at);
-      const plain = text.indexOf(phrase, at);
-      const found = next >= 0 ? next : plain;
-      expect(found, phrase).toBeGreaterThanOrEqual(0);
-      at = found;
-    }
-    // Only true numbers: no other figures in the numbers row.
+  // Batch 73 replaced the page's copy (design + motion + copy only); the full
+  // Batch 73 copy, in order, is checked in batch73-start-v2.test.tsx. What
+  // Batch 72 needs from the copy still holds: the true figure and the form line.
+  it("keeps Batch 72's true figure and the form's promise line", () => {
+    const text = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
     expect(text).toContain("1,900+");
+    expect(text).toContain("customers reached in one Diwali campaign");
+    expect(text).toContain("Free trial · No card · Live in 10 minutes");
   });
 
   it("no site navigation and no link farm: only Privacy and Terms (twice the consent link)", () => {
@@ -600,7 +556,7 @@ describe("(browser) the Lead pixel: only after Accept, same id", () => {
 });
 
 describe("/start: the hero phone is an example, not a real customer's chat", () => {
-  it("the chat header is 'Your Jewellery Store' (YS); ZOORI appears only in the logo strip and the case study", async () => {
+  it("the chat header is 'Your Jewellery Store' (YS); ZOORI appears only in the logo strip, the case study and the bar's line", async () => {
     const { PhoneChat } = await import("@/components/start/phone-chat");
     const chat = renderToStaticMarkup(<PhoneChat />);
     expect(chat).toContain("Your Jewellery Store");
@@ -610,8 +566,11 @@ describe("/start: the hero phone is an example, not a real customer's chat", () 
 
     const page = renderToStaticMarkup(<StartPage plans={PLANS} gstRegistered={false} />);
     const text = page.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
-    // Exactly two: the logo strip ("ZOORI Jewels") and the case study ("ZOORI Jewels, Hyderabad").
-    expect(text.match(/ZOORI/g)).toHaveLength(2);
+    // Batch 73: ZOORI only where it is true — the logo marquee (its list twice,
+    // the copy aria-hidden), the case study's name and the sticky bar's
+    // "Join ZOORI Jewels, Meezoy and more". Never in a chat.
+    expect(text.match(/ZOORI/g)).toHaveLength(4);
+    expect(text.match(/ZOORI Jewels/g)).toHaveLength(4);
     expect(text).toContain("Live on AiDwar Growth");
   });
 });

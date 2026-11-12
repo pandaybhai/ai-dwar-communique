@@ -19,8 +19,10 @@ export const StartLeadForm = forwardRef<
   {
     variant: "hero" | "final" | "bar";
     className?: string;
+    /** Batch 73: the sticky bar's button shimmers now and then until the visitor interacts. */
+    shimmer?: boolean;
   }
->(function StartLeadForm({ variant, className }, ref) {
+>(function StartLeadForm({ variant, className, shimmer }, ref) {
   const id = useId();
   const navigate = useNavigate();
   const [name, setName] = useState("");
@@ -136,7 +138,9 @@ export const StartLeadForm = forwardRef<
         className={cn(
           "inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-success px-5 text-base font-bold text-success-foreground shadow-[0_10px_28px_-12px_var(--success)] transition hover:bg-success/90 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-success/30 disabled:opacity-80",
           bar ? "shrink-0" : "w-full",
+          shimmer !== undefined && "s73-shimmer",
         )}
+        data-shimmer={shimmer === undefined ? undefined : shimmer ? "on" : "off"}
       >
         {sending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
         Start free trial
@@ -154,7 +158,7 @@ export const StartLeadForm = forwardRef<
       {!bar ? (
         <>
           <p className="text-center text-sm font-medium text-foreground/80">
-            Free trial · No card needed · Set up in 10 minutes
+            Free trial · No card · Live in 10 minutes
           </p>
           <p className="text-center text-xs text-muted-foreground">
             By continuing you agree we may contact you on WhatsApp about your trial.{" "}

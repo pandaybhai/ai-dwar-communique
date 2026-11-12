@@ -8,7 +8,9 @@ import { StartLeadForm } from "@/components/start/start-lead-form";
  * home indicator, and above the keyboard while typing); on a desktop it is a
  * slim bar at the top. It appears once the hero form has scrolled out of
  * view and hides whenever the hero form or the final form is on screen. The
- * cookie banner sits above it (--aidwar-bottom-bar).
+ * cookie banner sits above it (--aidwar-bottom-bar). Batch 73: the button
+ * shimmers every few seconds until the first interaction, and the desktop bar
+ * says who already uses AiDwar.
  */
 export function StartStickyBar({
   heroForm,
@@ -24,7 +26,20 @@ export function StartStickyBar({
   });
   const barRef = useRef<HTMLDivElement | null>(null);
   const [keyboardLift, setKeyboardLift] = useState(0);
+  // Batch 73: the button's shimmer runs until the visitor first interacts with the page.
+  const [shimmer, setShimmer] = useState(true);
   const visible = stickyBarVisible(state);
+
+  useEffect(() => {
+    const stop = () => setShimmer(false);
+    const opts = { once: true, passive: true } as const;
+    window.addEventListener("pointerdown", stop, opts);
+    window.addEventListener("keydown", stop, opts);
+    return () => {
+      window.removeEventListener("pointerdown", stop);
+      window.removeEventListener("keydown", stop);
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof IntersectionObserver === "undefined") return;
@@ -78,7 +93,7 @@ export function StartStickyBar({
           "fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/95 px-3 pt-3 shadow-[0_-12px_30px_-18px_rgba(6,40,28,0.35)] backdrop-blur transition-transform duration-300 ease-out motion-reduce:transition-none md:hidden",
         )}
       >
-        <StartLeadForm variant="bar" />
+        <StartLeadForm variant="bar" shimmer={shimmer} />
       </div>
       {/* Desktop: a slim bar at the top. */}
       <div
@@ -89,10 +104,14 @@ export function StartStickyBar({
         className="fixed inset-x-0 top-0 z-40 hidden border-b border-border bg-background/90 backdrop-blur transition-transform duration-300 ease-out motion-reduce:transition-none md:block"
       >
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-6 px-6 py-2.5">
-          <span className="text-sm font-semibold text-foreground">
-            Your customers read WhatsApp. Start free today.
+          <span className="flex items-center gap-2 text-sm font-semibold text-foreground">
+            <span className="relative flex h-2 w-2" aria-hidden="true">
+              <span className="absolute inline-flex h-full w-full rounded-full bg-success opacity-60 motion-safe:animate-ping" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-success" />
+            </span>
+            Join ZOORI Jewels, Meezoy and more
           </span>
-          <StartLeadForm variant="bar" className="w-[460px]" />
+          <StartLeadForm variant="bar" className="w-[460px]" shimmer={shimmer} />
         </div>
       </div>
     </>

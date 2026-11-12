@@ -11,10 +11,10 @@ import { cn } from "@/lib/utils";
  * motion shows the finished chat, still.
  */
 
-type Step = { at: number; show: number; typing: "customer" | "business" | null };
+export type ChatStep = { at: number; show: number; typing: "customer" | "business" | null };
 
 /** step index → bubbles shown (0..5: broadcast, q, answer, yes, toast) and who is typing. */
-const SCRIPT: Step[] = [
+const SCRIPT: ChatStep[] = [
   { at: 0, show: 1, typing: null },
   { at: 900, show: 1, typing: "customer" },
   { at: 2300, show: 2, typing: null },
@@ -25,12 +25,17 @@ const SCRIPT: Step[] = [
   { at: 7000, show: 5, typing: null },
 ];
 const LOOP_MS = 11_500;
+export const FINAL_CHAT_STEP: ChatStep = SCRIPT[SCRIPT.length - 1]!;
 
-function useChatStep(): Step {
-  const final = SCRIPT[SCRIPT.length - 1]!;
-  const [step, setStep] = useState<Step>(final);
+/**
+ * The chat's position in its loop. It plays only while `active` (on screen)
+ * and never under reduced motion; the server and reduced motion show the
+ * finished chat.
+ */
+export function useChatStep(active = true): ChatStep {
+  const [step, setStep] = useState<ChatStep>(FINAL_CHAT_STEP);
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (!active || typeof window === "undefined") return;
     if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
     let timers: ReturnType<typeof setTimeout>[] = [];
     const run = () => {
@@ -40,7 +45,7 @@ function useChatStep(): Step {
     setStep(SCRIPT[0]!);
     run();
     return () => timers.forEach(clearTimeout);
-  }, []);
+  }, [active]);
   return step;
 }
 
@@ -85,7 +90,7 @@ function Typing({ side, on }: { side: "in" | "out"; on: boolean }) {
       {[0, 1, 2].map((i) => (
         <span
           key={i}
-          className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#667781]"
+          className="h-1.5 w-1.5 rounded-full bg-[#667781] motion-safe:animate-bounce"
           style={{ animationDelay: `${i * 120}ms` }}
         />
       ))}
@@ -93,14 +98,28 @@ function Typing({ side, on }: { side: "in" | "out"; on: boolean }) {
   );
 }
 
-export function PhoneChat() {
-  const step = useChatStep();
+export function PhoneChat({
+  step: given,
+  className,
+}: {
+  /** The hero drives the chat (and its chips) from outside; alone it plays itself. */
+  step?: ChatStep;
+  className?: string;
+} = {}) {
+  const own = useChatStep(given === undefined);
+  const step = given ?? own;
   return (
     <div
-      className="relative mx-auto w-full max-w-[300px] lg:max-w-[340px]"
+      className={cn("relative mx-auto w-full max-w-[300px] lg:max-w-[340px]", className)}
       role="img"
       aria-label="An example WhatsApp chat: a jewellery store sends a Diwali offer, a customer asks for a 22k gold chain, Aiden replies with the price and offers to hold it, the customer says yes, and the order is held."
     >
+      <span
+        aria-hidden="true"
+        className="absolute -top-3 right-6 z-10 rounded-full border border-white/20 bg-[#0b1f17] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/85"
+      >
+        Example
+      </span>
       <div className="rounded-[2.4rem] bg-[#0b1f17] p-2.5 shadow-[0_40px_80px_-30px_rgba(6,40,28,0.55)] ring-1 ring-black/5">
         <div className="overflow-hidden rounded-[1.9rem] bg-[#efeae2]">
           <div className="flex items-center gap-2.5 bg-[#075e54] px-4 pb-3 pt-4 text-white">
@@ -116,8 +135,8 @@ export function PhoneChat() {
           </div>
           <div className="relative flex h-[360px] flex-col gap-2 px-3 pb-14 pt-3">
             <Bubble shown={step.show >= 1} side="out" time="10:02">
-              <span className="font-semibold">Diwali offer:</span> 20% off making charges till
-              Sunday 🪔
+              <span className="font-semibold">Diwali offer:</span> making charges waived till Sunday
+              🪔
             </Bubble>
             <Bubble shown={step.show >= 2} side="in" time="10:05">
               Is the gold chain available in 22k?
