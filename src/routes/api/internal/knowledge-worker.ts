@@ -201,11 +201,29 @@ export const Route = createFileRoute("/api/internal/knowledge-worker")({
             );
           }
 
+          // Batch 75: one "finish sign-up" reminder to /start leads who didn't
+          // sign up (30 min after the lead; never twice; daily-limit aware).
+          let startReminders: { sent: number; skipped: string | null } = { sent: 0, skipped: null };
+          try {
+            const { runStartReminders } = await import("@/lib/start-reminders.server");
+            if (tickEnds - Date.now() >= NUDGES_MIN_MS) {
+              startReminders = await runStartReminders(supabase);
+            } else {
+              startReminders = { sent: 0, skipped: "deadline" };
+            }
+          } catch (error) {
+            console.error(
+              "[start-reminder] failed",
+              error instanceof Error ? error.message : String(error),
+            );
+          }
+
           return Response.json({
             claimed: claimed.length,
             done,
             failed,
             nudges,
+            start_reminders: startReminders,
             embeddings,
             ...(personaDeferred > 0 ? { persona_deferred: personaDeferred } : {}),
             ...(personaCaughtUp > 0 ? { persona_caught_up: personaCaughtUp } : {}),

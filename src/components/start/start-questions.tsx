@@ -5,25 +5,28 @@ import { cn } from "@/lib/utils";
 
 /**
  * Batch 75: the two taps after name + number on /start — what they sell and
- * how many customers they have. One tap each, no typing; "Continue to sign
- * up →" once both are picked, and "Skip" so nobody is ever blocked. The
- * parent saves the answers (bound to its own lead by a signed cookie) and
- * moves on to /signup either way.
+ * how many customers they have. One tap each, no typing. Both are required:
+ * "Continue to sign up →" stays disabled until both are picked (no skip).
+ * The parent saves the answers (bound to its own lead by a signed cookie)
+ * and then goes to /signup.
  */
 export function StartQuestions({
   onDone,
   busy = false,
   autoFocus = true,
+  initial,
   className,
 }: {
-  onDone: (answers: { sells: Sells; customers: Customers } | null) => void;
+  onDone: (answers: { sells: Sells; customers: Customers }) => void;
   busy?: boolean;
   autoFocus?: boolean;
+  /** The reminder link brings a lead back with the answers they already gave. */
+  initial?: { sells?: Sells | null; customers?: Customers | null };
   className?: string;
 }) {
   const id = useId();
-  const [sells, setSells] = useState<Sells | null>(null);
-  const [customers, setCustomers] = useState<Customers | null>(null);
+  const [sells, setSells] = useState<Sells | null>(initial?.sells ?? null);
+  const [customers, setCustomers] = useState<Customers | null>(initial?.customers ?? null);
   const first = useRef<HTMLButtonElement | null>(null);
   useEffect(() => {
     if (autoFocus) first.current?.focus({ preventScroll: true });
@@ -39,7 +42,7 @@ export function StartQuestions({
       )}
     >
       <p className="text-sm font-semibold text-success" role="status">
-        ✓ Got it — two quick taps and you're in.
+        ✓ Got it — two quick taps and you&apos;re in.
       </p>
       <Chips
         id={`${id}-sells`}
@@ -66,16 +69,6 @@ export function StartQuestions({
         Continue to sign up
         {!busy ? <ArrowRight className="h-4 w-4" aria-hidden="true" /> : null}
       </button>
-      <p className="text-center">
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => onDone(null)}
-          className="min-h-11 px-3 text-sm font-medium text-muted-foreground underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-success"
-        >
-          Skip
-        </button>
-      </p>
     </div>
   );
 }

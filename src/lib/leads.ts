@@ -128,6 +128,8 @@ export type LeadRow = {
   is_test: boolean;
   /** Batch 75: the /start answers ({ sells, customers, answered_at }); {} when skipped or /demo. */
   qualification?: { sells?: string; customers?: string; answered_at?: string } | null;
+  /** Batch 75: when the one "finish sign-up" WhatsApp reminder went (null = not reminded). */
+  nudged_at?: string | null;
 };
 
 export type LeadNote = {

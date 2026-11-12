@@ -136,11 +136,20 @@ export const BILLING_TEMPLATES: BillingTemplateSpec[] = [
 ];
 
 /** Every AiDwar notice template name, exactly (never a prefix match). */
+/**
+ * Batch 75: the one reminder to a /start lead who didn't finish signing up
+ * (utility, en; body "Hi {{1}}, …", URL button "Finish sign-up" →
+ * https://aidwar.in/start/continue?t={{1}}). Created by hand in the Ai Dwar
+ * workspace; the code only reads it (start-reminders.server.ts).
+ */
+export const FINISH_SIGNUP_TEMPLATE_NAME = "aidwar_finish_signup";
+
 export const PLATFORM_NOTICE_TEMPLATE_NAMES: ReadonlySet<string> = new Set([
   ...BILLING_TEMPLATES.map((t) => t.name),
   CODE_TEMPLATE_NAME,
   RESUME_TEMPLATE_NAME,
   RESUME_LINK_TEMPLATE_NAME,
+  FINISH_SIGNUP_TEMPLATE_NAME,
 ]);
 
 export function isPlatformNoticeTemplate(name: unknown): boolean {

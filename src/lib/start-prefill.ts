@@ -38,3 +38,23 @@ export function clearStartPrefill(): void {
     // nothing to clear
   }
 }
+
+/**
+ * Batch 75: tells the server this new account came from /start, so the
+ * reminder never goes to someone who already signed up. The lead is read from
+ * the signed /start cookie on the server (never from here); keepalive lets it
+ * finish while the page moves on. Never blocks or fails sign-up.
+ */
+export function linkStartLead(userId: string): void {
+  try {
+    void fetch("/api/public/start-link", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ user_id: userId }),
+      keepalive: true,
+    }).catch(() => undefined);
+  } catch {
+    // linking is a courtesy; sign-up never waits on it
+  }
+}

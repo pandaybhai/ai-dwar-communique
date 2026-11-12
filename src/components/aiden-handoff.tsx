@@ -40,10 +40,11 @@ export function AidenHandoff({
         <Button
           asChild
           size="lg"
-          className={`${compact ? "h-12 w-full sm:w-auto" : "mt-8 h-14 w-full"} rounded-full text-base transition-all duration-200`}
+          className={`${compact ? "h-14 w-full sm:w-auto" : "mt-8 h-14 w-full"} rounded-full bg-success px-6 text-lg font-bold text-success-foreground transition-all duration-200 hover:bg-success/90`}
         >
+          {/* Batch 75: the primary action — the owner starts the chat, so it's free. */}
           <a href={waLink} target="_blank" rel="noreferrer">
-            Say hello to Aiden
+            Talk to Aiden on WhatsApp →
           </a>
         </Button>
 

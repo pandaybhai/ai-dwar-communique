@@ -19,8 +19,8 @@ import type { Customers, Sells } from "@/lib/start-qualify";
  *
  * Batch 75: once the lead is saved, the same card (the sticky bar: a sheet)
  * asks two one-tap questions — what they sell, how many customers — saved to
- * that lead through its signed cookie, then /signup exactly as before. "Skip"
- * goes straight on. A hidden honeypot field catches bots.
+ * that lead through its signed cookie, then /signup exactly as before. Both
+ * are required (no skip). A hidden honeypot field catches bots.
  */
 export const StartLeadForm = forwardRef<
   HTMLFormElement,
@@ -48,22 +48,21 @@ export const StartLeadForm = forwardRef<
     await navigate({ to: "/signup", search: signupSearchFrom(window.location.search) as never });
   }
 
-  async function answer(answers: { sells: Sells; customers: Customers } | null) {
-    if (!asked || saving) return;
+  // Batch 75 (required): /signup only after both answers are picked.
+  async function answer(answers: { sells: Sells; customers: Customers }) {
+    if (!asked || saving || !answers.sells || !answers.customers) return;
     setSaving(true);
-    if (answers) {
-      try {
-        const res = await fetch("/api/public/start-qualify", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          credentials: "same-origin",
-          body: JSON.stringify(answers),
-        });
-        const out = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-        fireFromServer((out["meta"] as BrowserMetaEvent | null | undefined) ?? null);
-      } catch {
-        // the answers are a nicety; the visitor always carries on
-      }
+    try {
+      const res = await fetch("/api/public/start-qualify", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify(answers),
+      });
+      const out = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      fireFromServer((out["meta"] as BrowserMetaEvent | null | undefined) ?? null);
+    } catch {
+      // both answers were given; a busy network never strands the visitor
     }
     await toSignup(asked);
   }
@@ -103,17 +102,13 @@ export const StartLeadForm = forwardRef<
       setError({ field: "phone", text: String(body["error"] ?? "Please check your number.") });
       return;
     }
-    // Saved, a repeat, or the network was busy: the visitor carries on either way.
+    // Saved, a repeat, or the network was busy: the visitor carries on.
     fireFromServer((body["meta"] as BrowserMetaEvent | null | undefined) ?? null);
     const person = { name: checked.name, phone: checked.phone };
     setSending(false);
-    // Batch 75: a saved lead gets the two questions; no answer from the server
-    // (a busy network) goes straight on as before.
-    if (next === "questions") {
-      setAsked(person);
-      return;
-    }
-    await toSignup(person);
+    // Batch 75: the two questions are required before /signup — whether the
+    // lead request was saved, repeated or went unanswered (a busy network).
+    setAsked(person);
   }
 
   const field =
@@ -250,19 +245,12 @@ function QuestionsSheet({
   onDone,
   busy,
 }: {
-  onDone: (answers: { sells: Sells; customers: Customers } | null) => void;
+  onDone: (answers: { sells: Sells; customers: Customers }) => void;
   busy: boolean;
 }) {
   const id = useId();
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !busy) onDone(null);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [busy, onDone]);
   if (!mounted) return null;
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 md:items-center">

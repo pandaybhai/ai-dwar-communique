@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { TalkToAidenBanner } from "@/components/onboarding/talk-to-aiden";
 import { useNavigate } from "@tanstack/react-router";
 import { JourneyShell } from "@/components/onboarding/journey-shell";
 import { StepBusiness } from "@/components/onboarding/step-business";
@@ -142,6 +143,10 @@ export function OnboardingJourney({
 
   return (
     <JourneyShell step={current} reached={reached} brandColor={color} onStep={goTo} exit={exit}>
+      {/* Batch 75: Talk to Aiden on WhatsApp first, on every step but Aiden's own. */}
+      {organizationId && current !== "aiden" ? (
+        <TalkToAidenBanner organizationId={organizationId} />
+      ) : null}
       {organizationId && (!state || !step) ? (
         loadError ? (
           <p

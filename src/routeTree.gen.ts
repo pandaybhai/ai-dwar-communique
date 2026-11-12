@@ -82,6 +82,7 @@ import { Route as JoinTokenRouteImport } from './routes/join.$token'
 import { Route as OauthConsentRouteImport } from './routes/oauth.consent'
 import { Route as PayPaymentIdRouteImport } from './routes/pay.$paymentId'
 import { Route as RTokenRouteImport } from './routes/r.$token'
+import { Route as StartContinueRouteImport } from './routes/start_.continue'
 import { Route as DotwellKnownOauthProtectedResourceMcpRouteImport } from './routes/[.]well-known.oauth-protected-resource.mcp'
 import { Route as ApiAdminAiRouteImport } from './routes/api/admin/ai'
 import { Route as ApiAdminBillingRouteImport } from './routes/api/admin/billing'
@@ -151,6 +152,8 @@ import { Route as ApiPublicPlansRouteImport } from './routes/api/public/plans'
 import { Route as ApiPublicRazorpayWebhookRouteImport } from './routes/api/public/razorpay-webhook'
 import { Route as ApiPublicShopifyCallbackRouteImport } from './routes/api/public/shopify-callback'
 import { Route as ApiPublicShopifyWebhookRouteImport } from './routes/api/public/shopify-webhook'
+import { Route as ApiPublicStartContinueRouteImport } from './routes/api/public/start-continue'
+import { Route as ApiPublicStartLinkRouteImport } from './routes/api/public/start-link'
 import { Route as ApiPublicStartQualifyRouteImport } from './routes/api/public/start-qualify'
 import { Route as ApiPublicWhatsappWebhookRouteImport } from './routes/api/public/whatsapp-webhook'
 import { Route as ApiWhatsappCatalogRouteImport } from './routes/api/whatsapp/catalog'
@@ -582,6 +585,11 @@ const RTokenRoute = RTokenRouteImport.update({
   path: '/r/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
+const StartContinueRoute = StartContinueRouteImport.update({
+  id: '/start_/continue',
+  path: '/start/continue',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DotwellKnownOauthProtectedResourceMcpRoute =
   DotwellKnownOauthProtectedResourceMcpRouteImport.update({
     id: '/mcp',
@@ -942,6 +950,16 @@ const ApiPublicShopifyCallbackRoute =
 const ApiPublicShopifyWebhookRoute = ApiPublicShopifyWebhookRouteImport.update({
   id: '/api/public/shopify-webhook',
   path: '/api/public/shopify-webhook',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicStartContinueRoute = ApiPublicStartContinueRouteImport.update({
+  id: '/api/public/start-continue',
+  path: '/api/public/start-continue',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicStartLinkRoute = ApiPublicStartLinkRouteImport.update({
+  id: '/api/public/start-link',
+  path: '/api/public/start-link',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiPublicStartQualifyRoute = ApiPublicStartQualifyRouteImport.update({
@@ -1345,6 +1363,7 @@ export interface FileRoutesByFullPath {
   '/oauth/consent': typeof OauthConsentRoute
   '/pay/$paymentId': typeof PayPaymentIdRoute
   '/r/$token': typeof RTokenRoute
+  '/start/continue': typeof StartContinueRoute
   '/admin/': typeof AdminIndexRoute
   '/app/': typeof AppIndexRoute
   '/developers/': typeof DevelopersIndexRoute
@@ -1417,6 +1436,8 @@ export interface FileRoutesByFullPath {
   '/api/public/razorpay-webhook': typeof ApiPublicRazorpayWebhookRoute
   '/api/public/shopify-callback': typeof ApiPublicShopifyCallbackRoute
   '/api/public/shopify-webhook': typeof ApiPublicShopifyWebhookRoute
+  '/api/public/start-continue': typeof ApiPublicStartContinueRoute
+  '/api/public/start-link': typeof ApiPublicStartLinkRoute
   '/api/public/start-qualify': typeof ApiPublicStartQualifyRoute
   '/api/public/whatsapp-webhook': typeof ApiPublicWhatsappWebhookRoute
   '/api/whatsapp/catalog': typeof ApiWhatsappCatalogRoute
@@ -1547,6 +1568,7 @@ export interface FileRoutesByTo {
   '/oauth/consent': typeof OauthConsentRoute
   '/pay/$paymentId': typeof PayPaymentIdRoute
   '/r/$token': typeof RTokenRoute
+  '/start/continue': typeof StartContinueRoute
   '/admin': typeof AdminIndexRoute
   '/app': typeof AppIndexRoute
   '/developers': typeof DevelopersIndexRoute
@@ -1619,6 +1641,8 @@ export interface FileRoutesByTo {
   '/api/public/razorpay-webhook': typeof ApiPublicRazorpayWebhookRoute
   '/api/public/shopify-callback': typeof ApiPublicShopifyCallbackRoute
   '/api/public/shopify-webhook': typeof ApiPublicShopifyWebhookRoute
+  '/api/public/start-continue': typeof ApiPublicStartContinueRoute
+  '/api/public/start-link': typeof ApiPublicStartLinkRoute
   '/api/public/start-qualify': typeof ApiPublicStartQualifyRoute
   '/api/public/whatsapp-webhook': typeof ApiPublicWhatsappWebhookRoute
   '/api/whatsapp/catalog': typeof ApiWhatsappCatalogRoute
@@ -1753,6 +1777,7 @@ export interface FileRoutesById {
   '/oauth/consent': typeof OauthConsentRoute
   '/pay/$paymentId': typeof PayPaymentIdRoute
   '/r/$token': typeof RTokenRoute
+  '/start_/continue': typeof StartContinueRoute
   '/admin/': typeof AdminIndexRoute
   '/app/': typeof AppIndexRoute
   '/developers/': typeof DevelopersIndexRoute
@@ -1825,6 +1850,8 @@ export interface FileRoutesById {
   '/api/public/razorpay-webhook': typeof ApiPublicRazorpayWebhookRoute
   '/api/public/shopify-callback': typeof ApiPublicShopifyCallbackRoute
   '/api/public/shopify-webhook': typeof ApiPublicShopifyWebhookRoute
+  '/api/public/start-continue': typeof ApiPublicStartContinueRoute
+  '/api/public/start-link': typeof ApiPublicStartLinkRoute
   '/api/public/start-qualify': typeof ApiPublicStartQualifyRoute
   '/api/public/whatsapp-webhook': typeof ApiPublicWhatsappWebhookRoute
   '/api/whatsapp/catalog': typeof ApiWhatsappCatalogRoute
@@ -1960,6 +1987,7 @@ export interface FileRouteTypes {
     | '/oauth/consent'
     | '/pay/$paymentId'
     | '/r/$token'
+    | '/start/continue'
     | '/admin/'
     | '/app/'
     | '/developers/'
@@ -2032,6 +2060,8 @@ export interface FileRouteTypes {
     | '/api/public/razorpay-webhook'
     | '/api/public/shopify-callback'
     | '/api/public/shopify-webhook'
+    | '/api/public/start-continue'
+    | '/api/public/start-link'
     | '/api/public/start-qualify'
     | '/api/public/whatsapp-webhook'
     | '/api/whatsapp/catalog'
@@ -2162,6 +2192,7 @@ export interface FileRouteTypes {
     | '/oauth/consent'
     | '/pay/$paymentId'
     | '/r/$token'
+    | '/start/continue'
     | '/admin'
     | '/app'
     | '/developers'
@@ -2234,6 +2265,8 @@ export interface FileRouteTypes {
     | '/api/public/razorpay-webhook'
     | '/api/public/shopify-callback'
     | '/api/public/shopify-webhook'
+    | '/api/public/start-continue'
+    | '/api/public/start-link'
     | '/api/public/start-qualify'
     | '/api/public/whatsapp-webhook'
     | '/api/whatsapp/catalog'
@@ -2367,6 +2400,7 @@ export interface FileRouteTypes {
     | '/oauth/consent'
     | '/pay/$paymentId'
     | '/r/$token'
+    | '/start_/continue'
     | '/admin/'
     | '/app/'
     | '/developers/'
@@ -2439,6 +2473,8 @@ export interface FileRouteTypes {
     | '/api/public/razorpay-webhook'
     | '/api/public/shopify-callback'
     | '/api/public/shopify-webhook'
+    | '/api/public/start-continue'
+    | '/api/public/start-link'
     | '/api/public/start-qualify'
     | '/api/public/whatsapp-webhook'
     | '/api/whatsapp/catalog'
@@ -2537,6 +2573,7 @@ export interface RootRouteChildren {
   OauthConsentRoute: typeof OauthConsentRoute
   PayPaymentIdRoute: typeof PayPaymentIdRoute
   RTokenRoute: typeof RTokenRoute
+  StartContinueRoute: typeof StartContinueRoute
   ApiAdminAiRoute: typeof ApiAdminAiRoute
   ApiAdminBillingRoute: typeof ApiAdminBillingRoute
   ApiAdminCustomersRoute: typeof ApiAdminCustomersRoute
@@ -2605,6 +2642,8 @@ export interface RootRouteChildren {
   ApiPublicRazorpayWebhookRoute: typeof ApiPublicRazorpayWebhookRoute
   ApiPublicShopifyCallbackRoute: typeof ApiPublicShopifyCallbackRoute
   ApiPublicShopifyWebhookRoute: typeof ApiPublicShopifyWebhookRoute
+  ApiPublicStartContinueRoute: typeof ApiPublicStartContinueRoute
+  ApiPublicStartLinkRoute: typeof ApiPublicStartLinkRoute
   ApiPublicStartQualifyRoute: typeof ApiPublicStartQualifyRoute
   ApiPublicWhatsappWebhookRoute: typeof ApiPublicWhatsappWebhookRoute
   ApiWhatsappCatalogRoute: typeof ApiWhatsappCatalogRoute
@@ -3165,6 +3204,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/start_/continue': {
+      id: '/start_/continue'
+      path: '/start/continue'
+      fullPath: '/start/continue'
+      preLoaderRoute: typeof StartContinueRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/.well-known/oauth-protected-resource/mcp': {
       id: '/.well-known/oauth-protected-resource/mcp'
       path: '/mcp'
@@ -3646,6 +3692,20 @@ declare module '@tanstack/react-router' {
       path: '/api/public/shopify-webhook'
       fullPath: '/api/public/shopify-webhook'
       preLoaderRoute: typeof ApiPublicShopifyWebhookRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/start-continue': {
+      id: '/api/public/start-continue'
+      path: '/api/public/start-continue'
+      fullPath: '/api/public/start-continue'
+      preLoaderRoute: typeof ApiPublicStartContinueRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/start-link': {
+      id: '/api/public/start-link'
+      path: '/api/public/start-link'
+      fullPath: '/api/public/start-link'
+      preLoaderRoute: typeof ApiPublicStartLinkRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/start-qualify': {
@@ -4311,6 +4371,7 @@ const rootRouteChildren: RootRouteChildren = {
   OauthConsentRoute: OauthConsentRoute,
   PayPaymentIdRoute: PayPaymentIdRoute,
   RTokenRoute: RTokenRoute,
+  StartContinueRoute: StartContinueRoute,
   ApiAdminAiRoute: ApiAdminAiRoute,
   ApiAdminBillingRoute: ApiAdminBillingRoute,
   ApiAdminCustomersRoute: ApiAdminCustomersRoute,
@@ -4379,6 +4440,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicRazorpayWebhookRoute: ApiPublicRazorpayWebhookRoute,
   ApiPublicShopifyCallbackRoute: ApiPublicShopifyCallbackRoute,
   ApiPublicShopifyWebhookRoute: ApiPublicShopifyWebhookRoute,
+  ApiPublicStartContinueRoute: ApiPublicStartContinueRoute,
+  ApiPublicStartLinkRoute: ApiPublicStartLinkRoute,
   ApiPublicStartQualifyRoute: ApiPublicStartQualifyRoute,
   ApiPublicWhatsappWebhookRoute: ApiPublicWhatsappWebhookRoute,
   ApiWhatsappCatalogRoute: ApiWhatsappCatalogRoute,

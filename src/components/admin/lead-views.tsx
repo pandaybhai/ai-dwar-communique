@@ -41,6 +41,18 @@ export function StartBadge() {
   );
 }
 
+/** Batch 75: the one "finish sign-up" WhatsApp reminder went to this lead. */
+export function RemindedBadge() {
+  return (
+    <span
+      className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-800"
+      data-testid="reminded-badge"
+    >
+      Reminded ✓
+    </span>
+  );
+}
+
 export function LeadsTable({ leads, onOpen }: { leads: LeadRow[]; onOpen: (id: string) => void }) {
   return (
     <div className="overflow-x-auto rounded-2xl border border-border bg-card">
@@ -74,6 +86,7 @@ export function LeadsTable({ leads, onOpen }: { leads: LeadRow[]; onOpen: (id: s
                 <p className="font-medium text-foreground">
                   {leadTitle(lead)}
                   {isStartLead(lead) ? <StartBadge /> : null}
+                  {lead.nudged_at ? <RemindedBadge /> : null}
                   {lead.is_test ? (
                     <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase text-muted-foreground">
                       QA
@@ -146,6 +159,10 @@ export function LeadSummary({ lead }: { lead: LeadRow }) {
         <Detail label="Enquiries a day" value={labelFor(ENQUIRY_BANDS, lead.enquiry_band)} />
         <Detail label="Sells" value={leadAnswer(lead, "sells")} />
         <Detail label="Customers" value={leadAnswer(lead, "customers")} />
+        <Detail
+          label="WhatsApp reminder"
+          value={lead.nudged_at ? `Reminded ✓ ${leadTime(lead.nudged_at)}` : NO_ANSWER}
+        />
         <Detail label="Main need" value={labelFor(PRIMARY_NEEDS, lead.primary_need)} />
         <Detail label="Received" value={leadTime(lead.created_at)} />
         <Detail label="Page" value={lead.landing_path ?? "—"} />

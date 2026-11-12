@@ -80,3 +80,30 @@ export function startLeadFromRequest(request: Request): string | null {
   }
   return null;
 }
+
+/* ------------------------------------------------- reminder resume link --- */
+
+/** The reminder's "Finish sign-up" link is good for 48 hours. */
+export const CONTINUE_TTL_S = 48 * 60 * 60;
+
+/**
+ * Batch 75: the token in https://aidwar.in/start/continue?t=… — one lead,
+ * 48 hours, signed (a different payload from the cookie's, so neither can
+ * stand in for the other). Nothing is stored for it.
+ */
+export async function continueToken(leadId: string, now = Date.now()): Promise<string> {
+  const exp = Math.floor(now / 1000 + CONTINUE_TTL_S).toString(36);
+  return `${leadId}.${exp}.${await sig(`continue|${leadId}|${exp}`)}`;
+}
+
+export async function readContinueToken(
+  token: string | null | undefined,
+  now = Date.now(),
+): Promise<string | null> {
+  const [leadId, exp, s] = String(token ?? "").split(".");
+  if (!leadId || !exp || !s) return null;
+  if (!/^[A-Za-z0-9-]{1,64}$/.test(leadId)) return null;
+  if (!same(s, await sig(`continue|${leadId}|${exp}`))) return null;
+  if (parseInt(exp, 36) * 1000 <= now) return null;
+  return leadId;
+}

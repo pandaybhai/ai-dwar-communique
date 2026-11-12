@@ -113,12 +113,9 @@ export function nextBarState(
 
 /**
  * Batch 75: what the /start card does once the lead request answers — a 400
- * shows the inline error; a saved (or repeated) lead asks the two questions;
- * no answer at all (a busy network, a refusal) goes straight to /signup as
- * before, so nobody is ever stuck.
+ * shows the inline error; anything else (saved, repeated, or no answer from a
+ * busy network) asks the two required questions, and only then /signup.
  */
-export function afterLeadSubmit(status: number | null): "error" | "questions" | "signup" {
-  if (status === 400) return "error";
-  if (status !== null && status >= 200 && status < 300) return "questions";
-  return "signup";
+export function afterLeadSubmit(status: number | null): "error" | "questions" {
+  return status === 400 ? "error" : "questions";
 }

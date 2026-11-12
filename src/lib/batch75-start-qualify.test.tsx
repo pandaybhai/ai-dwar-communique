@@ -111,12 +111,13 @@ async function qualify(body: Row, cookie?: string) {
 }
 
 describe("the two questions after name + number", () => {
-  it("the card asks them only once the lead is saved; a 400 shows the error; no answer goes on", () => {
+  it("after the number step the card always asks them (a 400 shows the error); /signup never comes first", () => {
     expect(afterLeadSubmit(200)).toBe("questions");
     expect(afterLeadSubmit(400)).toBe("error");
-    expect(afterLeadSubmit(500)).toBe("signup");
-    expect(afterLeadSubmit(429)).toBe("signup");
-    expect(afterLeadSubmit(null)).toBe("signup");
+    // Required: even when the lead request got no answer, the questions come before /signup.
+    expect(afterLeadSubmit(500)).toBe("questions");
+    expect(afterLeadSubmit(429)).toBe("questions");
+    expect(afterLeadSubmit(null)).toBe("questions");
     const form = readFileSync("src/components/start/start-lead-form.tsx", "utf8");
     // Same card for hero/final; the sticky bar opens a sheet; both end at /signup prefilled.
     expect(form).toContain("<StartQuestions onDone={(a) => void answer(a)} busy={saving} />");
@@ -127,7 +128,7 @@ describe("the two questions after name + number", () => {
     );
   });
 
-  it("chips for both questions, one tap each; Continue waits for both; Skip is always there", () => {
+  it("chips for both questions, one tap each; Continue stays disabled until both; no Skip", () => {
     const html = renderToStaticMarkup(<StartQuestions onDone={() => undefined} />);
     const text = html
       .replace(/<[^>]+>/g, " ")
@@ -147,13 +148,26 @@ describe("the two questions after name + number", () => {
       "500–5,000",
       "5,000+",
       "Continue to sign up",
-      "Skip",
     ]) {
       expect(text, label).toContain(label);
     }
     expect(html.match(/role="radiogroup"/g)).toHaveLength(2);
     expect(html.match(/role="radio"/g)).toHaveLength(10);
     expect(html).toMatch(/<button[^>]*disabled=""[^>]*>[^]*?Continue to sign up/);
+    expect(html).not.toMatch(/Skip/i);
+    // One answer is not enough; both enable it (the reminder link brings saved answers back).
+    const one = renderToStaticMarkup(
+      <StartQuestions onDone={() => undefined} initial={{ sells: "jewellery" }} />,
+    );
+    expect(one).toMatch(/<button[^>]*disabled=""[^>]*>[^]*?Continue to sign up/);
+    const both = renderToStaticMarkup(
+      <StartQuestions
+        onDone={() => undefined}
+        initial={{ sells: "jewellery", customers: "500_5000" }}
+      />,
+    );
+    expect(both).not.toMatch(/<button[^>]*disabled=""[^>]*>[^]*?Continue to sign up/);
+    expect(both).toMatch(/aria-checked="true"[^>]*>Jewellery</);
   });
 
   it("the answers are saved to that lead's qualification (+ business_type where it fits)", async () => {
@@ -197,17 +211,23 @@ describe("the two questions after name + number", () => {
     expect((await qualify({ sells: "x", customers: "under_500" }, cookie)).status).toBe(400);
   });
 
-  it("Skip: nothing is asked of the server and the lead keeps an empty qualification", async () => {
-    const w = world();
-    await submitStart(w);
-    const lead = w.rows("demo_leads")[0]!;
-    expect(lead["qualification"] ?? {}).toEqual({});
-    expect(leadAnswer(lead as unknown as LeadRow, "sells")).toBe("—");
+  it("no skip path: /signup only after both answers, and the server refuses fewer than two", async () => {
     const form = readFileSync("src/components/start/start-lead-form.tsx", "utf8");
-    // Skip (answers null) sends nothing and goes straight to /signup.
+    expect(form).not.toMatch(/Skip|onDone\(null\)|answers: .* \| null/);
+    // The only way to /signup from the questions is answer() with both values.
     expect(form).toMatch(
-      /if \(answers\) \{[\s\S]*?\/api\/public\/start-qualify[\s\S]*?\}\s*await toSignup\(asked\);/,
+      /async function answer\(answers: \{ sells: Sells; customers: Customers \}\) \{\s*if \(!asked \|\| saving \|\| !answers\.sells \|\| !answers\.customers\) return;/,
     );
+    expect(form.match(/await toSignup\(/g)).toHaveLength(1);
+    const w = world();
+    const cookie = cookieOf(await submitStart(w));
+    expect((await qualify({ sells: "jewellery" }, cookie)).status).toBe(400);
+    expect((await qualify({ customers: "under_500" }, cookie)).status).toBe(400);
+    expect((await qualify({}, cookie)).status).toBe(400);
+    expect(w.rows("demo_leads")[0]!["qualification"] ?? {}).toEqual({});
+    // The lead and the Lead still happened at the number step.
+    expect(w.rows("demo_leads")).toHaveLength(1);
+    expect(events(w).filter((e) => e["event_name"] === "Lead")).toHaveLength(1);
   });
 
   it("the sticky bar (number only) gets the same questions and saves the same way", async () => {
