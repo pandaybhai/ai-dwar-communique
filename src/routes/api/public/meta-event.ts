@@ -71,12 +71,26 @@ export const Route = createFileRoute("/api/public/meta-event")({
           const person = await capi.loadPerson(supabase, userId);
           const created = person?.createdAt ? Date.parse(person.createdAt) : Number.NaN;
           if (!person || !(Date.now() - created < RECENT_USER_MS)) return ok();
+          const fbc = meta.fbcFromFbclid(body["fbclid"], body["fbclid_at"]);
           await capi.queueMetaEvent(supabase, {
             event: "CompleteRegistration",
             eventId: meta.metaEventId("CompleteRegistration", userId),
             userId,
             sourceUrl: ownUrl(body["url"]),
             request,
+            fbc,
+            once: true,
+          });
+          // Batch 72: sign-ups count as a Lead too — the same id as the
+          // person's /start or /demo Lead (their number), so Meta counts once.
+          await capi.queueMetaEvent(supabase, {
+            event: "Lead",
+            eventId: await meta.leadEventId(person.phone, userId),
+            params: { content_name: "signup", lead_source: "signup" },
+            userId,
+            sourceUrl: ownUrl(body["url"]),
+            request,
+            fbc,
             once: true,
           });
           return ok();

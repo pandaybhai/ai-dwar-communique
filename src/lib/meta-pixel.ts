@@ -1,6 +1,7 @@
 import {
   META_PIXEL_ID,
   isContactHref,
+  leadEventId,
   metaEventId,
   pixelZone,
   viewContentName,
@@ -306,10 +307,19 @@ export function relayToServer(body: Record<string, unknown>): void {
   }
 }
 
-/** Account created (signup): the server sends its copy whatever the cookie choice (sign-up terms). */
-export function trackRegistration(userId: string): void {
-  const eventId = metaEventId("CompleteRegistration", userId);
-  track("CompleteRegistration", eventId, {}, { once: true });
+/**
+ * Account created (signup): CompleteRegistration and, Batch 72, the person's
+ * Lead (same id as their /start or /demo Lead: "Lead." + sha256 of the
+ * number). The server sends its copies whatever the cookie choice (sign-up
+ * terms); the pixel only after Accept.
+ */
+export function trackRegistration(userId: string, phone: string | null = null): void {
+  track("CompleteRegistration", metaEventId("CompleteRegistration", userId), {}, { once: true });
+  void leadEventId(phone, userId)
+    .then((id) =>
+      track("Lead", id, { content_name: "signup", lead_source: "signup" }, { once: true }),
+    )
+    .catch(() => undefined);
   try {
     void fetch("/api/public/meta-event", {
       method: "POST",
@@ -318,11 +328,40 @@ export function trackRegistration(userId: string): void {
         event: "CompleteRegistration",
         user_id: userId,
         url: window.location.href.split("#")[0],
+        ...fbclidForLead(),
       }),
       keepalive: true,
     }).catch(() => undefined);
   } catch {
     // never breaks sign-up
+  }
+}
+
+const FBCLID_KEY = "aidwar.fbclid";
+
+/**
+ * Batch 72: the fbclid a visitor arrived with from a Meta ad, kept in this
+ * tab (sessionStorage) with the time, so the server can build fbc for its
+ * Lead. Never sent anywhere else and never stored on our side.
+ */
+export function rememberFbclid(): void {
+  try {
+    const id = new URLSearchParams(window.location.search).get("fbclid");
+    if (id && /^[A-Za-z0-9_-]{10,500}$/.test(id))
+      window.sessionStorage.setItem(FBCLID_KEY, JSON.stringify({ id, at: Date.now() }));
+  } catch {
+    // no storage, no fbc
+  }
+}
+
+/** The kept fbclid for a form's request body ({} when none). */
+export function fbclidForLead(): { fbclid?: string; fbclid_at?: number } {
+  try {
+    const raw = window.sessionStorage.getItem(FBCLID_KEY);
+    const v = raw ? (JSON.parse(raw) as { id?: string; at?: number }) : null;
+    return v?.id && v.at ? { fbclid: v.id, fbclid_at: v.at } : {};
+  } catch {
+    return {};
   }
 }
 

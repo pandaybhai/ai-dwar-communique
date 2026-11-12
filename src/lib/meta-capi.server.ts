@@ -54,6 +54,14 @@ export type MetaServerEvent = {
   request?: Request | null;
   /** Only once per event id (payments, workspace firsts). Browser-random ids skip the marker. */
   once?: boolean;
+  /**
+   * Batch 72: a lead who has no account yet (the /start or /demo form): their
+   * own number and name, hashed before sending, and the lead id as
+   * external_id. Never a merchant's customer.
+   */
+  lead?: { phone: string | null; name: string | null; leadId: string } | null;
+  /** Batch 72: fbc built from the fbclid the visitor arrived with (used when no _fbc cookie). */
+  fbc?: string | null;
 };
 
 let tokenMissingLogged = false;
@@ -176,7 +184,10 @@ export async function loadPerson(supabase: SupabaseClient, userId: string): Prom
       userId,
       email: user?.email ?? null,
       phone: p.phone ?? (typeof meta["phone"] === "string" ? (meta["phone"] as string) : null),
-      firstName: p.full_name ?? null,
+      // Batch 72: a brand-new sign-up's name is in its metadata (full_name).
+      firstName:
+        p.full_name ??
+        (typeof meta["full_name"] === "string" ? (meta["full_name"] as string) : null),
       optedOut: meta["meta_share_opt_out"] === true,
       createdAt: user?.created_at ?? null,
     };
@@ -196,18 +207,29 @@ export async function capiBody(input: {
   person: Person | null;
   facts: ReturnType<typeof requestFacts>;
   testCode: string | null;
+  lead?: MetaServerEvent["lead"];
+  fbc?: string | null;
 }): Promise<Record<string, unknown>> {
   const userData: Record<string, unknown> = {
     ...(input.person
       ? await hashedUserData({
           email: input.person.email,
           phone: input.person.phone,
-          firstName: input.person.firstName,
+          fullName: input.person.firstName,
           userId: input.person.userId,
         })
-      : {}),
+      : input.lead
+        ? await hashedUserData({
+            phone: input.lead.phone,
+            fullName: input.lead.name,
+            userId: input.lead.leadId,
+          })
+        : {}),
     ...input.facts,
   };
+  // The _fbc cookie when the visitor has one (cookie consent), else the one
+  // built from the fbclid they arrived with.
+  if (!userData["fbc"] && input.fbc) userData["fbc"] = input.fbc;
   const event: Record<string, unknown> = {
     event_name: input.event,
     event_time: input.eventTime,
@@ -306,6 +328,8 @@ export async function sendMetaEvent(
       person,
       facts: requestFacts(request),
       testCode: capiTestCode(env),
+      lead: person ? null : (ev.lead ?? null),
+      fbc: ev.fbc ?? null,
     });
 
     const { GRAPH_VERSION } = await import("@/lib/whatsapp-api.server");

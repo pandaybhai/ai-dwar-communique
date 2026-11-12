@@ -48,9 +48,17 @@ export type MetaParams = {
   currency?: "INR";
   predicted_ltv?: number;
   content_name?: string;
+  /** Batch 72: where a Lead came from ("landing_start", "landing", "signup"). */
+  lead_source?: string;
 };
 
-export const PARAM_KEYS = ["value", "currency", "predicted_ltv", "content_name"] as const;
+export const PARAM_KEYS = [
+  "value",
+  "currency",
+  "predicted_ltv",
+  "content_name",
+  "lead_source",
+] as const;
 
 /** Keeps only the allowed parameters: finite money, INR, a short page name. */
 export function safeParams(input: Record<string, unknown> | null | undefined): MetaParams {
@@ -65,7 +73,9 @@ export function safeParams(input: Record<string, unknown> | null | undefined): M
   if (ltv !== undefined) out.predicted_ltv = ltv;
   if (value !== undefined || ltv !== undefined) out.currency = "INR";
   const name = input?.["content_name"];
-  if (typeof name === "string" && /^[A-Za-z0-9 &/-]{1,40}$/.test(name)) out.content_name = name;
+  if (typeof name === "string" && /^[A-Za-z0-9 &/_-]{1,40}$/.test(name)) out.content_name = name;
+  const source = input?.["lead_source"];
+  if (typeof source === "string" && /^[a-z0-9_]{1,40}$/.test(source)) out.lead_source = source;
   return out;
 }
 
@@ -108,6 +118,8 @@ const PUBLIC_EXACT = new Set([
   "/shipping",
   "/data-deletion",
   "/signup",
+  // Batch 72: the ad landing page.
+  "/start",
 ]);
 
 /**
@@ -179,6 +191,19 @@ export function normalizeFirstName(value: unknown): string | null {
   return v || null;
 }
 
+/** Batch 72: last name — the last word of a name with two or more, same rules. */
+export function normalizeLastName(value: unknown): string | null {
+  const words = (typeof value === "string" ? value : "").trim().split(/\s+/).filter(Boolean);
+  if (words.length < 2) return null;
+  const v = words[words.length - 1]!.toLowerCase().replace(/[^\p{L}]/gu, "");
+  return v || null;
+}
+
+/** Batch 72: the country, only when the number says it (+91 → "in"). */
+export function countryFromPhone(phone: string | null): string | null {
+  return phone && phone.startsWith("91") && phone.length === 12 ? "in" : null;
+}
+
 export function normalizeExternalId(value: unknown): string | null {
   const v = typeof value === "string" ? value.trim().toLowerCase() : "";
   return v || null;
@@ -190,23 +215,73 @@ export async function sha256Hex(text: string): Promise<string> {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-/** The owner's facts → Meta user_data, hashed. Missing facts are left out. */
-export async function hashedUserData(owner: {
+/**
+ * A person's facts → Meta user_data, hashed (never the plain values). Missing
+ * facts are left out. Used for AiDwar's own sign-ups and leads only.
+ */
+export async function hashedUserData(person: {
   email?: string | null;
   phone?: string | null;
   firstName?: string | null;
+  /** Batch 72: the full name; the last word becomes ln. */
+  fullName?: string | null;
   userId?: string | null;
-}): Promise<{ em?: string[]; ph?: string[]; fn?: string[]; external_id?: string[] }> {
-  const out: { em?: string[]; ph?: string[]; fn?: string[]; external_id?: string[] } = {};
-  const em = normalizeEmail(owner.email);
+}): Promise<{
+  em?: string[];
+  ph?: string[];
+  fn?: string[];
+  ln?: string[];
+  external_id?: string[];
+  country?: string[];
+}> {
+  const out: {
+    em?: string[];
+    ph?: string[];
+    fn?: string[];
+    ln?: string[];
+    external_id?: string[];
+    country?: string[];
+  } = {};
+  const em = normalizeEmail(person.email);
   if (em) out.em = [await sha256Hex(em)];
-  const ph = normalizeMetaPhone(owner.phone);
+  const ph = normalizeMetaPhone(person.phone);
   if (ph) out.ph = [await sha256Hex(ph)];
-  const fn = normalizeFirstName(owner.firstName);
+  const fn = normalizeFirstName(person.firstName ?? person.fullName);
   if (fn) out.fn = [await sha256Hex(fn)];
-  const ext = normalizeExternalId(owner.userId);
+  const ln = normalizeLastName(person.fullName ?? person.firstName);
+  if (ln) out.ln = [await sha256Hex(ln)];
+  const ext = normalizeExternalId(person.userId);
   if (ext) out.external_id = [await sha256Hex(ext)];
+  const country = countryFromPhone(ph);
+  if (country) out.country = [await sha256Hex(country)];
   return out;
+}
+
+/**
+ * Batch 72: one Lead per person. The id is "Lead." + sha256 of the number in
+ * E.164 digits (Batch 66's rule, +91 by default), so /start, /demo and
+ * sign-up all send the same id and Meta counts the person once. Without a
+ * number (never at sign-up today), the user id.
+ */
+export async function leadEventId(
+  phone: string | null,
+  fallbackKey?: string | null,
+): Promise<string> {
+  const ph = normalizeMetaPhone(phone);
+  if (ph) return metaEventId("Lead", await sha256Hex(ph));
+  return metaEventId("Lead", String(fallbackKey ?? ""));
+}
+
+/**
+ * Batch 72: Meta's click id cookie value, built from the fbclid the visitor
+ * arrived with ("fb.1.<ms>.<fbclid>"). Used only for the server send; the
+ * fbclid itself is never stored.
+ */
+export function fbcFromFbclid(fbclid: unknown, atMs: unknown): string | null {
+  if (typeof fbclid !== "string" || !/^[A-Za-z0-9_-]{10,500}$/.test(fbclid)) return null;
+  const ms = Number(atMs);
+  if (!Number.isFinite(ms) || ms <= 0) return null;
+  return `fb.1.${Math.floor(ms)}.${fbclid}`;
 }
 
 /** What the server tells the browser to fire (same name, id and parameters). */

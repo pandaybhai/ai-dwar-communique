@@ -538,7 +538,8 @@ describe("the public site: new_site switch, default off", () => {
       "routes/terms.tsx": "e660541f1acb896ece7951f466f05f5af9ce28ef0a8fd6f04246991cf0b298fb",
       // Batch 56: + section 5 "AI assistants you connect" (batch56-privacy.test.tsx); nothing else changed in words.
       // Batch 70: + the Meta Pixel / Conversions API paragraph in section 6 (batch70-meta.test.ts).
-      "routes/privacy.tsx": "d6beafea9f4e2ba017f60d62ac906847f209a068c93faafb63026987165373cb",
+      // Batch 72: + "When you submit a form or create an account, we share a one-way hashed…".
+      "routes/privacy.tsx": "ebb712c1b5fadd88a068dcba4e15142000276ec5c271b379aca22d4d1b554530",
       "routes/refunds.tsx": "5c607bfde33a444b086b4ac8a56548580307d33bf7c3eac5412a4108f0e385ab",
       "routes/refund-policy.tsx":
         "804c9591fb15bec80f1fd8aa537cac15cc4a111e387a3b86a49024d2369ee382",

@@ -9,6 +9,7 @@ import {
   ensurePixel,
   pageChanged,
   readConsent,
+  rememberFbclid,
   scheduleBanner,
   signupWasSubmitted,
   writeConsent,
@@ -35,6 +36,8 @@ export function MetaPixelRuntime() {
   const [signupDone, setSignupDone] = useState(false);
 
   useEffect(() => {
+    // Batch 72: an ad click's fbclid, kept for the server's Lead (fbc) only.
+    rememberFbclid();
     setConsent(readConsent());
     setSignupDone(signupWasSubmitted());
     const onSignup = () => setSignupDone(true);

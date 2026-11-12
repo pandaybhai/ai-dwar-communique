@@ -29,6 +29,7 @@ import { Route as RefundsRouteImport } from './routes/refunds'
 import { Route as ShippingRouteImport } from './routes/shipping'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
+import { Route as StartRouteImport } from './routes/start'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as DotwellKnownOauthProtectedResourceRouteImport } from './routes/[.]well-known.oauth-protected-resource'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
@@ -309,6 +310,11 @@ const SignupRoute = SignupRouteImport.update({
 const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
   id: '/sitemap.xml',
   path: '/sitemap.xml',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const StartRoute = StartRouteImport.update({
+  id: '/start',
+  path: '/start',
   getParentRoute: () => rootRouteImport,
 } as any)
 const TermsRoute = TermsRouteImport.update({
@@ -1283,6 +1289,7 @@ export interface FileRoutesByFullPath {
   '/shipping': typeof ShippingRoute
   '/signup': typeof SignupRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/start': typeof StartRoute
   '/terms': typeof TermsRoute
   '/.well-known/oauth-protected-resource': typeof DotwellKnownOauthProtectedResourceRouteWithChildren
   '/admin/activity': typeof AdminActivityRoute
@@ -1483,6 +1490,7 @@ export interface FileRoutesByTo {
   '/shipping': typeof ShippingRoute
   '/signup': typeof SignupRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/start': typeof StartRoute
   '/terms': typeof TermsRoute
   '/.well-known/oauth-protected-resource': typeof DotwellKnownOauthProtectedResourceRouteWithChildren
   '/admin/activity': typeof AdminActivityRoute
@@ -1687,6 +1695,7 @@ export interface FileRoutesById {
   '/shipping': typeof ShippingRoute
   '/signup': typeof SignupRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/start': typeof StartRoute
   '/terms': typeof TermsRoute
   '/.well-known/oauth-protected-resource': typeof DotwellKnownOauthProtectedResourceRouteWithChildren
   '/admin/activity': typeof AdminActivityRoute
@@ -1892,6 +1901,7 @@ export interface FileRouteTypes {
     | '/shipping'
     | '/signup'
     | '/sitemap.xml'
+    | '/start'
     | '/terms'
     | '/.well-known/oauth-protected-resource'
     | '/admin/activity'
@@ -2092,6 +2102,7 @@ export interface FileRouteTypes {
     | '/shipping'
     | '/signup'
     | '/sitemap.xml'
+    | '/start'
     | '/terms'
     | '/.well-known/oauth-protected-resource'
     | '/admin/activity'
@@ -2295,6 +2306,7 @@ export interface FileRouteTypes {
     | '/shipping'
     | '/signup'
     | '/sitemap.xml'
+    | '/start'
     | '/terms'
     | '/.well-known/oauth-protected-resource'
     | '/admin/activity'
@@ -2499,6 +2511,7 @@ export interface RootRouteChildren {
   ShippingRoute: typeof ShippingRoute
   SignupRoute: typeof SignupRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
+  StartRoute: typeof StartRoute
   TermsRoute: typeof TermsRoute
   DotwellKnownOauthProtectedResourceRoute: typeof DotwellKnownOauthProtectedResourceRouteWithChildren
   ApiAiAssistantsRoute: typeof ApiAiAssistantsRoute
@@ -2766,6 +2779,13 @@ declare module '@tanstack/react-router' {
       path: '/sitemap.xml'
       fullPath: '/sitemap.xml'
       preLoaderRoute: typeof SitemapDotxmlRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/start': {
+      id: '/start'
+      path: '/start'
+      fullPath: '/start'
+      preLoaderRoute: typeof StartRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/terms': {
@@ -4256,6 +4276,7 @@ const rootRouteChildren: RootRouteChildren = {
   ShippingRoute: ShippingRoute,
   SignupRoute: SignupRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
+  StartRoute: StartRoute,
   TermsRoute: TermsRoute,
   DotwellKnownOauthProtectedResourceRoute:
     DotwellKnownOauthProtectedResourceRouteWithChildren,

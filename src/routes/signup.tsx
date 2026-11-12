@@ -1,6 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { DEFAULT_COUNTRY_CODE, typedPhone } from "@/lib/phone";
 import { signupSubmitted, trackRegistration } from "@/lib/meta-pixel";
+import { clearStartPrefill, readStartPrefill } from "@/lib/start-prefill";
 import { useEffect, useState } from "react";
 import { Eye, EyeOff, Loader2, MailCheck } from "lucide-react";
 import { AuthShell } from "@/components/auth-shell";
@@ -83,6 +84,9 @@ function SignupPage() {
   const [error, setError] = useState<string | null>(null);
   const [sentTo, setSentTo] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
+  // Batch 72: name and number typed on /start, carried in this tab only
+  // (never in the address bar), shown here to edit.
+  const [prefill] = useState(readStartPrefill);
   const [resent, setResent] = useState(false);
 
   // Held until the workspace is created — localStorage, so the tab the
@@ -105,6 +109,10 @@ function SignupPage() {
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = new FormData(e.currentTarget);
+    const fullName = String(form.get("full_name") ?? "")
+      .trim()
+      .replace(/\s+/g, " ")
+      .slice(0, 100);
     const email = String(form.get("email") ?? "").trim();
     const password = String(form.get("password") ?? "");
     if (password.length < 8) {
@@ -124,7 +132,7 @@ function SignupPage() {
       password,
       options: {
         emailRedirectTo: `${window.location.origin}/login`,
-        data: { phone },
+        data: fullName ? { phone, full_name: fullName } : { phone },
       },
     });
     setPending(false);
@@ -134,9 +142,10 @@ function SignupPage() {
       setError(err.message);
       return;
     }
+    clearStartPrefill();
     // Batch 70: account created (pixel after cookie consent; the server copy
     // under the sign-up terms below). Never blocks sign-up.
-    if (data.user?.id) trackRegistration(data.user.id);
+    if (data.user?.id) trackRegistration(data.user.id, phone);
     if (data.session) {
       void goNext();
       return;
@@ -257,6 +266,18 @@ function SignupPage() {
       ) : null}
       <form onSubmit={onSubmit} className="space-y-4" noValidate>
         <div className="space-y-2">
+          <Label htmlFor="full_name">Your name (optional)</Label>
+          <Input
+            id="full_name"
+            name="full_name"
+            type="text"
+            autoComplete="name"
+            defaultValue={prefill.name}
+            placeholder="Asha Rao"
+            className="h-12 rounded-xl text-base"
+          />
+        </div>
+        <div className="space-y-2">
           <Label htmlFor="email">Work email</Label>
           <Input
             id="email"
@@ -305,6 +326,7 @@ function SignupPage() {
             autoComplete="tel"
             inputMode="tel"
             placeholder="98765 43210"
+            defaultValue={prefill.phone}
             className="h-12 rounded-xl text-base"
             aria-describedby="phone-hint"
           />

@@ -457,10 +457,13 @@ describe("(server) the Conversions API sender", () => {
       event_source_url: "https://aidwar.in/app/start",
       custom_data: { value: 0, currency: "INR", predicted_ltv: 29994 },
     });
+    // Batch 72: + ln (last name) and country (from a +91 number), both hashed.
     expect(event["user_data"]).toEqual({
       em: [sha("vinay.kumar@example.com")],
       ph: [sha("918121310333")],
       fn: [sha("vinay")],
+      ln: [sha("kumar")],
+      country: [sha("in")],
       external_id: [sha(OWNER)],
       client_ip_address: "203.0.113.7",
       client_user_agent: "Mozilla/5.0 test",
@@ -596,10 +599,13 @@ describe("(server) the Conversions API sender", () => {
       custom_data: { value: 5000, currency: "INR", predicted_ltv: 4999 * 12 },
     });
     // A Super Admin / webhook request is never the owner's: no ip, user agent or cookies.
+    // Batch 72: + ln and country, hashed.
     expect(Object.keys(event["user_data"] as Row).sort()).toEqual([
+      "country",
       "em",
       "external_id",
       "fn",
+      "ln",
       "ph",
     ]);
 
@@ -748,16 +754,18 @@ describe("(server) the Conversions API sender", () => {
     expect((w.graph[0]!.body["data"] as Row[])[0]!["user_data"] as Row).not.toHaveProperty("em");
 
     await call({ event: "CompleteRegistration", user_id: OWNER, url: "https://aidwar.in/signup" });
-    expect(w.graph).toHaveLength(2);
+    // Batch 72: sign-up also sends the person's Lead (same id as /start, /demo).
+    expect(w.graph).toHaveLength(3);
     expect((w.graph[1]!.body["data"] as Row[])[0]).toMatchObject({
       event_name: "CompleteRegistration",
       event_id: `CompleteRegistration.${OWNER}`,
     });
+    expect((w.graph[2]!.body["data"] as Row[])[0]).toMatchObject({ event_name: "Lead" });
     // An old account (or a made-up id) is never sent.
     w.users.get(OWNER)!["created_at"] = new Date(Date.now() - 3600_000).toISOString();
     await call({ event: "CompleteRegistration", user_id: OWNER });
     await call({ event: "CompleteRegistration", user_id: "99999999-2222-4333-8444-555555555555" });
-    expect(w.graph).toHaveLength(2);
+    expect(w.graph).toHaveLength(3);
   });
 });
 
