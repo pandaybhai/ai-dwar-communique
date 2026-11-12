@@ -5,7 +5,8 @@
  * never read another business's sales enquiries.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { DEFAULT_COUNTRY_CODE, normalizePhone, typedPhone } from "./phone";
+import { normalizePhone } from "./phone";
+import { checkRealNumber, qualificationFor } from "./start-qualify";
 import {
   BUSINESS_TYPES,
   CONSENT_VERSION,
@@ -41,6 +42,11 @@ export type LeadResult =
       /** Batch 72: the number as saved (E.164) and the name, for the Lead's hashed matching. */
       phone?: string;
       name?: string | null;
+      /**
+       * Batch 75: a /start honeypot hit — the bot is told "ok", nothing is
+       * saved and nothing is fired.
+       */
+      honeypot?: true;
     }
   | { ok: false; error: string; status: number };
 
@@ -72,9 +78,7 @@ function safePath(value: string): string | null {
   return value.split("?")[0]?.split("#")[0]?.slice(0, 300) ?? null;
 }
 
-function cleanAttribution(
-  input: Record<string, unknown> | undefined,
-): Record<string, string> {
+function cleanAttribution(input: Record<string, unknown> | undefined): Record<string, string> {
   const out: Record<string, string> = {};
   if (!input) return out;
   for (const key of ATTRIBUTION_KEYS) {
@@ -98,8 +102,13 @@ export async function submitLead(
   body: Partial<LeadSubmission>,
   meta: { ip: string | null; referrer: string | null },
 ): Promise<LeadResult> {
-  // Honeypot — a real person never fills a hidden field.
+  // Honeypot — a real person never fills a hidden field. Batch 75: on /start
+  // the bot gets an ordinary "ok" (so it learns nothing) while nothing is
+  // saved or fired; the /demo form answers as before.
   if (str(body.company_website_confirm, 200)) {
+    if ((body as { source?: unknown }).source === START_SOURCE) {
+      return { ok: true, id: "", duplicate: false, honeypot: true };
+    }
     return { ok: false, error: "We couldn't send that request.", status: 400 };
   }
   // Batch 72: the /start page has its own, shorter form.
@@ -226,8 +235,10 @@ async function submitStartLead(
   body: Partial<LeadSubmission>,
   meta: { ip: string | null; referrer: string | null },
 ): Promise<LeadResult> {
-  const typed = typedPhone(str(body.phone, 30), DEFAULT_COUNTRY_CODE);
-  if ("error" in typed) return { ok: false, error: typed.error, status: 400 };
+  // Batch 75: Batch 66's rule, then the obviously fake numbers (one digit
+  // repeated, a straight run, an Indian number that isn't 10 digits).
+  const typed = checkRealNumber(str(body.phone, 30));
+  if (!typed.ok) return { ok: false, error: typed.error, status: 400 };
   const phone = typed.phone;
 
   const name = str(body.name, 100) || null;
@@ -292,6 +303,70 @@ async function submitStartLead(
   return { ok: true, id: (data as { id: string }).id, duplicate: false, phone, name };
 }
 
+/**
+ * Batch 75: the two taps after name + number on /start. Writes only
+ * demo_leads.qualification = { sells, customers, answered_at } and, when the
+ * answer fits the column's existing values and the column is still empty,
+ * business_type. Only for a /start lead, and only once: a lead that already
+ * answered keeps its answers (saved: false). The caller gets the lead id
+ * from the signed cookie, never from the browser's body.
+ */
+export async function qualifyStartLead(
+  supabase: SupabaseClient,
+  leadId: string,
+  sells: unknown,
+  customers: unknown,
+): Promise<
+  | {
+      ok: true;
+      saved: boolean;
+      phone: string;
+      name: string | null;
+      sells: string;
+      customers: string;
+    }
+  | { ok: false; error: string; status: number }
+> {
+  const answer = qualificationFor(sells, customers);
+  if (!answer.ok)
+    return { ok: false, error: "Please pick one answer for each question.", status: 400 };
+  const { data } = await supabase
+    .from("demo_leads")
+    .select("id, phone, name, source, business_type, qualification")
+    .eq("id", leadId)
+    .maybeSingle();
+  const lead = data as {
+    id: string;
+    phone: string;
+    name: string | null;
+    source: string;
+    business_type: string | null;
+    qualification: Record<string, unknown> | null;
+  } | null;
+  if (!lead || lead.source !== START_SOURCE) {
+    return { ok: false, error: "We couldn't find your details. Please carry on.", status: 404 };
+  }
+  const base = {
+    phone: lead.phone,
+    name: lead.name,
+    sells: answer.qualification.sells,
+    customers: answer.qualification.customers,
+  };
+  if (lead.qualification && lead.qualification["answered_at"]) {
+    return { ok: true, saved: false, ...base };
+  }
+  const { error } = await supabase
+    .from("demo_leads")
+    .update({
+      qualification: { ...(lead.qualification ?? {}), ...answer.qualification },
+      ...(answer.businessType && !lead.business_type ? { business_type: answer.businessType } : {}),
+    })
+    .eq("id", leadId)
+    .eq("source", START_SOURCE);
+  if (error) return { ok: false, error: "We couldn't save that just now.", status: 500 };
+  return { ok: true, saved: true, ...base };
+}
+
 /* ---------------------------------------------------------------- admin --- */
 
 export async function listLeads(
@@ -313,15 +388,13 @@ export async function listLeads(
   return {
     leads,
     new_count: leads.filter((l) => l.status === "new" && !l.is_test).length,
-    admins: ((admins ?? []) as Array<{ id: string; full_name: string | null; email: string | null }>)
-      .map((a) => ({ id: a.id, name: a.full_name || a.email || "Admin" })),
+    admins: (
+      (admins ?? []) as Array<{ id: string; full_name: string | null; email: string | null }>
+    ).map((a) => ({ id: a.id, name: a.full_name || a.email || "Admin" })),
   };
 }
 
-export async function listNotes(
-  supabase: SupabaseClient,
-  leadId: string,
-): Promise<LeadNote[]> {
+export async function listNotes(supabase: SupabaseClient, leadId: string): Promise<LeadNote[]> {
   const { data } = await supabase
     .from("demo_lead_notes")
     .select("id, lead_id, author_id, body, created_at")
@@ -340,7 +413,10 @@ export async function listNotes(
       (p) => [p.id, p.full_name || p.email || "Admin"],
     ),
   );
-  return notes.map((n) => ({ ...n, author_name: n.author_id ? (byId.get(n.author_id) ?? null) : null }));
+  return notes.map((n) => ({
+    ...n,
+    author_name: n.author_id ? (byId.get(n.author_id) ?? null) : null,
+  }));
 }
 
 export async function updateLead(

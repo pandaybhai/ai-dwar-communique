@@ -1,3 +1,4 @@
+import { CUSTOMERS, SELLS } from "./start-qualify";
 import { DEFAULT_COUNTRY_CODE, enteredPhone } from "@/lib/phone";
 
 /**
@@ -30,7 +31,9 @@ export type MetaCustomEvent =
   | "FirstCampaignSent"
   | "FirstFlowActivated"
   | "AidenEnabled"
-  | "PlanUpgraded";
+  | "PlanUpgraded"
+  /** Batch 75: a /start lead answered what they sell and how many customers they have. */
+  | "LeadQualified";
 
 export type MetaEventName = MetaStandardEvent | MetaCustomEvent;
 
@@ -40,6 +43,7 @@ export const CUSTOM_EVENTS: readonly MetaCustomEvent[] = [
   "FirstFlowActivated",
   "AidenEnabled",
   "PlanUpgraded",
+  "LeadQualified",
 ];
 
 /** The only parameters ever sent with an event (custom_data). Nothing else passes. */
@@ -50,6 +54,9 @@ export type MetaParams = {
   content_name?: string;
   /** Batch 72: where a Lead came from ("landing_start", "landing", "signup"). */
   lead_source?: string;
+  /** Batch 75 (LeadQualified): the /start answers, from their fixed lists only. */
+  sells?: string;
+  customers?: string;
 };
 
 export const PARAM_KEYS = [
@@ -58,6 +65,8 @@ export const PARAM_KEYS = [
   "predicted_ltv",
   "content_name",
   "lead_source",
+  "sells",
+  "customers",
 ] as const;
 
 /** Keeps only the allowed parameters: finite money, INR, a short page name. */
@@ -76,6 +85,12 @@ export function safeParams(input: Record<string, unknown> | null | undefined): M
   if (typeof name === "string" && /^[A-Za-z0-9 &/_-]{1,40}$/.test(name)) out.content_name = name;
   const source = input?.["lead_source"];
   if (typeof source === "string" && /^[a-z0-9_]{1,40}$/.test(source)) out.lead_source = source;
+  const sells = input?.["sells"];
+  if (typeof sells === "string" && SELLS.some((o) => o.value === sells)) out.sells = sells;
+  const customers = input?.["customers"];
+  if (typeof customers === "string" && CUSTOMERS.some((o) => o.value === customers)) {
+    out.customers = customers;
+  }
   return out;
 }
 
@@ -258,6 +273,15 @@ export async function hashedUserData(person: {
 }
 
 /**
+ * Batch 75: one LeadQualified per person — "LeadQualified." + sha256 of the
+ * number in E.164 digits, the same key as their Lead.
+ */
+export async function qualifiedEventId(phone: string | null): Promise<string | null> {
+  const ph = normalizeMetaPhone(phone);
+  return ph ? metaEventId("LeadQualified", await sha256Hex(ph)) : null;
+}
+
+/**
  * Batch 72: one Lead per person. The id is "Lead." + sha256 of the number in
  * E.164 digits (Batch 66's rule, +91 by default), so /start, /demo and
  * sign-up all send the same id and Meta counts the person once. Without a
@@ -285,7 +309,8 @@ export function fbcFromFbclid(fbclid: unknown, atMs: unknown): string | null {
 }
 
 /** What the server tells the browser to fire (same name, id and parameters). */
-export type BrowserMetaEvent = { event: MetaStandardEvent; event_id: string; params: MetaParams };
+/** What the server tells the browser pixel to fire (Batch 75: a custom event goes as trackCustom). */
+export type BrowserMetaEvent = { event: MetaEventName; event_id: string; params: MetaParams };
 
 // ---------------------------------------------------------- Super Admin status
 

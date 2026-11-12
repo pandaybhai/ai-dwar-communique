@@ -35,6 +35,9 @@ export const Route = createFileRoute("/api/public/demo-leads")({
         });
 
         if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
+        // Batch 75: a /start honeypot hit looks like any other "ok" — nothing
+        // saved, nothing fired, no cookie.
+        if (result.honeypot) return Response.json({ ok: true, duplicate: false, meta: null });
         // Batch 72: Lead to Meta's Conversions API for every lead, whatever
         // the cookie banner said (as our other server events; the browser
         // pixel still waits for Accept). One id per person — "Lead." +
@@ -65,7 +68,19 @@ export const Route = createFileRoute("/api/public/demo-leads")({
         } catch {
           meta = null; // the lead is saved; measurement never changes the answer
         }
-        return Response.json({ ok: true, duplicate: result.duplicate, meta });
+        // Batch 75: the /start lead this browser created (or repeated) is
+        // signed into an httpOnly cookie, so the two questions that follow
+        // can answer for this lead and no other.
+        const headers = new Headers();
+        if (body["source"] === "landing_start" && result.id) {
+          try {
+            const { startLeadSetCookie } = await import("@/lib/start-lead-cookie.server");
+            headers.append("set-cookie", await startLeadSetCookie(result.id));
+          } catch {
+            // no signing key: the lead is saved; the questions just can't be stored
+          }
+        }
+        return Response.json({ ok: true, duplicate: result.duplicate, meta }, { headers });
       },
     },
   },

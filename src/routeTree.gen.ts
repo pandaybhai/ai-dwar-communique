@@ -151,6 +151,7 @@ import { Route as ApiPublicPlansRouteImport } from './routes/api/public/plans'
 import { Route as ApiPublicRazorpayWebhookRouteImport } from './routes/api/public/razorpay-webhook'
 import { Route as ApiPublicShopifyCallbackRouteImport } from './routes/api/public/shopify-callback'
 import { Route as ApiPublicShopifyWebhookRouteImport } from './routes/api/public/shopify-webhook'
+import { Route as ApiPublicStartQualifyRouteImport } from './routes/api/public/start-qualify'
 import { Route as ApiPublicWhatsappWebhookRouteImport } from './routes/api/public/whatsapp-webhook'
 import { Route as ApiWhatsappCatalogRouteImport } from './routes/api/whatsapp/catalog'
 import { Route as ApiWhatsappConnectRouteImport } from './routes/api/whatsapp/connect'
@@ -943,6 +944,11 @@ const ApiPublicShopifyWebhookRoute = ApiPublicShopifyWebhookRouteImport.update({
   path: '/api/public/shopify-webhook',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicStartQualifyRoute = ApiPublicStartQualifyRouteImport.update({
+  id: '/api/public/start-qualify',
+  path: '/api/public/start-qualify',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicWhatsappWebhookRoute =
   ApiPublicWhatsappWebhookRouteImport.update({
     id: '/api/public/whatsapp-webhook',
@@ -1411,6 +1417,7 @@ export interface FileRoutesByFullPath {
   '/api/public/razorpay-webhook': typeof ApiPublicRazorpayWebhookRoute
   '/api/public/shopify-callback': typeof ApiPublicShopifyCallbackRoute
   '/api/public/shopify-webhook': typeof ApiPublicShopifyWebhookRoute
+  '/api/public/start-qualify': typeof ApiPublicStartQualifyRoute
   '/api/public/whatsapp-webhook': typeof ApiPublicWhatsappWebhookRoute
   '/api/whatsapp/catalog': typeof ApiWhatsappCatalogRoute
   '/api/whatsapp/connect': typeof ApiWhatsappConnectRoute
@@ -1612,6 +1619,7 @@ export interface FileRoutesByTo {
   '/api/public/razorpay-webhook': typeof ApiPublicRazorpayWebhookRoute
   '/api/public/shopify-callback': typeof ApiPublicShopifyCallbackRoute
   '/api/public/shopify-webhook': typeof ApiPublicShopifyWebhookRoute
+  '/api/public/start-qualify': typeof ApiPublicStartQualifyRoute
   '/api/public/whatsapp-webhook': typeof ApiPublicWhatsappWebhookRoute
   '/api/whatsapp/catalog': typeof ApiWhatsappCatalogRoute
   '/api/whatsapp/connect': typeof ApiWhatsappConnectRoute
@@ -1817,6 +1825,7 @@ export interface FileRoutesById {
   '/api/public/razorpay-webhook': typeof ApiPublicRazorpayWebhookRoute
   '/api/public/shopify-callback': typeof ApiPublicShopifyCallbackRoute
   '/api/public/shopify-webhook': typeof ApiPublicShopifyWebhookRoute
+  '/api/public/start-qualify': typeof ApiPublicStartQualifyRoute
   '/api/public/whatsapp-webhook': typeof ApiPublicWhatsappWebhookRoute
   '/api/whatsapp/catalog': typeof ApiWhatsappCatalogRoute
   '/api/whatsapp/connect': typeof ApiWhatsappConnectRoute
@@ -2023,6 +2032,7 @@ export interface FileRouteTypes {
     | '/api/public/razorpay-webhook'
     | '/api/public/shopify-callback'
     | '/api/public/shopify-webhook'
+    | '/api/public/start-qualify'
     | '/api/public/whatsapp-webhook'
     | '/api/whatsapp/catalog'
     | '/api/whatsapp/connect'
@@ -2224,6 +2234,7 @@ export interface FileRouteTypes {
     | '/api/public/razorpay-webhook'
     | '/api/public/shopify-callback'
     | '/api/public/shopify-webhook'
+    | '/api/public/start-qualify'
     | '/api/public/whatsapp-webhook'
     | '/api/whatsapp/catalog'
     | '/api/whatsapp/connect'
@@ -2428,6 +2439,7 @@ export interface FileRouteTypes {
     | '/api/public/razorpay-webhook'
     | '/api/public/shopify-callback'
     | '/api/public/shopify-webhook'
+    | '/api/public/start-qualify'
     | '/api/public/whatsapp-webhook'
     | '/api/whatsapp/catalog'
     | '/api/whatsapp/connect'
@@ -2593,6 +2605,7 @@ export interface RootRouteChildren {
   ApiPublicRazorpayWebhookRoute: typeof ApiPublicRazorpayWebhookRoute
   ApiPublicShopifyCallbackRoute: typeof ApiPublicShopifyCallbackRoute
   ApiPublicShopifyWebhookRoute: typeof ApiPublicShopifyWebhookRoute
+  ApiPublicStartQualifyRoute: typeof ApiPublicStartQualifyRoute
   ApiPublicWhatsappWebhookRoute: typeof ApiPublicWhatsappWebhookRoute
   ApiWhatsappCatalogRoute: typeof ApiWhatsappCatalogRoute
   ApiWhatsappConnectRoute: typeof ApiWhatsappConnectRoute
@@ -3635,6 +3648,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicShopifyWebhookRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/start-qualify': {
+      id: '/api/public/start-qualify'
+      path: '/api/public/start-qualify'
+      fullPath: '/api/public/start-qualify'
+      preLoaderRoute: typeof ApiPublicStartQualifyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/whatsapp-webhook': {
       id: '/api/public/whatsapp-webhook'
       path: '/api/public/whatsapp-webhook'
@@ -4359,6 +4379,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicRazorpayWebhookRoute: ApiPublicRazorpayWebhookRoute,
   ApiPublicShopifyCallbackRoute: ApiPublicShopifyCallbackRoute,
   ApiPublicShopifyWebhookRoute: ApiPublicShopifyWebhookRoute,
+  ApiPublicStartQualifyRoute: ApiPublicStartQualifyRoute,
   ApiPublicWhatsappWebhookRoute: ApiPublicWhatsappWebhookRoute,
   ApiWhatsappCatalogRoute: ApiWhatsappCatalogRoute,
   ApiWhatsappConnectRoute: ApiWhatsappConnectRoute,

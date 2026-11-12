@@ -1,4 +1,4 @@
-import { DEFAULT_COUNTRY_CODE, typedPhone } from "@/lib/phone";
+import { checkRealNumber } from "@/lib/start-qualify";
 
 /**
  * Batch 72: the /start ad landing page's logic, pure so it can be tested
@@ -52,7 +52,10 @@ export function stickyBarVisible(input: {
   return input.heroFormAbove && !input.heroFormVisible && !input.finalFormVisible;
 }
 
-/** The form's own check (the server checks again): Batch 66's rule, +91 by default. */
+/**
+ * The form's own check (the server checks again): Batch 66's rule, +91 by
+ * default, and (Batch 75) no obviously fake number.
+ */
 export function checkStartForm(input: {
   name?: string;
   phone: string;
@@ -62,8 +65,8 @@ export function checkStartForm(input: {
   const name = (input.name ?? "").trim().replace(/\s+/g, " ");
   if (name && name.length < 2)
     return { ok: false, field: "name", error: "Please enter your name." };
-  const typed = typedPhone(input.phone, DEFAULT_COUNTRY_CODE);
-  if ("error" in typed) return { ok: false, field: "phone", error: typed.error };
+  const typed = checkRealNumber(input.phone);
+  if (!typed.ok) return { ok: false, field: "phone", error: typed.error };
   return { ok: true, name, phone: typed.phone };
 }
 
@@ -106,4 +109,16 @@ export function nextBarState(
     }
   }
   return next;
+}
+
+/**
+ * Batch 75: what the /start card does once the lead request answers — a 400
+ * shows the inline error; a saved (or repeated) lead asks the two questions;
+ * no answer at all (a busy network, a refusal) goes straight to /signup as
+ * before, so nobody is ever stuck.
+ */
+export function afterLeadSubmit(status: number | null): "error" | "questions" | "signup" {
+  if (status === 400) return "error";
+  if (status !== null && status >= 200 && status < 300) return "questions";
+  return "signup";
 }

@@ -2,6 +2,7 @@
  * Demo enquiries — shared vocabulary between the public landing form and the
  * Super Admin inbox. Pure data: safe to import from the browser.
  */
+import { customersLabel, sellsLabel } from "./start-qualify";
 
 export const CONSENT_VERSION = "2026-09-15";
 
@@ -125,6 +126,8 @@ export type LeadRow = {
   demo_attended_at: string | null;
   organization_id: string | null;
   is_test: boolean;
+  /** Batch 75: the /start answers ({ sells, customers, answered_at }); {} when skipped or /demo. */
+  qualification?: { sells?: string; customers?: string; answered_at?: string } | null;
 };
 
 export type LeadNote = {
@@ -147,15 +150,47 @@ export function leadTime(value: string | null): string {
   });
 }
 
-/** The admin list's filter: status tab, "unassigned new" toggle and the null-safe search. */
+/**
+ * Batch 75: a /start answer ("sells" / "customers") as its label, or "—"
+ * when the lead skipped the questions (or came from /demo).
+ */
+export function leadAnswer(
+  lead: Pick<LeadRow, "qualification">,
+  key: "sells" | "customers",
+): string {
+  const value = lead.qualification?.[key];
+  return (key === "sells" ? sellsLabel(value) : customersLabel(value)) ?? NO_ANSWER;
+}
+
+/** "all", one answer's value, or "none" (skipped / not asked). */
+export type AnswerFilter = string;
+
+function answerMatches(value: string | undefined, filter: AnswerFilter | undefined): boolean {
+  if (!filter || filter === "all") return true;
+  if (filter === "none") return !value;
+  return value === filter;
+}
+
+/**
+ * The admin list's filter: status tab, "unassigned new" toggle, the
+ * null-safe search and (Batch 75) the Sells / Customers answers.
+ */
 export function filterLeads<T extends LeadRow>(
   leads: T[],
-  opts: { status: LeadStatus | "all"; search: string; unassignedOnly: boolean },
+  opts: {
+    status: LeadStatus | "all";
+    search: string;
+    unassignedOnly: boolean;
+    sells?: AnswerFilter;
+    customers?: AnswerFilter;
+  },
 ): T[] {
   return leads.filter(
     (l) =>
       (opts.status === "all" || l.status === opts.status) &&
       (!opts.unassignedOnly || (l.status === "new" && !l.assigned_to)) &&
-      leadMatches(l, opts.search),
+      leadMatches(l, opts.search) &&
+      answerMatches(l.qualification?.sells, opts.sells) &&
+      answerMatches(l.qualification?.customers, opts.customers),
   );
 }
