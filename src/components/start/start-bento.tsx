@@ -306,7 +306,7 @@ export function StartBento() {
           <Tile
             icon={Sparkles}
             title="AI agents (MCP)"
-            line="Works with Claude and ChatGPT. You approve before anything sends."
+            line="Run AiDwar from your AI assistant. You approve before anything sends."
             className="md:col-span-3"
             delay={60}
           >

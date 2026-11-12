@@ -15,7 +15,11 @@ import { cn } from "@/lib/utils";
 
 const CHIP_PLACE: Record<(typeof HERO_CHIPS)[number]["key"], { className: string; depth: number }> =
   {
-    reach: { className: "left-0 top-[30%] sm:left-auto sm:right-[calc(100%-44px)]", depth: 1.4 },
+    reach: {
+      className:
+        "left-0 top-[30%] sm:left-auto sm:right-[calc(100%-44px)] lg:top-[80%] lg:right-[calc(100%+12px)]",
+      depth: 1.4,
+    },
     read: {
       className: "hidden sm:block top-[13%] sm:left-[calc(100%-52px)]",
       depth: 0.8,
@@ -24,7 +28,7 @@ const CHIP_PLACE: Record<(typeof HERO_CHIPS)[number]["key"], { className: string
       className: "hidden sm:block top-[56%] sm:right-[calc(100%-36px)]",
       depth: 1.1,
     },
-    held: { className: "right-0 bottom-[9%] sm:right-auto sm:left-[calc(100%-60px)]", depth: 1.6 },
+    late: { className: "right-0 bottom-[9%] sm:right-auto sm:left-[calc(100%-60px)]", depth: 1.6 },
   };
 
 function BuiltFor({ play }: { play: boolean }) {

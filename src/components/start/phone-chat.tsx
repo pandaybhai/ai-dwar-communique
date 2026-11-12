@@ -134,17 +134,17 @@ export function PhoneChat({
             </span>
           </div>
           <div className="relative flex h-[360px] flex-col gap-2 px-3 pb-14 pt-3">
-            <Bubble shown={step.show >= 1} side="out" time="10:02">
+            <Bubble shown={step.show >= 1} side="out" time="9:30 PM">
               <span className="font-semibold">Diwali offer:</span> making charges waived till Sunday
               🪔
             </Bubble>
-            <Bubble shown={step.show >= 2} side="in" time="10:05">
+            <Bubble shown={step.show >= 2} side="in" time="11:46 PM">
               Is the gold chain available in 22k?
             </Bubble>
-            <Bubble shown={step.show >= 3} side="out" time="10:05">
-              Yes! 22k, 18g, ₹1,34,500. Want me to hold it for you till 7pm?
+            <Bubble shown={step.show >= 3} side="out" time="11:47 PM">
+              Yes! 22k, 18g, ₹1,34,500. Want me to hold it for you till tomorrow evening?
             </Bubble>
-            <Bubble shown={step.show >= 4} side="in" time="10:06">
+            <Bubble shown={step.show >= 4} side="in" time="11:48 PM">
               Yes please
             </Bubble>
             <Typing side="in" on={step.typing === "customer"} />

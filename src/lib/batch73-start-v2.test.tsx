@@ -146,9 +146,9 @@ describe("the night story: step → phone", () => {
   });
 
   it("the hero chips pop in as the chat reaches them", () => {
-    expect(heroChipsShown(0)).toEqual({ reach: false, read: false, replied: false, held: false });
-    expect(heroChipsShown(2)).toEqual({ reach: true, read: true, replied: false, held: false });
-    expect(heroChipsShown(5)).toEqual({ reach: true, read: true, replied: true, held: true });
+    expect(heroChipsShown(0)).toEqual({ reach: false, read: false, replied: false, late: false });
+    expect(heroChipsShown(2)).toEqual({ reach: true, read: true, replied: false, late: false });
+    expect(heroChipsShown(4)).toEqual({ reach: true, read: true, replied: true, late: true });
   });
 });
 
@@ -185,7 +185,7 @@ describe("the copy", () => {
       "Set it once. It runs forever.",
       "One number. Your whole team.",
       "Orders, invoices, COD confirmations — sent automatically.",
-      "Works with Claude and ChatGPT. You approve before anything sends.",
+      "Run AiDwar from your AI assistant. You approve before anything sends.",
       "Live on AiDwar Growth · Hyderabad",
       "1,900+",
       "customers reached in one Diwali campaign",
@@ -222,6 +222,12 @@ describe("the copy", () => {
     expect(text).not.toMatch(/setup fee/i);
     expect(text).not.toMatch(/loyalty/i);
     expect(text).not.toMatch(/Excel or CSV|Excel\/CSV/);
+    // Brand rule (#78 review): AiDwar marketing never names other AI products.
+    expect(text).not.toMatch(/claude|chatgpt/i);
+    expect(html).not.toMatch(/claude|chatgpt/i);
+    // "Order held" is the in-chat toast only, never also a glass chip.
+    expect(HERO_CHIPS.map((c) => c.text)).not.toContain("Order held · ₹1,34,500");
+    expect(HERO_CHIPS.map((c) => c.text)).toContain("Replied at 11:47 PM");
     // No invented message in a real customer's name.
     expect(text).not.toMatch(/shopping with ZOORI/);
   });

@@ -21,7 +21,7 @@ export const HERO_CHIPS = [
   { key: "reach", text: "+1,900 customers reached", from: 1 },
   { key: "read", text: "✓✓ Read · 2s ago", from: 2 },
   { key: "replied", text: "Aiden replied in 3 sec", from: 3 },
-  { key: "held", text: "Order held · ₹1,34,500", from: 5 },
+  { key: "late", text: "Replied at 11:47 PM", from: 4 },
 ] as const;
 
 export function heroChipsShown(show: number): Record<(typeof HERO_CHIPS)[number]["key"], boolean> {
