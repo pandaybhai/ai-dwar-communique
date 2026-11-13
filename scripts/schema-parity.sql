@@ -17,7 +17,7 @@
 -- query_to_xml only when to_regclass('cron.job') finds it, so the query
 -- still runs where pg_cron is absent (every cron job is then listed).
 --
--- Expected objects: table 98, column 1159, view 2, function 124, index 176, trigger 71, cron_job 14.
+-- Expected objects: table 98, column 1163, view 2, function 124, index 176, trigger 71, cron_job 14.
 WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, introduced_in_file) AS (
   VALUES
     ('table', 'aidwar_private', 'mcp_db_proof', NULL, NULL, NULL, '20261300_batch56_mcp_hardening.sql'),
@@ -598,6 +598,10 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('column', 'public', 'demo_leads', 'landing_path', NULL, 'text', '20260915_demo_leads.sql'),
     ('column', 'public', 'demo_leads', 'latest_attribution', NULL, 'jsonb', '20260915_demo_leads.sql'),
     ('column', 'public', 'demo_leads', 'linked_user_id', NULL, 'uuid', '20260915_demo_leads.sql'),
+    ('column', 'public', 'demo_leads', 'meta_events_sent', NULL, 'jsonb', '20261410_batch77.sql'),
+    ('column', 'public', 'demo_leads', 'meta_external_id', NULL, 'text', '20261410_batch77.sql'),
+    ('column', 'public', 'demo_leads', 'meta_fbc', NULL, 'text', '20261410_batch77.sql'),
+    ('column', 'public', 'demo_leads', 'meta_fbp', NULL, 'text', '20261410_batch77.sql'),
     ('column', 'public', 'demo_leads', 'mirrored_at', NULL, 'timestamp with time zone', '20261400_batch76.sql'),
     ('column', 'public', 'demo_leads', 'name', NULL, 'text', '20260915_demo_leads.sql'),
     ('column', 'public', 'demo_leads', 'next_follow_up_at', NULL, 'timestamp with time zone', '20260915_demo_proof.sql'),

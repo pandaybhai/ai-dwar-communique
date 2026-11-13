@@ -627,6 +627,8 @@ describe("Meta events", () => {
     const lead = events(w).filter((e) => e["event_name"] === "Lead");
     expect(lead).toHaveLength(1);
     expect(lead[0]).toMatchObject({ event_id: LEAD_ID, action_source: "system_generated" });
+    // Batch 77's stored matching rides along (fbc from the visit's fbclid).
+    expect((lead[0]!["user_data"] as Row)["fbc"]).toBe("fb.1.1794466925583.IwAR0abcdefghij");
     await runVerifiedLeadEvents(w.supabase as never, { now: Date.now() + 4 * MIN });
     expect(events(w).filter((e) => e["event_name"] === "Lead")).toHaveLength(1);
     expect(readFileSync("src/routes/api/internal/knowledge-worker.ts", "utf8")).toContain(

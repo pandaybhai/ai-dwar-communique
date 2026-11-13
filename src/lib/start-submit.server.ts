@@ -37,7 +37,18 @@ export async function startLeadResponse(
         sells: result.sells,
         customers: result.customers,
       });
-      const { queueMetaEvent } = await import("@/lib/meta-capi.server");
+      const { queueMetaEvent, requestFacts } = await import("@/lib/meta-capi.server");
+      // Batch 77: what this visit is matched with (fbc, the _fbp cookie only
+      // when it exists, the external_id) is kept on the lead for its later
+      // stage events and the verified Lead — never the raw IP or user agent.
+      if (!result.duplicate) {
+        const facts = requestFacts(request);
+        const { rememberLeadMatching } = await import("@/lib/lead-stage-events.server");
+        await rememberLeadMatching(supabase, result.id, {
+          fbc: facts.fbc ?? fbcFromFbclid(body["fbclid"], body["fbclid_at"]),
+          fbp: facts.fbp ?? null,
+        });
+      }
       await queueMetaEvent(supabase, {
         event: "LeadUnverified",
         eventId,

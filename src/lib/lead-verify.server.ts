@@ -315,6 +315,9 @@ type StartLead = {
   verified_at?: string | null;
   linked_user_id: string | null;
   organization_id: string | null;
+  /** Batch 77: what the visit was matched with (absent until 20261410 is applied). */
+  meta_fbc?: string | null;
+  meta_fbp?: string | null;
 };
 
 export async function readStartLead(
@@ -368,7 +371,9 @@ export async function sendVerifiedLead(
       actionSource: opts.actionSource ?? "website",
       request: opts.request ?? null,
       lead: { phone: lead.phone, name: lead.name, leadId: lead.id },
-      fbc: opts.fbc ?? null,
+      // The visiting browser's fbclid, else what Batch 77 kept from the visit.
+      fbc: opts.fbc ?? lead.meta_fbc ?? null,
+      fbp: lead.meta_fbp ?? null,
       once: true,
     };
     if (opts.actionSource === "system_generated") await capi.sendMetaEvent(supabase, event);

@@ -48,14 +48,25 @@ export const Route = createFileRoute("/api/public/demo-leads")({
         // browser pixel still waits for Accept). One id per person — "Lead." +
         // sha256 of the number — so /start, /demo and sign-up count once.
         // Only hashed matching (number, name, lead id); fbc from the fbclid
-        // the visitor arrived with, never stored. (Batch 78: /start's Lead
-        // waits for WhatsApp verification — start-submit.server.ts.)
+        // the visitor arrived with. Batch 77: that fbc, the _fbp cookie (only
+        // when it exists) and the external_id are kept on the lead for its
+        // later stage events — never the raw IP or user agent. (Batch 78:
+        // /start's Lead waits for WhatsApp verification — start-submit.server.ts.)
         let meta: import("@/lib/meta-events").BrowserMetaEvent | null = null;
         try {
           const { fbcFromFbclid, leadEventId, safeParams } = await import("@/lib/meta-events");
           const eventId = await leadEventId(result.phone ?? null, result.id);
           const params = safeParams({ content_name: "demo", lead_source: "landing" });
-          const { queueMetaEvent } = await import("@/lib/meta-capi.server");
+          const { queueMetaEvent, requestFacts } = await import("@/lib/meta-capi.server");
+          const fbc = fbcFromFbclid(body["fbclid"], body["fbclid_at"]);
+          if (result.id && !result.duplicate) {
+            const facts = requestFacts(request);
+            const { rememberLeadMatching } = await import("@/lib/lead-stage-events.server");
+            await rememberLeadMatching(getServiceClient(), result.id, {
+              fbc: facts.fbc ?? fbc,
+              fbp: facts.fbp ?? null,
+            });
+          }
           await queueMetaEvent(getServiceClient(), {
             event: "Lead",
             eventId,
@@ -63,7 +74,7 @@ export const Route = createFileRoute("/api/public/demo-leads")({
             sourceUrl: request.headers.get("referer"),
             request,
             lead: { phone: result.phone ?? null, name: result.name ?? null, leadId: result.id },
-            fbc: fbcFromFbclid(body["fbclid"], body["fbclid_at"]),
+            fbc,
             once: true,
           });
           meta = { event: "Lead", event_id: eventId, params };
