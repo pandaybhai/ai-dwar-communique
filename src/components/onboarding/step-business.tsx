@@ -20,11 +20,18 @@ import { nameFromHost, normaliseSiteInput } from "@/lib/site-peek";
  */
 export function StepBusiness({
   existingName,
+  suggestedName = null,
   existingUrl,
   onBrand,
   onSubmit,
 }: {
   existingName: string | null;
+  /**
+   * Batch 78: the business name from the person's own /start lead — fills
+   * the name once unless they've typed one (editable; a website's name
+   * never replaces it).
+   */
+  suggestedName?: string | null;
   existingUrl: string | null;
   /** The colour as soon as we know it, so the whole screen takes it on. */
   onBrand: (color: string | null) => void;
@@ -42,8 +49,15 @@ export function StepBusiness({
   const [brand, setBrand] = useState<SiteBrand | null>(null);
   const [peeking, setPeeking] = useState(false);
   const [peekNote, setPeekNote] = useState<string | null>(null);
-  const [name, setName] = useState(existingName ?? "");
-  const [nameTouched, setNameTouched] = useState(Boolean(existingName));
+  const [name, setName] = useState(existingName ?? suggestedName ?? "");
+  const [nameTouched, setNameTouched] = useState(Boolean(existingName || suggestedName));
+  useEffect(() => {
+    if (!suggestedName || nameTouched) return;
+    // Not typed by the person yet (at most a website's guess): their own
+    // words from /start win.
+    setName(suggestedName);
+    setNameTouched(true);
+  }, [suggestedName, nameTouched]);
   const noSite = choice === "none";
   const [logoFailed, setLogoFailed] = useState(false);
   const [pending, setPending] = useState(false);

@@ -636,6 +636,40 @@ describe("Meta events", () => {
     );
   });
 
+  it("sign-up sends CompleteRegistration and no Lead — 'Lead' means a verified number (#82)", async () => {
+    const w = world();
+    const OWNER = "11111111-2222-4333-8444-555555555555";
+    Object.assign(w.supabase as object, {
+      auth: {
+        admin: {
+          getUserById: async () => ({
+            data: {
+              user: {
+                id: OWNER,
+                email: "owner@example.com",
+                created_at: new Date().toISOString(),
+                user_metadata: { full_name: "Asha Rao", phone: "+919812345670" },
+              },
+            },
+          }),
+        },
+      },
+    });
+    const relay = await route("@/routes/api/public/meta-event");
+    await relay({
+      request: req("https://aidwar.in/api/public/meta-event", {
+        event: "CompleteRegistration",
+        user_id: OWNER,
+        url: "https://aidwar.in/signup",
+      }),
+    });
+    expect(events(w).map((e) => e["event_name"])).toEqual(["CompleteRegistration"]);
+    // The browser side: the pixel's sign-up call fires no Lead either.
+    const pixel = readFileSync("src/lib/meta-pixel.ts", "utf8");
+    const body = pixel.slice(pixel.indexOf("export function trackRegistration"));
+    expect(body.slice(0, body.indexOf("\n}\n"))).not.toMatch(/"Lead"|leadEventId/);
+  });
+
   it("CompleteRegistration / StartTrial are untouched; /demo still sends its Lead", () => {
     const relay = readFileSync("src/routes/api/public/meta-event.ts", "utf8");
     expect(relay).toContain('event === "CompleteRegistration"');

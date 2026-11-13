@@ -754,18 +754,18 @@ describe("(server) the Conversions API sender", () => {
     expect((w.graph[0]!.body["data"] as Row[])[0]!["user_data"] as Row).not.toHaveProperty("em");
 
     await call({ event: "CompleteRegistration", user_id: OWNER, url: "https://aidwar.in/signup" });
-    // Batch 72: sign-up also sends the person's Lead (same id as /start, /demo).
-    expect(w.graph).toHaveLength(3);
+    // Batch 78: sign-up sends CompleteRegistration only — "Lead" means a
+    // verified WhatsApp number (/start), so sign-up no longer sends one.
+    expect(w.graph).toHaveLength(2);
     expect((w.graph[1]!.body["data"] as Row[])[0]).toMatchObject({
       event_name: "CompleteRegistration",
       event_id: `CompleteRegistration.${OWNER}`,
     });
-    expect((w.graph[2]!.body["data"] as Row[])[0]).toMatchObject({ event_name: "Lead" });
     // An old account (or a made-up id) is never sent.
     w.users.get(OWNER)!["created_at"] = new Date(Date.now() - 3600_000).toISOString();
     await call({ event: "CompleteRegistration", user_id: OWNER });
     await call({ event: "CompleteRegistration", user_id: "99999999-2222-4333-8444-555555555555" });
-    expect(w.graph).toHaveLength(3);
+    expect(w.graph).toHaveLength(2);
   });
 });
 

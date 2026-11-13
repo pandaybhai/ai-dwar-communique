@@ -142,6 +142,7 @@ import { Route as ApiInternalReprocessEventsRouteImport } from './routes/api/int
 import { Route as ApiInternalShopifySyncWorkerRouteImport } from './routes/api/internal/shopify-sync-worker'
 import { Route as ApiInternalVersionRouteImport } from './routes/api/internal/version'
 import { Route as ApiOnboardingJourneyRouteImport } from './routes/api/onboarding/journey'
+import { Route as ApiOnboardingPrefillRouteImport } from './routes/api/onboarding/prefill'
 import { Route as ApiOnboardingStartRouteImport } from './routes/api/onboarding/start'
 import { Route as ApiPublicCashfreePayRouteImport } from './routes/api/public/cashfree-pay'
 import { Route as ApiPublicCashfreeWebhookRouteImport } from './routes/api/public/cashfree-webhook'
@@ -899,6 +900,11 @@ const ApiOnboardingJourneyRoute = ApiOnboardingJourneyRouteImport.update({
   path: '/api/onboarding/journey',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiOnboardingPrefillRoute = ApiOnboardingPrefillRouteImport.update({
+  id: '/api/onboarding/prefill',
+  path: '/api/onboarding/prefill',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiOnboardingStartRoute = ApiOnboardingStartRouteImport.update({
   id: '/api/onboarding/start',
   path: '/api/onboarding/start',
@@ -1432,6 +1438,7 @@ export interface FileRoutesByFullPath {
   '/api/internal/shopify-sync-worker': typeof ApiInternalShopifySyncWorkerRoute
   '/api/internal/version': typeof ApiInternalVersionRoute
   '/api/onboarding/journey': typeof ApiOnboardingJourneyRoute
+  '/api/onboarding/prefill': typeof ApiOnboardingPrefillRoute
   '/api/onboarding/start': typeof ApiOnboardingStartRoute
   '/api/public/cashfree-pay': typeof ApiPublicCashfreePayRoute
   '/api/public/cashfree-webhook': typeof ApiPublicCashfreeWebhookRoute
@@ -1638,6 +1645,7 @@ export interface FileRoutesByTo {
   '/api/internal/shopify-sync-worker': typeof ApiInternalShopifySyncWorkerRoute
   '/api/internal/version': typeof ApiInternalVersionRoute
   '/api/onboarding/journey': typeof ApiOnboardingJourneyRoute
+  '/api/onboarding/prefill': typeof ApiOnboardingPrefillRoute
   '/api/onboarding/start': typeof ApiOnboardingStartRoute
   '/api/public/cashfree-pay': typeof ApiPublicCashfreePayRoute
   '/api/public/cashfree-webhook': typeof ApiPublicCashfreeWebhookRoute
@@ -1848,6 +1856,7 @@ export interface FileRoutesById {
   '/api/internal/shopify-sync-worker': typeof ApiInternalShopifySyncWorkerRoute
   '/api/internal/version': typeof ApiInternalVersionRoute
   '/api/onboarding/journey': typeof ApiOnboardingJourneyRoute
+  '/api/onboarding/prefill': typeof ApiOnboardingPrefillRoute
   '/api/onboarding/start': typeof ApiOnboardingStartRoute
   '/api/public/cashfree-pay': typeof ApiPublicCashfreePayRoute
   '/api/public/cashfree-webhook': typeof ApiPublicCashfreeWebhookRoute
@@ -2059,6 +2068,7 @@ export interface FileRouteTypes {
     | '/api/internal/shopify-sync-worker'
     | '/api/internal/version'
     | '/api/onboarding/journey'
+    | '/api/onboarding/prefill'
     | '/api/onboarding/start'
     | '/api/public/cashfree-pay'
     | '/api/public/cashfree-webhook'
@@ -2265,6 +2275,7 @@ export interface FileRouteTypes {
     | '/api/internal/shopify-sync-worker'
     | '/api/internal/version'
     | '/api/onboarding/journey'
+    | '/api/onboarding/prefill'
     | '/api/onboarding/start'
     | '/api/public/cashfree-pay'
     | '/api/public/cashfree-webhook'
@@ -2474,6 +2485,7 @@ export interface FileRouteTypes {
     | '/api/internal/shopify-sync-worker'
     | '/api/internal/version'
     | '/api/onboarding/journey'
+    | '/api/onboarding/prefill'
     | '/api/onboarding/start'
     | '/api/public/cashfree-pay'
     | '/api/public/cashfree-webhook'
@@ -2644,6 +2656,7 @@ export interface RootRouteChildren {
   ApiInternalShopifySyncWorkerRoute: typeof ApiInternalShopifySyncWorkerRoute
   ApiInternalVersionRoute: typeof ApiInternalVersionRoute
   ApiOnboardingJourneyRoute: typeof ApiOnboardingJourneyRoute
+  ApiOnboardingPrefillRoute: typeof ApiOnboardingPrefillRoute
   ApiOnboardingStartRoute: typeof ApiOnboardingStartRoute
   ApiPublicCashfreePayRoute: typeof ApiPublicCashfreePayRoute
   ApiPublicCashfreeWebhookRoute: typeof ApiPublicCashfreeWebhookRoute
@@ -3637,6 +3650,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiOnboardingJourneyRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/onboarding/prefill': {
+      id: '/api/onboarding/prefill'
+      path: '/api/onboarding/prefill'
+      fullPath: '/api/onboarding/prefill'
+      preLoaderRoute: typeof ApiOnboardingPrefillRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/onboarding/start': {
       id: '/api/onboarding/start'
       path: '/api/onboarding/start'
@@ -4450,6 +4470,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiInternalShopifySyncWorkerRoute: ApiInternalShopifySyncWorkerRoute,
   ApiInternalVersionRoute: ApiInternalVersionRoute,
   ApiOnboardingJourneyRoute: ApiOnboardingJourneyRoute,
+  ApiOnboardingPrefillRoute: ApiOnboardingPrefillRoute,
   ApiOnboardingStartRoute: ApiOnboardingStartRoute,
   ApiPublicCashfreePayRoute: ApiPublicCashfreePayRoute,
   ApiPublicCashfreeWebhookRoute: ApiPublicCashfreeWebhookRoute,

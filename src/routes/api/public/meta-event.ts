@@ -81,18 +81,8 @@ export const Route = createFileRoute("/api/public/meta-event")({
             fbc,
             once: true,
           });
-          // Batch 72: sign-ups count as a Lead too — the same id as the
-          // person's /start or /demo Lead (their number), so Meta counts once.
-          await capi.queueMetaEvent(supabase, {
-            event: "Lead",
-            eventId: await meta.leadEventId(person.phone, userId),
-            params: { content_name: "signup", lead_source: "signup" },
-            userId,
-            sourceUrl: ownUrl(body["url"]),
-            request,
-            fbc,
-            once: true,
-          });
+          // Batch 78: no Lead from sign-up — "Lead" means verified only (a
+          // number proved on WhatsApp from /start) or a /demo enquiry.
           return ok();
         }
 
