@@ -28,6 +28,8 @@ export type AdminOverviewRow = {
   plan_name: string | null;
   plan_status: string | null;
   funding_model: string | null;
+  /** Batch 80: "/999" when the plan was bought on the ₹999 page. */
+  paid_via: string | null;
   billing_on: boolean;
   available: number;
   held: number;
@@ -100,7 +102,7 @@ export async function adminOverview(
     await Promise.all([
       supabase
         .from("organization_billing_settings")
-        .select("organization_id, low_credit_threshold, meta_float_target"),
+        .select("organization_id, low_credit_threshold, meta_float_target, limits_override"),
       supabase
         .from("wallet_ledger")
         // Messaging only — AI debits are counted in the AI card, never here.
@@ -183,6 +185,8 @@ export async function adminOverview(
         plan_name: row.plan_name,
         plan_status: row.plan_status,
         funding_model: row.funding_model,
+        // Batch 80: bought on the ₹999 page ("Paid via /999").
+        paid_via: paidVia(setting["limits_override"]),
         billing_on: billingOnBy.get(id) ?? false,
         balance: row.balance,
         held: row.held,
@@ -961,4 +965,11 @@ export async function adminOrgPayments(
         : {}),
     };
   });
+}
+
+/** Batch 80: "/999" when the workspace's plan was bought on the ₹999 page. */
+function paidVia(limitsOverride: unknown): string | null {
+  const marker = (limitsOverride as Record<string, unknown> | null)?.["_paid_via"];
+  const source = (marker as { source?: unknown } | undefined)?.source;
+  return typeof source === "string" ? source : null;
 }

@@ -98,6 +98,11 @@ export type BillingSummary = {
   period: { start: string; end: string };
   /** Batch 55: false = no GST is added to anything and no "+ GST" copy is shown. */
   gst_registered: boolean;
+  /**
+   * Batch 80: the workspace pays Meta for its messages itself (Basic): no
+   * credit purchase, top-up or low-credit prompt is shown. Absent = false.
+   */
+  pays_meta_directly?: boolean;
 };
 
 const INR = new Intl.NumberFormat("en-IN", {

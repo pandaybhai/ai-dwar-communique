@@ -51,8 +51,9 @@ export async function holdCampaign(
   organizationId: string,
   campaignId: string,
 ): Promise<HoldResult> {
-  const { billingEnabled, holdCampaignSpend } = await import("@/lib/billing.server");
-  if (!(await billingEnabled(supabase, organizationId))) return { ok: true };
+  const { messagesBilled, holdCampaignSpend } = await import("@/lib/billing.server");
+  // Batch 80: nothing is held for a workspace that pays Meta itself (Basic).
+  if (!(await messagesBilled(supabase, organizationId))) return { ok: true };
 
   const campaign = await loadCampaign(supabase, organizationId, campaignId);
   if (!campaign) return { ok: true };

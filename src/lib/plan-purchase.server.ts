@@ -73,6 +73,44 @@ export async function purchasablePlans(supabase: SupabaseClient): Promise<Purcha
     .filter((p): p is PurchasablePlan => p !== null);
 }
 
+/**
+ * Batch 80: one active plan by key whether or not it is listed — the Basic
+ * plan is sold only on /999 (is_public false), never in the plan chooser.
+ * Carries the version's features so the gateway can follow the plan.
+ */
+export async function unlistedPlan(
+  supabase: SupabaseClient,
+  key: string,
+): Promise<(PurchasablePlan & { features: string[] }) | null> {
+  const { data } = await supabase
+    .from("plans")
+    .select(
+      "key, name, tagline, plan_versions(id, price_monthly, price_annual, currency, limits, highlights, features, is_current)",
+    )
+    .eq("key", key)
+    .eq("is_active", true)
+    .maybeSingle();
+  const plan = data as Record<string, unknown> | null;
+  if (!plan) return null;
+  const version = ((plan["plan_versions"] ?? []) as Record<string, unknown>[]).find(
+    (v) => v["is_current"] === true,
+  );
+  if (!version) return null;
+  const num = (v: unknown) => (v === null || v === undefined ? null : Number(v));
+  return {
+    key: String(plan["key"]),
+    name: String(plan["name"]),
+    tagline: (plan["tagline"] as string | null) ?? null,
+    plan_version_id: String(version["id"]),
+    price_monthly: num(version["price_monthly"]),
+    price_annual: num(version["price_annual"]),
+    currency: String(version["currency"] ?? "INR"),
+    limits: (version["limits"] as Record<string, unknown>) ?? {},
+    highlights: (version["highlights"] as string[]) ?? [],
+    features: Array.isArray(version["features"]) ? (version["features"] as string[]) : [],
+  };
+}
+
 export async function planPurchaseState(
   supabase: SupabaseClient,
   input: { organizationId: string; userId: string },
@@ -202,6 +240,12 @@ export async function startPlanPurchase(
     planKey: string;
     gstin?: string | null;
     billingWhatsapp?: string | null;
+    /**
+     * Batch 80: the /999 checkout — the plan may be unlisted (Basic), the
+     * gateway follows the plan's own features, the payment row carries
+     * raw.source and Cashfree brings a redirected buyer back to returnPath.
+     */
+    landing?: { source: "landing_999"; returnPath: string };
   },
 ): Promise<
   | {
@@ -216,8 +260,9 @@ export async function startPlanPurchase(
     return { error: "Only an owner can choose a plan for this workspace." };
   }
 
-  const plans = await purchasablePlans(supabase);
-  const plan = plans.find((p) => p.key === input.planKey);
+  const listed = input.landing ? null : await purchasablePlans(supabase);
+  const unlisted = input.landing ? await unlistedPlan(supabase, input.planKey) : null;
+  const plan = unlisted ?? listed?.find((p) => p.key === input.planKey) ?? null;
   if (!plan) return { error: "That plan isn't available right now." };
   if (plan.price_monthly === null || plan.price_monthly <= 0) {
     return { error: "This plan is priced for you personally — write to us and we'll set it up." };
@@ -243,7 +288,13 @@ export async function startPlanPurchase(
   const { paymentGateway, startCashfreeOrder, orderCustomer } =
     await import("@/lib/cashfree-billing.server");
   const { cashfreeConfig } = await import("@/lib/cashfree.server");
-  const gateway = await paymentGateway(supabase, input.organizationId);
+  // Batch 80: a /999 plan names its gateway in its own features (Basic:
+  // cashfree_billing) — the workspace isn't on it yet, so its flags can't.
+  const gateway = unlisted
+    ? unlisted.features.includes("cashfree_billing")
+      ? "cashfree"
+      : "razorpay"
+    : await paymentGateway(supabase, input.organizationId);
   const cashfree = gateway === "cashfree" ? cashfreeConfig() : null;
   const keys = gateway === "razorpay" ? await razorpayKeys(supabase) : null;
   if (gateway === "cashfree" ? !cashfree : !keys) return { error: PAYMENTS_NOT_CONFIGURED };
@@ -314,6 +365,7 @@ export async function startPlanPurchase(
     gst_rate: registered ? 0.18 : 0,
     gst_amount: gst,
     gross_amount: total,
+    ...(input.landing ? { source: input.landing.source } : {}),
   };
 
   const { data: payment, error: payErr } = await supabase
@@ -352,7 +404,9 @@ export async function startPlanPurchase(
       currency: "INR",
       customer,
       note: `AiDwar ${plan.name} plan, first month${inclGst}`,
-      returnUrl: `${APP_PUBLIC_URL}/app/billing?payment=${payment.id}`,
+      returnUrl: input.landing
+        ? `${APP_PUBLIC_URL}${input.landing.returnPath}?payment=${payment.id}`
+        : `${APP_PUBLIC_URL}/app/billing?payment=${payment.id}`,
       raw,
       tags: { organization_id: input.organizationId, purpose: "plan_fee", plan_key: plan.key },
       expiresAt: new Date(Date.now() + 24 * 3600e3),
@@ -458,9 +512,55 @@ export async function activatePlanFromPayment(
     },
   });
 
+  if (payment.raw["source"] === "landing_999") {
+    await markPaidVia999(supabase, payment);
+  }
   await startFullSiteRead(supabase, payment.organization_id);
   await metaPlanChangeSafe(supabase, payment.organization_id, before, planVersionId);
   return true;
+}
+
+/**
+ * Batch 80: a /999 purchase settled — its lead is marked paid (Admin → Leads
+ * stops calling it abandoned) and the workspace carries "Paid via /999"
+ * (organization_billing_settings.limits_override._paid_via, next to the
+ * _internal_workspace marker). Never throws: the plan is already active.
+ */
+async function markPaidVia999(
+  supabase: SupabaseClient,
+  payment: { id: string; organization_id: string },
+): Promise<void> {
+  const at = new Date().toISOString();
+  try {
+    await supabase
+      .from("demo_leads")
+      .update({ paid_at: at })
+      .eq("payment_id", payment.id)
+      .is("paid_at", null);
+  } catch {
+    // the lead's flag is a courtesy
+  }
+  try {
+    const { data } = await supabase
+      .from("organization_billing_settings")
+      .select("limits_override")
+      .eq("organization_id", payment.organization_id)
+      .maybeSingle();
+    const current = ((data as Record<string, unknown> | null)?.["limits_override"] ?? {}) as Record<
+      string,
+      unknown
+    >;
+    if (current["_paid_via"]) return;
+    await supabase.from("organization_billing_settings").upsert(
+      {
+        organization_id: payment.organization_id,
+        limits_override: { ...current, _paid_via: { source: "/999", payment_id: payment.id, at } },
+      },
+      { onConflict: "organization_id" },
+    );
+  } catch {
+    // the admin tag is a courtesy
+  }
 }
 
 /** The workspace's plan version now, or null (never throws). */

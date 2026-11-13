@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as R999RouteImport } from './routes/999'
 import { Route as AdminRouteRouteImport } from './routes/admin/route'
 import { Route as AiAssistantsRouteImport } from './routes/ai-assistants'
 import { Route as AppRouteRouteImport } from './routes/app/route'
@@ -145,6 +146,7 @@ import { Route as ApiOnboardingJourneyRouteImport } from './routes/api/onboardin
 import { Route as ApiOnboardingStartRouteImport } from './routes/api/onboarding/start'
 import { Route as ApiPublicCashfreePayRouteImport } from './routes/api/public/cashfree-pay'
 import { Route as ApiPublicCashfreeWebhookRouteImport } from './routes/api/public/cashfree-webhook'
+import { Route as ApiPublicCheckout999RouteImport } from './routes/api/public/checkout-999'
 import { Route as ApiPublicDemoLeadsRouteImport } from './routes/api/public/demo-leads'
 import { Route as ApiPublicGoogleOauthCallbackRouteImport } from './routes/api/public/google-oauth-callback'
 import { Route as ApiPublicMetaEventRouteImport } from './routes/api/public/meta-event'
@@ -220,6 +222,11 @@ import { Route as ApiV1ContactsPhoneTagsTagRouteImport } from './routes/api/v1/c
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const R999Route = R999RouteImport.update({
+  id: '/999',
+  path: '/999',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminRouteRoute = AdminRouteRouteImport.update({
@@ -915,6 +922,11 @@ const ApiPublicCashfreeWebhookRoute =
     path: '/api/public/cashfree-webhook',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicCheckout999Route = ApiPublicCheckout999RouteImport.update({
+  id: '/api/public/checkout-999',
+  path: '/api/public/checkout-999',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicDemoLeadsRoute = ApiPublicDemoLeadsRouteImport.update({
   id: '/api/public/demo-leads',
   path: '/api/public/demo-leads',
@@ -1302,6 +1314,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteRouteWithChildren
   '/app': typeof AppRouteRouteWithChildren
+  '/999': typeof R999Route
   '/ai-assistants': typeof AiAssistantsRoute
   '/cancellation-policy': typeof CancellationPolicyRoute
   '/contact': typeof ContactRoute
@@ -1435,6 +1448,7 @@ export interface FileRoutesByFullPath {
   '/api/onboarding/start': typeof ApiOnboardingStartRoute
   '/api/public/cashfree-pay': typeof ApiPublicCashfreePayRoute
   '/api/public/cashfree-webhook': typeof ApiPublicCashfreeWebhookRoute
+  '/api/public/checkout-999': typeof ApiPublicCheckout999Route
   '/api/public/demo-leads': typeof ApiPublicDemoLeadsRoute
   '/api/public/google-oauth-callback': typeof ApiPublicGoogleOauthCallbackRoute
   '/api/public/meta-event': typeof ApiPublicMetaEventRoute
@@ -1509,6 +1523,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/999': typeof R999Route
   '/ai-assistants': typeof AiAssistantsRoute
   '/cancellation-policy': typeof CancellationPolicyRoute
   '/contact': typeof ContactRoute
@@ -1641,6 +1656,7 @@ export interface FileRoutesByTo {
   '/api/onboarding/start': typeof ApiOnboardingStartRoute
   '/api/public/cashfree-pay': typeof ApiPublicCashfreePayRoute
   '/api/public/cashfree-webhook': typeof ApiPublicCashfreeWebhookRoute
+  '/api/public/checkout-999': typeof ApiPublicCheckout999Route
   '/api/public/demo-leads': typeof ApiPublicDemoLeadsRoute
   '/api/public/google-oauth-callback': typeof ApiPublicGoogleOauthCallbackRoute
   '/api/public/meta-event': typeof ApiPublicMetaEventRoute
@@ -1718,6 +1734,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteRouteWithChildren
   '/app': typeof AppRouteRouteWithChildren
+  '/999': typeof R999Route
   '/ai-assistants': typeof AiAssistantsRoute
   '/cancellation-policy': typeof CancellationPolicyRoute
   '/contact': typeof ContactRoute
@@ -1851,6 +1868,7 @@ export interface FileRoutesById {
   '/api/onboarding/start': typeof ApiOnboardingStartRoute
   '/api/public/cashfree-pay': typeof ApiPublicCashfreePayRoute
   '/api/public/cashfree-webhook': typeof ApiPublicCashfreeWebhookRoute
+  '/api/public/checkout-999': typeof ApiPublicCheckout999Route
   '/api/public/demo-leads': typeof ApiPublicDemoLeadsRoute
   '/api/public/google-oauth-callback': typeof ApiPublicGoogleOauthCallbackRoute
   '/api/public/meta-event': typeof ApiPublicMetaEventRoute
@@ -1929,6 +1947,7 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/app'
+    | '/999'
     | '/ai-assistants'
     | '/cancellation-policy'
     | '/contact'
@@ -2062,6 +2081,7 @@ export interface FileRouteTypes {
     | '/api/onboarding/start'
     | '/api/public/cashfree-pay'
     | '/api/public/cashfree-webhook'
+    | '/api/public/checkout-999'
     | '/api/public/demo-leads'
     | '/api/public/google-oauth-callback'
     | '/api/public/meta-event'
@@ -2136,6 +2156,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/999'
     | '/ai-assistants'
     | '/cancellation-policy'
     | '/contact'
@@ -2268,6 +2289,7 @@ export interface FileRouteTypes {
     | '/api/onboarding/start'
     | '/api/public/cashfree-pay'
     | '/api/public/cashfree-webhook'
+    | '/api/public/checkout-999'
     | '/api/public/demo-leads'
     | '/api/public/google-oauth-callback'
     | '/api/public/meta-event'
@@ -2344,6 +2366,7 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/app'
+    | '/999'
     | '/ai-assistants'
     | '/cancellation-policy'
     | '/contact'
@@ -2477,6 +2500,7 @@ export interface FileRouteTypes {
     | '/api/onboarding/start'
     | '/api/public/cashfree-pay'
     | '/api/public/cashfree-webhook'
+    | '/api/public/checkout-999'
     | '/api/public/demo-leads'
     | '/api/public/google-oauth-callback'
     | '/api/public/meta-event'
@@ -2554,6 +2578,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRouteRoute: typeof AdminRouteRouteWithChildren
   AppRouteRoute: typeof AppRouteRouteWithChildren
+  R999Route: typeof R999Route
   AiAssistantsRoute: typeof AiAssistantsRoute
   CancellationPolicyRoute: typeof CancellationPolicyRoute
   ContactRoute: typeof ContactRoute
@@ -2647,6 +2672,7 @@ export interface RootRouteChildren {
   ApiOnboardingStartRoute: typeof ApiOnboardingStartRoute
   ApiPublicCashfreePayRoute: typeof ApiPublicCashfreePayRoute
   ApiPublicCashfreeWebhookRoute: typeof ApiPublicCashfreeWebhookRoute
+  ApiPublicCheckout999Route: typeof ApiPublicCheckout999Route
   ApiPublicDemoLeadsRoute: typeof ApiPublicDemoLeadsRoute
   ApiPublicGoogleOauthCallbackRoute: typeof ApiPublicGoogleOauthCallbackRoute
   ApiPublicMetaEventRoute: typeof ApiPublicMetaEventRoute
@@ -2711,6 +2737,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/999': {
+      id: '/999'
+      path: '/999'
+      fullPath: '/999'
+      preLoaderRoute: typeof R999RouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin': {
@@ -3658,6 +3691,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicCashfreeWebhookRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/checkout-999': {
+      id: '/api/public/checkout-999'
+      path: '/api/public/checkout-999'
+      fullPath: '/api/public/checkout-999'
+      preLoaderRoute: typeof ApiPublicCheckout999RouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/demo-leads': {
       id: '/api/public/demo-leads'
       path: '/api/public/demo-leads'
@@ -4359,6 +4399,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRouteRoute: AdminRouteRouteWithChildren,
   AppRouteRoute: AppRouteRouteWithChildren,
+  R999Route: R999Route,
   AiAssistantsRoute: AiAssistantsRoute,
   CancellationPolicyRoute: CancellationPolicyRoute,
   ContactRoute: ContactRoute,
@@ -4453,6 +4494,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiOnboardingStartRoute: ApiOnboardingStartRoute,
   ApiPublicCashfreePayRoute: ApiPublicCashfreePayRoute,
   ApiPublicCashfreeWebhookRoute: ApiPublicCashfreeWebhookRoute,
+  ApiPublicCheckout999Route: ApiPublicCheckout999Route,
   ApiPublicDemoLeadsRoute: ApiPublicDemoLeadsRoute,
   ApiPublicGoogleOauthCallbackRoute: ApiPublicGoogleOauthCallbackRoute,
   ApiPublicMetaEventRoute: ApiPublicMetaEventRoute,

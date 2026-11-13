@@ -517,6 +517,21 @@ export async function paymentConversion(
   const gross = paymentGross(payment as Record<string, unknown>);
   const organizationId = String(payment["organization_id"]);
   const { metaEventId, predictedLtv } = await import("@/lib/meta-events");
+  // Batch 80: a /999 purchase is the page's Purchase — the price paid (net
+  // of any GST), id "Purchase." + payment id, the same the browser fires.
+  const raw = (payment["raw"] ?? {}) as Record<string, unknown>;
+  if (purpose === "plan_fee" && raw["source"] === "landing_999") {
+    return {
+      event: "Purchase",
+      eventId: metaEventId("Purchase", paymentId),
+      params: safeParams({
+        value: Number(payment["amount"] ?? 0),
+        currency: "INR",
+        content_name: "basic",
+      }),
+      organizationId,
+    };
+  }
   if (purpose === "plan_fee") {
     const fee = await monthlyFee(supabase, organizationId);
     return {

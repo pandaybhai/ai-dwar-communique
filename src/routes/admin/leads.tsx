@@ -18,7 +18,9 @@ import {
   metaStageLines,
   leadTitle,
   type LeadNote,
+  LEAD_SOURCE_FILTERS,
   type LeadRow,
+  type LeadSourceFilter,
   type LeadStatus,
 } from "@/lib/leads";
 import { LeadSummary, LeadsTable, StartBadge } from "@/components/admin/lead-views";
@@ -70,6 +72,8 @@ function AdminLeads() {
   const { lead: linkedLead } = Route.useSearch();
   // Batch 78: verified on WhatsApp, or not.
   const [verified, setVerified] = useState<"all" | "yes" | "no">("all");
+  // Batch 80: /start, /999, the demo form — or /999 checkouts left unpaid.
+  const [source, setSource] = useState<LeadSourceFilter>("all");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -103,8 +107,16 @@ function AdminLeads() {
 
   const visible = useMemo(
     () =>
-      filterLeads(data?.leads ?? [], { status, search, unassignedOnly, sells, customers, verified }),
-    [data, status, search, unassignedOnly, sells, customers, verified],
+      filterLeads(data?.leads ?? [], {
+        status,
+        search,
+        unassignedOnly,
+        sells,
+        customers,
+        verified,
+        source,
+      }),
+    [data, status, search, unassignedOnly, sells, customers, verified, source],
   );
 
   const unassignedNew = (data?.leads ?? []).filter((l) => l.status === "new" && !l.assigned_to).length;
@@ -173,6 +185,21 @@ function AdminLeads() {
             <option value="all">Any</option>
             <option value="yes">Verified ✓</option>
             <option value="no">Not verified</option>
+          </select>
+        </label>
+        <label className="inline-flex items-center gap-2 text-sm">
+          <span className="font-medium text-muted-foreground">Source</span>
+          <select
+            value={source}
+            onChange={(e) => setSource(e.target.value as LeadSourceFilter)}
+            data-testid="filter-source"
+            className="h-9 rounded-full border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            {LEAD_SOURCE_FILTERS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
           </select>
         </label>
         <div className="relative ml-auto w-full max-w-xs">

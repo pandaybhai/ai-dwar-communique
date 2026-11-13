@@ -49,6 +49,24 @@ export const Route = createFileRoute("/api/public/meta-event")({
           }
         };
 
+        // Batch 80: the /999 checkout sheet opened — InitiateCheckout, under the
+        // same rule as a page view (consent, our own page, the pixel's id).
+        if (event === "InitiateCheckout") {
+          const id = body["event_id"];
+          if (body["consent"] !== true || !meta.isEventId(id) || !id.startsWith(`${event}.`))
+            return ok();
+          const url = ownUrl(body["url"]);
+          if (!url || new URL(url).pathname.replace(/\/+$/, "") !== "/999") return ok();
+          await capi.queueMetaEvent(supabase, {
+            event,
+            eventId: id,
+            params: meta.safeParams({ content_name: "basic", value: 999, currency: "INR" }),
+            sourceUrl: url,
+            request,
+          });
+          return ok();
+        }
+
         if (event === "ViewContent" || event === "Contact") {
           const id = body["event_id"];
           if (body["consent"] !== true || !meta.isEventId(id) || !id.startsWith(`${event}.`))
@@ -81,6 +99,8 @@ export const Route = createFileRoute("/api/public/meta-event")({
             fbc,
             once: true,
           });
+          // Batch 80: an account made in the /999 checkout is never a Lead.
+          if (body["source"] === "landing_999") return ok();
           // Batch 72: sign-ups count as a Lead too — the same id as the
           // person's /start or /demo Lead (their number), so Meta counts once.
           await capi.queueMetaEvent(supabase, {

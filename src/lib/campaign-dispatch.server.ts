@@ -778,7 +778,8 @@ async function loadActiveCampaigns(
     let p = billingByOrg.get(orgId);
     if (!p) {
       p = import("@/lib/billing.server")
-        .then((m) => m.billingEnabled(supabase, orgId))
+        // Batch 80: a workspace that pays Meta itself has no hold to wait for.
+        .then((m) => m.messagesBilled(supabase, orgId))
         .catch(() => true);
       billingByOrg.set(orgId, p);
     }

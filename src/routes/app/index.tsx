@@ -453,7 +453,13 @@ function nextActions(data: HomeSummary, extras: HomeExtras): NextAction[] {
       tone: "warning",
     });
   const wallet = extras.billing?.wallet;
-  if (wallet && extras.billing && wallet.available <= extras.billing.settings.low_credit_threshold)
+  // Batch 80: never for a workspace that pays Meta itself (Basic).
+  if (
+    wallet &&
+    extras.billing &&
+    extras.billing.pays_meta_directly !== true &&
+    wallet.available <= extras.billing.settings.low_credit_threshold
+  )
     out.push({
       key: "credits",
       icon: CreditCard,

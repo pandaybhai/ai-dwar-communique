@@ -131,7 +131,9 @@ export function leadAnswers(lead: {
         ? "/start"
         : lead.source === "landing"
           ? "/demo"
-          : lead.source,
+          : lead.source === "landing_999"
+            ? "/999"
+            : lead.source,
   };
 }
 
@@ -153,7 +155,9 @@ export function alertSourceLabel(source: string): string {
     ? "Website /start"
     : source === "landing"
       ? "Demo form"
-      : source;
+      : source === "landing_999"
+        ? "Website /999"
+        : source;
 }
 
 /** {{1}} name, {{2}} number, {{3}} sells, {{4}} customers, {{5}} source — "—" when unanswered. */
@@ -237,7 +241,8 @@ export async function runLeadAlerts(
     // "*": Batch 78's verified_at is read when 20261420 is applied, and the
     // query still works before it (a named missing column would fail it).
     .select("*")
-    .in("source", ["landing_start", "landing"])
+    // Batch 80: /999 checkout leads alert like /start's.
+    .in("source", ["landing_start", "landing", "landing_999"])
     .eq("is_test", false)
     .is("alerted_at", null)
     .gte("created_at", new Date(now - ALERT_WITHIN_MS).toISOString())

@@ -84,6 +84,8 @@ type Row = {
   plan_name: string | null;
   plan_status: string | null;
   funding_model: string | null;
+  /** Batch 80: "/999" when the plan was bought on the ₹999 page. */
+  paid_via?: string | null;
   billing_on: boolean;
   available: number;
   held: number;
@@ -173,6 +175,19 @@ function statusTone(status: string | null): string {
   if (status === "trial") return "bg-amber-500/10 text-amber-600";
   if (status === "past_due" || status === "cancelled") return "bg-destructive/10 text-destructive";
   return "bg-muted text-muted-foreground";
+}
+
+/** Batch 80: "Paid via /999" — the plan was bought on the ₹999 page. */
+function PaidViaBadge({ via }: { via: string | null }) {
+  if (!via) return null;
+  return (
+    <span
+      className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-800"
+      data-testid="paid-via-badge"
+    >
+      Paid via {via}
+    </span>
+  );
 }
 
 const FUNDING_LABEL: Record<string, string> = {
@@ -697,6 +712,7 @@ function AdminBilling() {
                           <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
                             {FUNDING_LABEL[row.funding_model ?? ""] ?? "—"}
                           </span>
+                          <PaidViaBadge via={row.paid_via ?? null} />
                         </td>
                         <td
                           className={`px-3 py-3 ${lowCredits ? "text-amber-600 font-semibold" : "text-foreground"}`}
