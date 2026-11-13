@@ -254,6 +254,21 @@ export const Route = createFileRoute("/api/internal/knowledge-worker")({
             );
           }
 
+          // Batch 78: Meta's Lead for a /start lead verified on WhatsApp whose
+          // page never sent it (closed, or another device) — once per number.
+          let verifiedLeads = { checked: 0 };
+          try {
+            const { runVerifiedLeadEvents } = await import("@/lib/lead-verify.server");
+            if (tickEnds - Date.now() >= NUDGES_MIN_MS) {
+              verifiedLeads = await runVerifiedLeadEvents(supabase);
+            }
+          } catch (error) {
+            console.error(
+              "[lead-verify] failed",
+              error instanceof Error ? error.message : String(error),
+            );
+          }
+
           return Response.json({
             claimed: claimed.length,
             done,
@@ -262,6 +277,7 @@ export const Route = createFileRoute("/api/internal/knowledge-worker")({
             start_reminders: startReminders,
             lead_alerts: leadAlerts,
             lead_mirror: leadMirror,
+            verified_leads: verifiedLeads,
             embeddings,
             ...(personaDeferred > 0 ? { persona_deferred: personaDeferred } : {}),
             ...(personaCaughtUp > 0 ? { persona_caught_up: personaCaughtUp } : {}),

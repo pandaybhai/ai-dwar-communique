@@ -620,6 +620,8 @@ export const FEATURES: readonly FeatureManifest[] = [
         "onboarding.connect_skipped",
         "onboarding.dismissed",
         "onboarding.callback_requested",
+        // Batch 78: "I don't have a website — I'll tell Aiden on WhatsApp".
+        "onboarding.no_website",
       ],
       metrics: [],
       dashboard_section: false,

@@ -190,6 +190,10 @@ describe("lead stage → Meta", () => {
         body: JSON.stringify({
           source: "landing_start",
           name: "Asha Rao",
+          // Batch 78: step 3 sends the answers and business name with the number.
+          business_name: "Asha Jewels",
+          sells: "jewellery",
+          customers: "500_5000",
           phone: "98123 45670",
           fbclid: "IwAR0abcdefghij",
           fbclid_at: 1794466925583,
@@ -205,7 +209,9 @@ describe("lead stage → Meta", () => {
       meta_external_id: id.toLowerCase(),
     });
     expect(JSON.stringify(row)).not.toMatch(/203\.0\.113\.5|Mozilla|sb-auth/);
-    const lead = events(w).find((e) => e["event_name"] === "Lead")!;
+    // Batch 78: /start's submit sends LeadUnverified (Lead waits for the
+    // WhatsApp proof); it carries the same matching and external_id.
+    const lead = events(w).find((e) => e["event_name"] === "LeadUnverified")!;
 
     const POST = await handler("@/routes/api/admin/leads");
     await POST({
@@ -232,7 +238,14 @@ describe("lead stage → Meta", () => {
       request: new Request("https://aidwar.in/api/public/demo-leads", {
         method: "POST",
         headers: { "content-type": "application/json", referer: "https://aidwar.in/start" },
-        body: JSON.stringify({ source: "landing_start", name: "Asha", phone: "98123 45670" }),
+        body: JSON.stringify({
+          source: "landing_start",
+          name: "Asha",
+          business_name: "Asha Jewels",
+          sells: "fashion",
+          customers: "under_500",
+          phone: "98123 45670",
+        }),
       }),
     });
     expect(w.rows("demo_leads")[0]).toMatchObject({ meta_fbc: null, meta_fbp: null });

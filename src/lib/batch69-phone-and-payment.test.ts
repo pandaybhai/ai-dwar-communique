@@ -42,7 +42,7 @@ vi.mock("@/lib/campaigns.server", () => ({
   sendCampaignTemplate: h.send,
 }));
 
-import { ENTER_WITH_COUNTRY, normalizePhone, typedPhone } from "./phone";
+import { ENTER_WITH_COUNTRY, INDIA_MOBILE_ERROR, normalizePhone, typedPhone } from "./phone";
 import { addContactPhone } from "./add-contact-phone";
 import { workspaceTypedPhone } from "./default-country";
 import { alertPhonesNeedCountry, validateAlertSettings } from "./handoff-alerts.server";
@@ -263,7 +263,8 @@ describe("(1) billing WhatsApp: the Super Admin billing account form", () => {
     const db = world({
       billing_accounts: [{ id: "ba-1", name: "ZOORI Jewels", billing_whatsapp: "+918121310333" }],
     });
-    expect(await save(db, "12345")).toEqual({ error: `Billing WhatsApp: ${TOO_SHORT}` });
+    // Batch 78: an Indian workspace's own number answers with India's line.
+    expect(await save(db, "12345")).toEqual({ error: `Billing WhatsApp: ${INDIA_MOBILE_ERROR}` });
     expect(db.rows("billing_accounts")[0]!["billing_whatsapp"]).toBe("+918121310333");
   });
 
@@ -299,7 +300,8 @@ describe("(1) billing WhatsApp: the customer's own billing details (plan purchas
       planKey: "growth",
       billingWhatsapp: "12345",
     });
-    expect(out).toEqual({ error: `Billing WhatsApp: ${TOO_SHORT}` });
+    // Batch 78: an Indian workspace's own number answers with India's line.
+    expect(out).toEqual({ error: `Billing WhatsApp: ${INDIA_MOBILE_ERROR}` });
     expect(db.rows("payments")).toHaveLength(0);
     expect(h.createPaymentLink).not.toHaveBeenCalled();
   });
@@ -347,10 +349,12 @@ describe("(1) staff alert numbers, onboarding and sign-up", () => {
       ok: true,
       settings: { phones: ["+918121310333"], email: null },
     });
+    // Batch 78: India's line for an Indian workspace (never a guessed country).
     expect(validateAlertSettings({ phones: ["12345"] }, [], "91")).toEqual({
       ok: false,
-      error: `“12345”: ${TOO_SHORT}`,
+      error: `“12345”: ${INDIA_MOBILE_ERROR}`,
     });
+    expect(validateAlertSettings({ phones: ["73078015438"] }, [], "91").ok).toBe(false);
     // The business's own number is still refused, however it is written.
     const own = validateAlertSettings({ phones: ["81213 10333"] }, ["+91 81213 10333"], "91");
     expect(own.ok).toBe(false);
@@ -374,7 +378,9 @@ describe("(1) staff alert numbers, onboarding and sign-up", () => {
     expect(signupPhone("+918121310333")).toEqual({ phone: "+918121310333" });
     // Before: "+08121310333" was stored.
     expect(signupPhone("08121310333")).toEqual({ phone: "+918121310333" });
-    expect(signupPhone("12345")).toEqual({ error: TOO_SHORT });
+    // Batch 78: sign-up uses /start's rule — India's line, and no +7 slip.
+    expect(signupPhone("12345")).toEqual({ error: INDIA_MOBILE_ERROR });
+    expect(signupPhone("73078015438")).toEqual({ error: INDIA_MOBILE_ERROR });
   });
 });
 

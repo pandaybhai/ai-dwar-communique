@@ -42,6 +42,9 @@ export type LeadResult =
       /** Batch 72: the number as saved (E.164) and the name, for the Lead's hashed matching. */
       phone?: string;
       name?: string | null;
+      /** Batch 78: a /start lead's two answers (for LeadUnverified's custom_data). */
+      sells?: string;
+      customers?: string;
       /**
        * Batch 75: a /start honeypot hit — the bot is told "ok", nothing is
        * saved and nothing is fired.
@@ -224,27 +227,35 @@ export async function submitLead(
 }
 
 /**
- * Batch 72: a /start lead — the WhatsApp number (Batch 66's rule: a 10-digit
- * number gets +91) and, when given, a name. No qualification answers (NULL,
- * allowed only for this source by 20261380); consent is the line under the
- * button (START_CONSENT_VERSION). Same rate limit and same 10-minute
- * duplicate rule as the /demo form; ad click ids are never stored.
+ * A /start lead. Batch 78: the card asks the two questions first and the
+ * details last, so the lead is saved once, complete — what they sell, how
+ * many customers (qualification, answered now), name, business name and the
+ * WhatsApp number (an Indian mobile, never a guessed +1/+7; no fake
+ * numbers). Nothing is saved before that, so there are no number-only rows.
+ * Consent is the line under the button (START_CONSENT_VERSION). Same rate
+ * limit and same 10-minute duplicate rule as the /demo form; ad click ids
+ * are never stored.
  */
 async function submitStartLead(
   supabase: SupabaseClient,
-  body: Partial<LeadSubmission>,
+  body: Partial<LeadSubmission> & { sells?: unknown; customers?: unknown },
   meta: { ip: string | null; referrer: string | null },
 ): Promise<LeadResult> {
-  // Batch 75: Batch 66's rule, then the obviously fake numbers (one digit
-  // repeated, a straight run, an Indian number that isn't 10 digits).
+  const answer = qualificationFor(body.sells, body.customers);
+  if (!answer.ok) {
+    return { ok: false, error: "Please pick what you sell and how many customers.", status: 400 };
+  }
+  const name = str(body.name, 100).replace(/\s+/g, " ");
+  if (name.length < 2) return { ok: false, error: "Please enter your name.", status: 400 };
+  const businessName = str(body.business_name, 150).replace(/\s+/g, " ");
+  if (businessName.length < 2) {
+    return { ok: false, error: "Please enter your business name.", status: 400 };
+  }
+  // Batch 75/78: an Indian WhatsApp mobile, then the obviously fake numbers
+  // (one digit repeated, a straight run).
   const typed = checkRealNumber(str(body.phone, 30));
   if (!typed.ok) return { ok: false, error: typed.error, status: 400 };
   const phone = typed.phone;
-
-  const name = str(body.name, 100) || null;
-  if (name !== null && name.length < 2) {
-    return { ok: false, error: "Please enter your name.", status: 400 };
-  }
 
   const ipHash = meta.ip ? await hashIp(meta.ip) : null;
   if (ipHash) {
@@ -271,18 +282,30 @@ async function submitStartLead(
     .gte("created_at", dedupeSince)
     .limit(1)
     .maybeSingle();
+  const answers = {
+    sells: answer.qualification.sells,
+    customers: answer.qualification.customers,
+  };
   if (existing)
-    return { ok: true, id: (existing as { id: string }).id, duplicate: true, phone, name };
+    return {
+      ok: true,
+      id: (existing as { id: string }).id,
+      duplicate: true,
+      phone,
+      name,
+      ...answers,
+    };
 
   const attribution = cleanAttribution(body.attribution as Record<string, unknown>);
   const { data, error } = await supabase
     .from("demo_leads")
     .insert({
-      business_type: null,
+      business_type: answer.businessType,
       enquiry_band: null,
       primary_need: null,
       name,
-      business_name: null,
+      business_name: businessName,
+      qualification: answer.qualification,
       phone,
       website: null,
       consent: true,
@@ -300,7 +323,7 @@ async function submitStartLead(
   if (error || !data) {
     return { ok: false, error: "We couldn't save that just now. Please try again.", status: 500 };
   }
-  return { ok: true, id: (data as { id: string }).id, duplicate: false, phone, name };
+  return { ok: true, id: (data as { id: string }).id, duplicate: false, phone, name, ...answers };
 }
 
 /**

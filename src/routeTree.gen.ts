@@ -155,6 +155,7 @@ import { Route as ApiPublicShopifyWebhookRouteImport } from './routes/api/public
 import { Route as ApiPublicStartContinueRouteImport } from './routes/api/public/start-continue'
 import { Route as ApiPublicStartLinkRouteImport } from './routes/api/public/start-link'
 import { Route as ApiPublicStartQualifyRouteImport } from './routes/api/public/start-qualify'
+import { Route as ApiPublicStartVerifyRouteImport } from './routes/api/public/start-verify'
 import { Route as ApiPublicWhatsappWebhookRouteImport } from './routes/api/public/whatsapp-webhook'
 import { Route as ApiWhatsappCatalogRouteImport } from './routes/api/whatsapp/catalog'
 import { Route as ApiWhatsappConnectRouteImport } from './routes/api/whatsapp/connect'
@@ -967,6 +968,11 @@ const ApiPublicStartQualifyRoute = ApiPublicStartQualifyRouteImport.update({
   path: '/api/public/start-qualify',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicStartVerifyRoute = ApiPublicStartVerifyRouteImport.update({
+  id: '/api/public/start-verify',
+  path: '/api/public/start-verify',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicWhatsappWebhookRoute =
   ApiPublicWhatsappWebhookRouteImport.update({
     id: '/api/public/whatsapp-webhook',
@@ -1439,6 +1445,7 @@ export interface FileRoutesByFullPath {
   '/api/public/start-continue': typeof ApiPublicStartContinueRoute
   '/api/public/start-link': typeof ApiPublicStartLinkRoute
   '/api/public/start-qualify': typeof ApiPublicStartQualifyRoute
+  '/api/public/start-verify': typeof ApiPublicStartVerifyRoute
   '/api/public/whatsapp-webhook': typeof ApiPublicWhatsappWebhookRoute
   '/api/whatsapp/catalog': typeof ApiWhatsappCatalogRoute
   '/api/whatsapp/connect': typeof ApiWhatsappConnectRoute
@@ -1644,6 +1651,7 @@ export interface FileRoutesByTo {
   '/api/public/start-continue': typeof ApiPublicStartContinueRoute
   '/api/public/start-link': typeof ApiPublicStartLinkRoute
   '/api/public/start-qualify': typeof ApiPublicStartQualifyRoute
+  '/api/public/start-verify': typeof ApiPublicStartVerifyRoute
   '/api/public/whatsapp-webhook': typeof ApiPublicWhatsappWebhookRoute
   '/api/whatsapp/catalog': typeof ApiWhatsappCatalogRoute
   '/api/whatsapp/connect': typeof ApiWhatsappConnectRoute
@@ -1853,6 +1861,7 @@ export interface FileRoutesById {
   '/api/public/start-continue': typeof ApiPublicStartContinueRoute
   '/api/public/start-link': typeof ApiPublicStartLinkRoute
   '/api/public/start-qualify': typeof ApiPublicStartQualifyRoute
+  '/api/public/start-verify': typeof ApiPublicStartVerifyRoute
   '/api/public/whatsapp-webhook': typeof ApiPublicWhatsappWebhookRoute
   '/api/whatsapp/catalog': typeof ApiWhatsappCatalogRoute
   '/api/whatsapp/connect': typeof ApiWhatsappConnectRoute
@@ -2063,6 +2072,7 @@ export interface FileRouteTypes {
     | '/api/public/start-continue'
     | '/api/public/start-link'
     | '/api/public/start-qualify'
+    | '/api/public/start-verify'
     | '/api/public/whatsapp-webhook'
     | '/api/whatsapp/catalog'
     | '/api/whatsapp/connect'
@@ -2268,6 +2278,7 @@ export interface FileRouteTypes {
     | '/api/public/start-continue'
     | '/api/public/start-link'
     | '/api/public/start-qualify'
+    | '/api/public/start-verify'
     | '/api/public/whatsapp-webhook'
     | '/api/whatsapp/catalog'
     | '/api/whatsapp/connect'
@@ -2476,6 +2487,7 @@ export interface FileRouteTypes {
     | '/api/public/start-continue'
     | '/api/public/start-link'
     | '/api/public/start-qualify'
+    | '/api/public/start-verify'
     | '/api/public/whatsapp-webhook'
     | '/api/whatsapp/catalog'
     | '/api/whatsapp/connect'
@@ -2645,6 +2657,7 @@ export interface RootRouteChildren {
   ApiPublicStartContinueRoute: typeof ApiPublicStartContinueRoute
   ApiPublicStartLinkRoute: typeof ApiPublicStartLinkRoute
   ApiPublicStartQualifyRoute: typeof ApiPublicStartQualifyRoute
+  ApiPublicStartVerifyRoute: typeof ApiPublicStartVerifyRoute
   ApiPublicWhatsappWebhookRoute: typeof ApiPublicWhatsappWebhookRoute
   ApiWhatsappCatalogRoute: typeof ApiWhatsappCatalogRoute
   ApiWhatsappConnectRoute: typeof ApiWhatsappConnectRoute
@@ -3715,6 +3728,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicStartQualifyRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/start-verify': {
+      id: '/api/public/start-verify'
+      path: '/api/public/start-verify'
+      fullPath: '/api/public/start-verify'
+      preLoaderRoute: typeof ApiPublicStartVerifyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/whatsapp-webhook': {
       id: '/api/public/whatsapp-webhook'
       path: '/api/public/whatsapp-webhook'
@@ -4443,6 +4463,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicStartContinueRoute: ApiPublicStartContinueRoute,
   ApiPublicStartLinkRoute: ApiPublicStartLinkRoute,
   ApiPublicStartQualifyRoute: ApiPublicStartQualifyRoute,
+  ApiPublicStartVerifyRoute: ApiPublicStartVerifyRoute,
   ApiPublicWhatsappWebhookRoute: ApiPublicWhatsappWebhookRoute,
   ApiWhatsappCatalogRoute: ApiWhatsappCatalogRoute,
   ApiWhatsappConnectRoute: ApiWhatsappConnectRoute,

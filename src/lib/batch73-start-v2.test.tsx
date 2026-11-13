@@ -59,7 +59,8 @@ describe("the H1 and the form paint at once from the server", () => {
     const heroFormEnd = html.indexOf("</form>", heroStart);
     const hero = html.slice(heroStart, heroFormEnd);
     expect(hero).toContain("<form");
-    expect(hero).toContain('name="phone"');
+    // Batch 78: the card opens on step 1 — the "What do you sell?" tap cards.
+    expect(hero).toContain('role="radio"');
     expect(hero).not.toMatch(/s73-reveal|opacity-0|data-shown="false"|invisible/);
   });
 
@@ -158,7 +159,8 @@ describe("the copy", () => {
       "Built for jewellers, boutiques, cafés, D2C brands, clinics and coaching institutes",
       "Your next 100 sales are already in WhatsApp.",
       "AiDwar sends your offers, replies to every customer in seconds, and brings buyers back — automatically, from your own WhatsApp number.",
-      "Start free trial",
+      // Batch 78: the hero card opens on step 1 (questions first).
+      "What do you sell?",
       "Free trial · No card · Live in 10 minutes",
       "Example",
       "Trusted by growing businesses",

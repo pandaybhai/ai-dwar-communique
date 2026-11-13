@@ -36,6 +36,11 @@ export type MetaCustomEvent =
   | "PlanUpgraded"
   /** Batch 75: a /start lead answered what they sell and how many customers they have. */
   | "LeadQualified"
+  /**
+   * Batch 78: a /start lead submitted its details but hasn't proved the
+   * number on WhatsApp yet. Lead itself waits for that proof.
+   */
+  | "LeadUnverified"
   /** Batch 77: a lead's stage in Admin → Leads ("Contacted", "Qualified", "Won"). */
   | "LeadContacted"
   | "SalesQualifiedLead"
@@ -50,6 +55,7 @@ export const CUSTOM_EVENTS: readonly MetaCustomEvent[] = [
   "AidenEnabled",
   "PlanUpgraded",
   "LeadQualified",
+  "LeadUnverified",
   "LeadContacted",
   "SalesQualifiedLead",
   "LeadWon",
@@ -66,6 +72,8 @@ export type MetaParams = {
   /** Batch 75 (LeadQualified): the /start answers, from their fixed lists only. */
   sells?: string;
   customers?: string;
+  /** Batch 78 (Lead from /start): the number was proved on WhatsApp. */
+  verified?: boolean;
   /** Batch 77: the lead's stage (demo_leads.status) that fired the event. */
   stage?: string;
 };
@@ -78,6 +86,7 @@ export const PARAM_KEYS = [
   "lead_source",
   "sells",
   "customers",
+  "verified",
   "stage",
 ] as const;
 
@@ -103,6 +112,7 @@ export function safeParams(input: Record<string, unknown> | null | undefined): M
   if (typeof customers === "string" && CUSTOMERS.some((o) => o.value === customers)) {
     out.customers = customers;
   }
+  if (input?.["verified"] === true) out.verified = true;
   const stage = input?.["stage"];
   if (typeof stage === "string" && /^[a-z_]{1,20}$/.test(stage)) out.stage = stage;
   return out;
@@ -293,6 +303,12 @@ export async function hashedUserData(person: {
 export async function qualifiedEventId(phone: string | null): Promise<string | null> {
   const ph = normalizeMetaPhone(phone);
   return ph ? metaEventId("LeadQualified", await sha256Hex(ph)) : null;
+}
+
+/** Batch 78: one LeadUnverified per person — the same key as their Lead. */
+export async function unverifiedEventId(phone: string | null): Promise<string | null> {
+  const ph = normalizeMetaPhone(phone);
+  return ph ? metaEventId("LeadUnverified", await sha256Hex(ph)) : null;
 }
 
 /**

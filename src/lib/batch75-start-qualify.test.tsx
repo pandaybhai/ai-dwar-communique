@@ -30,7 +30,8 @@ vi.mock("@tanstack/react-router", async (importOriginal) => ({
 import { StartQuestions } from "@/components/start/start-questions";
 import { LeadsTable } from "@/components/admin/lead-views";
 import { checkRealNumber, qualificationFor, REAL_NUMBER_ERROR } from "./start-qualify";
-import { afterLeadSubmit, checkStartForm } from "./start-page";
+import { INDIA_MOBILE_ERROR } from "./phone";
+import { checkStartForm } from "./start-page";
 import { filterLeads, leadAnswer, type LeadRow } from "./leads";
 
 const sha = (s: string) => createHash("sha256").update(s).digest("hex");
@@ -95,6 +96,10 @@ async function submitStart(w: MemoryDb, body: Row = {}) {
     request: post("https://aidwar.in/api/public/demo-leads", {
       source: "landing_start",
       name: "Asha Rao",
+      // Batch 78: step 3 sends the answers and the business name with the number.
+      business_name: "Asha Jewels",
+      sells: "jewellery",
+      customers: "500_5000",
       phone: "98123 45670",
       landing_path: "/start",
       company_website_confirm: "",
@@ -104,6 +109,31 @@ async function submitStart(w: MemoryDb, body: Row = {}) {
   void w;
   return res;
 }
+/**
+ * Batch 78: the questions now come before the number, so a new lead is saved
+ * with its answers. The qualify step only serves /start leads made before
+ * Batch 78 (number first, answers after), finishing from the reminder link —
+ * this makes one, with its signed cookie, the way the old card did.
+ */
+async function oldLead(
+  w: MemoryDb,
+  over: Row = {},
+): Promise<string> {
+  const id = String(over["id"] ?? `0000000${w.rows("demo_leads").length}-0000-4000-8000-000000000001`);
+  w.rows("demo_leads").push({
+    id,
+    source: "landing_start",
+    phone: PHONE,
+    name: "Asha Rao",
+    business_type: null,
+    business_name: null,
+    qualification: null,
+    is_test: false,
+    ...over,
+  });
+  const { startLeadToken } = await import("./start-lead-cookie.server");
+  return `aidwar_start_lead=${await startLeadToken(id)}`;
+}
 async function qualify(body: Row, cookie?: string) {
   return (await handler("@/routes/api/public/start-qualify"))({
     request: post("https://aidwar.in/api/public/start-qualify", body, cookie),
@@ -111,21 +141,16 @@ async function qualify(body: Row, cookie?: string) {
 }
 
 describe("the two questions after name + number", () => {
-  it("after the number step the card always asks them (a 400 shows the error); /signup never comes first", () => {
-    expect(afterLeadSubmit(200)).toBe("questions");
-    expect(afterLeadSubmit(400)).toBe("error");
-    // Required: even when the lead request got no answer, the questions come before /signup.
-    expect(afterLeadSubmit(500)).toBe("questions");
-    expect(afterLeadSubmit(429)).toBe("questions");
-    expect(afterLeadSubmit(null)).toBe("questions");
+  // Batch 78 reversed the order: the questions come first, one tap each, and
+  // the number last (start-funnel.ts; batch78-start.test.tsx covers it). The
+  // card no longer asks them after the number; the chips below stay for the
+  // reminder link of leads made before Batch 78.
+  it("Batch 78: the /start card asks the questions before the number now", () => {
     const form = readFileSync("src/components/start/start-lead-form.tsx", "utf8");
-    // Same card for hero/final; the sticky bar opens a sheet; both end at /signup prefilled.
-    expect(form).toContain("<StartQuestions onDone={(a) => void answer(a)} busy={saving} />");
-    expect(form).toContain("{asked && bar ? <QuestionsSheet");
-    expect(form).toContain("writeStartPrefill(person);");
-    expect(form).toContain(
-      'navigate({ to: "/signup", search: signupSearchFrom(window.location.search)',
-    );
+    expect(form).not.toContain("<StartQuestions");
+    expect(form).toContain("pickSells(x, o.value)");
+    expect(form).toContain("pickCustomers(x, o.value as Customers)");
+    expect(readFileSync("src/routes/start_.continue.tsx", "utf8")).toContain("<StartQuestions");
   });
 
   it("chips for both questions, one tap each; Continue stays disabled until both; no Skip", () => {
@@ -174,9 +199,11 @@ describe("the two questions after name + number", () => {
     const w = world();
     const res = await submitStart(w);
     expect(res.status).toBe(200);
-    const cookie = cookieOf(res);
-    expect(cookie).toMatch(/^aidwar_start_lead=/);
+    expect(cookieOf(res)).toMatch(/^aidwar_start_lead=/);
     expect(res.headers.get("set-cookie")).toMatch(/HttpOnly; Secure; SameSite=Lax/);
+    // Batch 78: answering is for a lead made before Batch 78 (number first).
+    w.rows("demo_leads").splice(0);
+    const cookie = await oldLead(w);
     const out = await qualify({ sells: "jewellery", customers: "500_5000" }, cookie);
     expect(out.status).toBe(200);
     const lead = w.rows("demo_leads")[0]!;
@@ -198,7 +225,7 @@ describe("the two questions after name + number", () => {
     expect(qualificationFor("education", "5000_plus")).toMatchObject({ businessType: "education" });
     expect(qualificationFor("cars", "under_500")).toEqual({ ok: false });
     const w = world();
-    const cookie = cookieOf(await submitStart(w));
+    const cookie = await oldLead(w);
     await qualify({ sells: "food_cafe", customers: "under_500" }, cookie);
     expect(w.rows("demo_leads")[0]!["business_type"]).toBeNull();
     const again = await qualify({ sells: "fashion", customers: "5000_plus" }, cookie);
@@ -211,29 +238,24 @@ describe("the two questions after name + number", () => {
     expect((await qualify({ sells: "x", customers: "under_500" }, cookie)).status).toBe(400);
   });
 
-  it("no skip path: /signup only after both answers, and the server refuses fewer than two", async () => {
-    const form = readFileSync("src/components/start/start-lead-form.tsx", "utf8");
-    expect(form).not.toMatch(/Skip|onDone\(null\)|answers: .* \| null/);
-    // The only way to /signup from the questions is answer() with both values.
-    expect(form).toMatch(
-      /async function answer\(answers: \{ sells: Sells; customers: Customers \}\) \{\s*if \(!asked \|\| saving \|\| !answers\.sells \|\| !answers\.customers\) return;/,
-    );
-    expect(form.match(/await toSignup\(/g)).toHaveLength(1);
+  it("no skip path: the server refuses fewer than two answers", async () => {
+    // Batch 78: the old card's "answer()" is gone (questions first now); the
+    // server rule for a pre-Batch 78 lead is unchanged.
     const w = world();
-    const cookie = cookieOf(await submitStart(w));
+    const cookie = await oldLead(w);
     expect((await qualify({ sells: "jewellery" }, cookie)).status).toBe(400);
     expect((await qualify({ customers: "under_500" }, cookie)).status).toBe(400);
     expect((await qualify({}, cookie)).status).toBe(400);
     expect(w.rows("demo_leads")[0]!["qualification"] ?? {}).toEqual({});
-    // The lead and the Lead still happened at the number step.
     expect(w.rows("demo_leads")).toHaveLength(1);
-    expect(events(w).filter((e) => e["event_name"] === "Lead")).toHaveLength(1);
+    // Batch 78: no Lead from here, ever.
+    expect(events(w).filter((e) => e["event_name"] === "Lead")).toHaveLength(0);
   });
 
-  it("the sticky bar (number only) gets the same questions and saves the same way", async () => {
+  it("an older number-only lead (the old sticky bar) finishes the same way", async () => {
     const w = world();
-    const res = await submitStart(w, { name: undefined, phone: "9812345670" });
-    const out = await qualify({ sells: "online_store", customers: "5000_plus" }, cookieOf(res));
+    const cookie = await oldLead(w, { name: null });
+    const out = await qualify({ sells: "online_store", customers: "5000_plus" }, cookie);
     expect(out.status).toBe(200);
     expect(w.rows("demo_leads")[0]).toMatchObject({
       name: null,
@@ -246,9 +268,9 @@ describe("the two questions after name + number", () => {
 describe("only this browser's own lead", () => {
   it("no cookie, a forged or expired cookie, or another lead's id in the body is refused", async () => {
     const w = world();
-    const mine = cookieOf(await submitStart(w));
-    const other = (await submitStart(w, { phone: "91234 56780", name: "Ravi" })).headers;
-    expect(other.get("set-cookie")).toBeTruthy();
+    // Batch 78: two leads made before Batch 78 (the qualify step serves only them).
+    const mine = await oldLead(w);
+    await oldLead(w, { phone: "+919123456780", name: "Ravi" });
     const otherLead = w.rows("demo_leads").find((r) => r["phone"] === "+919123456780")!;
 
     expect((await qualify({ sells: "fashion", customers: "under_500" })).status).toBe(403);
@@ -284,42 +306,25 @@ describe("only this browser's own lead", () => {
   });
 });
 
-describe("Meta: LeadQualified once, Lead unchanged", () => {
-  it("LeadQualified goes once with sells/customers, hashed matching only; Lead is still Batch 72's", async () => {
+describe("Meta: (Batch 78) LeadQualified retired, Lead only once verified", () => {
+  // Batch 78: LeadQualified is no longer sent — the answers ride on the
+  // verified Lead (batch78-start.test.tsx). Step 3 sends LeadUnverified, not Lead.
+  it("Batch 78: no LeadQualified any more; step 3 sends LeadUnverified, never Lead", async () => {
     const w = world();
     const res = await submitStart(w);
     const body = (await res.json()) as Row;
-    expect(body["meta"]).toEqual({
-      event: "Lead",
-      event_id: LEAD_ID_FOR_PHONE,
-      params: { content_name: "start_free_trial", lead_source: "landing_start" },
-    });
-    const cookie = cookieOf(res);
+    expect(body["meta"]).toMatchObject({ event: "LeadUnverified" });
+    const cookie = await oldLead(w, { phone: "+919123456780" });
     const out = (await (
       await qualify({ sells: "jewellery", customers: "under_500" }, cookie)
     ).json()) as Row;
-    expect(out["meta"]).toEqual({
-      event: "LeadQualified",
-      event_id: QUALIFIED_ID,
-      params: { sells: "jewellery", customers: "under_500" },
-    });
-    const sent = events(w);
-    const lead = sent.filter((e) => e["event_name"] === "Lead");
-    const qualified = sent.filter((e) => e["event_name"] === "LeadQualified");
-    expect(lead).toHaveLength(1);
-    expect(lead[0]).toMatchObject({ event_id: LEAD_ID_FOR_PHONE });
-    expect(qualified).toHaveLength(1);
-    expect(qualified[0]).toMatchObject({
-      event_id: QUALIFIED_ID,
-      action_source: "website",
-      custom_data: { sells: "jewellery", customers: "under_500" },
-    });
-    const ud = qualified[0]!["user_data"] as Row;
-    expect(ud["ph"]).toEqual([sha("919812345670")]);
-    expect(JSON.stringify(qualified[0])).not.toMatch(/98123|Asha/);
-    // Answering again sends nothing more.
-    await qualify({ sells: "fashion", customers: "5000_plus" }, cookie);
-    expect(events(w).filter((e) => e["event_name"] === "LeadQualified")).toHaveLength(1);
+    expect(out["meta"]).toBeNull();
+    const names = events(w).map((e) => e["event_name"]);
+    expect(names).toEqual(["LeadUnverified"]);
+    expect(names).not.toContain("LeadQualified");
+    expect(names).not.toContain("Lead");
+    void QUALIFIED_ID;
+    void LEAD_ID_FOR_PHONE;
   });
 
   it("the browser fires LeadQualified as trackCustom, only after Accept", async () => {
@@ -383,9 +388,11 @@ describe("spam guards on /start", () => {
   });
 
   it("obviously fake numbers are refused with one friendly line; a real number passes", async () => {
+    // Batch 78: "1234567890" is no longer a "fake" but not an Indian mobile at
+    // all (it starts with 1) — refused with India's line, see below.
+    expect(checkRealNumber("1234567890")).toEqual({ ok: false, error: INDIA_MOBILE_ERROR });
     for (const fake of [
       "9999999999",
-      "1234567890",
       "9876543210",
       "98765 43210",
       "+91 8765432109",
@@ -399,7 +406,8 @@ describe("spam guards on /start", () => {
     // A leading 0 (0123456789, an STD landline) keeps Batch 66's how-to-write-it sentence.
     expect(checkRealNumber("0123456789")).toMatchObject({ ok: false });
     expect(checkRealNumber("98123 45670")).toEqual({ ok: true, phone: PHONE });
-    expect(checkRealNumber("+1 415 555 0132")).toEqual({ ok: true, phone: "+14155550132" });
+    // Batch 78: the field shows +91, so a foreign number is refused on /start.
+    expect(checkRealNumber("+1 415 555 0132")).toEqual({ ok: false, error: INDIA_MOBILE_ERROR });
     // The form shows it inline; the server refuses it too.
     expect(checkStartForm({ phone: "9999999999" })).toEqual({
       ok: false,
@@ -407,7 +415,8 @@ describe("spam guards on /start", () => {
       error: REAL_NUMBER_ERROR,
     });
     const w = world();
-    const res = await submitStart(w, { phone: "1234567890" });
+    // Batch 78: a straight run that is otherwise a valid-looking Indian mobile.
+    const res = await submitStart(w, { phone: "6789012345" });
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: REAL_NUMBER_ERROR });
     expect(w.rows("demo_leads")).toHaveLength(0);

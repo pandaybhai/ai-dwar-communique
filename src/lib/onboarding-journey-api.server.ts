@@ -120,6 +120,14 @@ export async function journeyBegin(
   const about = String(payload["about"] ?? "").trim();
   const url = normaliseSiteInput(String(payload["url"] ?? ""));
 
+  // Batch 78: "I don't have a website — I'll tell Aiden on WhatsApp". The
+  // workspace (made from the name alone) is set; Aiden asks the rest on
+  // WhatsApp (the session's step "no_site", set by /api/onboarding/start).
+  if (payload["no_website"] === true && !url) {
+    await recordFunnelStep(supabase, { organizationId, userId, step: "no_website" });
+    return ok({ no_website: true });
+  }
+
   if (url) {
     const added = await knowledge.addWebsiteSource(supabase, organizationId, url, userId, {
       mode: "day0",

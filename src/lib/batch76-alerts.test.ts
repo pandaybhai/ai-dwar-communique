@@ -289,27 +289,23 @@ describe("the new-lead alert", () => {
     const w = world({ leads: [] });
     const { submitLead } = await import("./leads.server");
     const meta = { ip: "203.0.113.5", referrer: null };
+    // Batch 78: step 3 sends the answers and business name with the number.
+    const full = {
+      source: "landing_start",
+      name: "Asha Rao",
+      business_name: "Asha Jewels",
+      sells: "jewellery",
+      customers: "500_5000",
+    };
     await submitLead(
       w.supabase as never,
-      { source: "landing_start", phone: "9812345670", company_website_confirm: "spam" } as never,
+      { ...full, phone: "9812345670", company_website_confirm: "spam" } as never,
       meta,
     );
     expect(w.rows("demo_leads")).toHaveLength(0);
-    await submitLead(
-      w.supabase as never,
-      { source: "landing_start", phone: "9812345670" } as never,
-      meta,
-    );
-    await submitLead(
-      w.supabase as never,
-      { source: "landing_start", phone: "+91 98123 45670" } as never,
-      meta,
-    );
-    await submitLead(
-      w.supabase as never,
-      { source: "landing_start", phone: "9999999999" } as never,
-      meta,
-    );
+    await submitLead(w.supabase as never, { ...full, phone: "9812345670" } as never, meta);
+    await submitLead(w.supabase as never, { ...full, phone: "+91 98123 45670" } as never, meta);
+    await submitLead(w.supabase as never, { ...full, phone: "9999999999" } as never, meta);
     expect(w.rows("demo_leads")).toHaveLength(1);
     (w.rows("demo_leads")[0] as Row)["created_at"] = ago(4 * MIN);
     (w.rows("demo_leads")[0] as Row)["is_test"] = false;

@@ -39,7 +39,13 @@ export const FUNNEL_LABELS: Record<FunnelStep, string> = {
 };
 
 /** Not funnel steps, but remembered the same way. */
-export const JOURNEY_MARKS = ["connect_skipped", "dismissed", "callback_requested"] as const;
+export const JOURNEY_MARKS = [
+  "connect_skipped",
+  "dismissed",
+  "callback_requested",
+  /** Batch 78: "I don't have a website — I'll tell Aiden on WhatsApp" at setup. */
+  "no_website",
+] as const;
 export type JourneyMark = (typeof JOURNEY_MARKS)[number];
 
 export function funnelEventType(step: FunnelStep | JourneyMark): string {
@@ -53,6 +59,11 @@ export type JourneyFacts = {
   connected: boolean;
   /** "I'll connect later" on the connect step. */
   connectSkipped: boolean;
+  /**
+   * Batch 78: chose "I don't have a website" at setup — the business step is
+   * done with the name alone; Aiden learns the rest on WhatsApp.
+   */
+  noWebsite?: boolean;
   /** Aiden answered at least one test question. */
   tested: boolean;
   wentLive: boolean;
@@ -62,7 +73,7 @@ export type JourneyPosition = JourneyStep | "done";
 
 /** The first step that isn't done yet. */
 export function resumeStep(facts: JourneyFacts): JourneyPosition {
-  if (!facts.hasOrg || !facts.hasMaterial) return "business";
+  if (!facts.hasOrg || (!facts.hasMaterial && !facts.noWebsite)) return "business";
   // Going live finishes the journey, whatever was skipped on the way.
   if (facts.wentLive) return "done";
   if (!facts.connected && !facts.connectSkipped) return "connect";
@@ -92,7 +103,9 @@ export function landingStep(facts: JourneyFacts, requested: JourneyStep | null):
   const fallback: JourneyStep = resume === "done" ? "live" : resume;
   if (!requested) return fallback;
   if (stepIndex(requested) <= stepIndex(resume)) return requested;
-  if (requested === "connect" && facts.hasOrg && facts.hasMaterial) return "connect";
+  if (requested === "connect" && facts.hasOrg && (facts.hasMaterial || facts.noWebsite)) {
+    return "connect";
+  }
   return fallback;
 }
 

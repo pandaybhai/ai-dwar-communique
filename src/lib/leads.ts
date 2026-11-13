@@ -130,6 +130,8 @@ export type LeadRow = {
   qualification?: { sells?: string; customers?: string; answered_at?: string } | null;
   /** Batch 75: when the one "finish sign-up" WhatsApp reminder went (null = not reminded). */
   nudged_at?: string | null;
+  /** Batch 78: when the number was proved on WhatsApp ("VERIFY V-…"); null = not verified. */
+  verified_at?: string | null;
   /** Batch 77: the stage events sent to Meta, by stage ({ event, event_id, at }). */
   meta_events_sent?: Record<string, { event: string; event_id: string; at: string }> | null;
 };
@@ -197,6 +199,8 @@ export function filterLeads<T extends LeadRow>(
     unassignedOnly: boolean;
     sells?: AnswerFilter;
     customers?: AnswerFilter;
+    /** Batch 78: "yes" = verified on WhatsApp, "no" = not (yet). */
+    verified?: "all" | "yes" | "no";
   },
 ): T[] {
   return leads.filter(
@@ -205,6 +209,9 @@ export function filterLeads<T extends LeadRow>(
       (!opts.unassignedOnly || (l.status === "new" && !l.assigned_to)) &&
       leadMatches(l, opts.search) &&
       answerMatches(l.qualification?.sells, opts.sells) &&
-      answerMatches(l.qualification?.customers, opts.customers),
+      answerMatches(l.qualification?.customers, opts.customers) &&
+      (!opts.verified ||
+        opts.verified === "all" ||
+        (opts.verified === "yes") === Boolean(l.verified_at)),
   );
 }

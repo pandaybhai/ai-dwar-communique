@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { APP_PUBLIC_URL } from "@/lib/app-url";
 import { BUSINESS_TYPES } from "@/lib/leads";
-import { normalizePhone, typedPhone } from "@/lib/phone";
+import { displayPhone, normalizePhone, typedPersonPhone } from "@/lib/phone";
 import { LEAD_ALERT_TEMPLATE_NAME } from "@/lib/platform-notice-templates";
 import { customersLabel, sellsLabel } from "@/lib/start-qualify";
 
@@ -36,6 +36,8 @@ type LeadRow = {
   created_at: string;
   business_type: string | null;
   qualification: { sells?: string; customers?: string; answered_at?: string } | null;
+  /** Batch 78: proved on WhatsApp (absent until 20261420 is applied). */
+  verified_at?: string | null;
 };
 
 export type AlertOutcome = {
@@ -77,7 +79,7 @@ export async function saveLeadAlertNumbers(
   for (const raw of input) {
     const text = String(raw ?? "").trim();
     if (!text) continue;
-    const t = typedPhone(text, "91");
+    const t = typedPersonPhone(text, "91");
     if ("error" in t) return { ok: false, error: `${text}: ${t.error}` };
     if (!numbers.includes(t.phone)) numbers.push(t.phone);
   }
@@ -142,8 +144,7 @@ export const LEAD_ALERT_BODY =
 
 /** "+919812345670" → "+91 98123 45670"; any other number stays as stored (E.164). */
 export function alertPhone(phone: string): string {
-  const m = /^\+91(\d{5})(\d{5})$/.exec(phone.replace(/[\s()-]/g, ""));
-  return m ? `+91 ${m[1]} ${m[2]}` : phone;
+  return displayPhone(phone);
 }
 
 /** {{5}}: where the lead came from, as the sales team reads it. */
@@ -164,7 +165,9 @@ export function alertVariables(lead: LeadRow): Record<string, string> {
     "2": alertPhone(lead.phone),
     "3": a.sells ?? dash,
     "4": a.customers ?? dash,
-    "5": alertSourceLabel(lead.source),
+    // Batch 78: "· verified" once the number was proved on WhatsApp (the
+    // submitted template is unchanged — it rides in {{5}}).
+    "5": alertSourceLabel(lead.source) + (lead.verified_at ? " · verified" : ""),
   };
 }
 
@@ -231,7 +234,9 @@ export async function runLeadAlerts(
 
   const { data: rows } = await supabase
     .from("demo_leads")
-    .select("id, name, phone, source, created_at, business_type, qualification")
+    // "*": Batch 78's verified_at is read when 20261420 is applied, and the
+    // query still works before it (a named missing column would fail it).
+    .select("*")
     .in("source", ["landing_start", "landing"])
     .eq("is_test", false)
     .is("alerted_at", null)
