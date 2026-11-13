@@ -147,7 +147,7 @@ export function Calculator999({
           href={CALC.metaPricingUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="font-semibold text-[var(--mint-2)] underline underline-offset-2"
+          className="font-semibold text-[var(--mint-ink)] underline underline-offset-2"
         >
           Meta's official pricing
         </a>

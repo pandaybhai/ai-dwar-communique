@@ -15,6 +15,8 @@ export const P999_CSS = `
   --ink-3: #10291f;
   --mint: #3ee6a0;
   --mint-2: #10b981;
+  /* text-safe green on the light surfaces (4.5:1+ on --paper and white) */
+  --mint-ink: #047857;
   --mint-soft: rgba(62, 230, 160, 0.14);
   --paper: #f7f6f1;
   --line: rgba(4, 16, 11, 0.09);

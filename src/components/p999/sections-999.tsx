@@ -46,7 +46,7 @@ export function SectionHead({
       <p
         className={cn(
           "text-[12px] font-bold uppercase tracking-[0.18em]",
-          dark ? "text-[var(--mint)]" : "text-[var(--mint-2)]",
+          dark ? "text-[var(--mint)]" : "text-[var(--mint-ink)]",
         )}
       >
         {kicker}
@@ -213,7 +213,7 @@ export function LiveIn10() {
               <StepIcon kind={s.key} />
             </span>
             <div>
-              <p className="text-[12px] font-bold uppercase tracking-[0.16em] text-[var(--mint-2)]">
+              <p className="text-[12px] font-bold uppercase tracking-[0.16em] text-[var(--mint-ink)]">
                 Step {i + 1}
               </p>
               <h3 className="mt-1 text-[1.15rem] font-extrabold leading-snug tracking-tight text-[var(--ink)]">
@@ -296,7 +296,7 @@ export function MetaNote() {
     <section className="p9-paper px-4 py-20 sm:px-6 sm:py-24" aria-labelledby="p9-meta">
       <Reveal className="mx-auto grid max-w-4xl items-center gap-8 rounded-[1.75rem] border border-[var(--line)] bg-white p-6 sm:p-10 lg:grid-cols-[1fr_auto]">
         <div>
-          <p className="text-[12px] font-bold uppercase tracking-[0.18em] text-[var(--mint-2)]">
+          <p className="text-[12px] font-bold uppercase tracking-[0.18em] text-[var(--mint-ink)]">
             The honest bit
           </p>
           <h2

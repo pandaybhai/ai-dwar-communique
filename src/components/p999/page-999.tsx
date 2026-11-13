@@ -1,6 +1,7 @@
 import { Suspense, lazy, useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { HERO, faq, stickyVisible } from "@/lib/page-999";
 import { P999_CSS } from "@/components/p999/p999-css";
+import { cn } from "@/lib/utils";
 import { MagneticCta, Reveal, useParallax, usePlaying } from "@/components/p999/p999-motion";
 import {
   Faq,
@@ -215,7 +216,10 @@ export function Page999({
               </div>
             </div>
 
-            <div ref={phoneCol} className="p9-par min-w-0">
+            <div
+              ref={phoneCol}
+              className={cn("p9-par min-w-0", aidenLink ? "min-h-[684px]" : "min-h-[628px]")}
+            >
               <Suspense fallback={<DemoFallback />}>
                 <Demo999 aidenLink={aidenLink} />
               </Suspense>
