@@ -7,7 +7,8 @@
 -- the other meta_direct workspaces keep today's billing byte for byte.
 --
 --   (1) the flag 'meta_direct_billing' (feature_flags default OFF +
---       feature_registry row, as scripts/sync-feature-registry.ts writes for
+--       feature_registry row + its one permission 'meta_direct_billing.view',
+--       as scripts/sync-feature-registry.ts writes for
 --       src/lib/feature-registry.ts). On = "this workspace pays Meta itself":
 --       no message debits, no campaign holds or credit gates, no AI-answer
 --       overage debit (Aiden hands chats to the inbox at the allowance).
@@ -52,13 +53,49 @@ INSERT INTO public.feature_registry (
   'meta_direct_billing', 'Pays Meta directly',
   'This workspace pays Meta for its messages on its own card: AiDwar never debits credits for messages, holds credits for campaigns or charges AI answers past the allowance.',
   'credit-card', null, null, null, 'meta_direct_billing', null,
-  '[]'::jsonb,
+  '[{"key":"meta_direct_billing.view","name":"See that messages are paid to Meta","description":"See on Billing that this workspace pays Meta directly for its messages.","min_role":"admin"}]'::jsonb,
   '{"event_types":[],"metrics":[],"dashboard_section":false}'::jsonb,
   '{}'::text[], '[]'::jsonb, '[]'::jsonb, '{}'::text[], array['billing']::text[], now()
 )
 ON CONFLICT (key) DO UPDATE SET
   name = excluded.name, description = excluded.description, flag_key = excluded.flag_key,
-  depends_on = excluded.depends_on, synced_at = now();
+  permissions = excluded.permissions, depends_on = excluded.depends_on, synced_at = now();
+
+-- Its one permission (the registry's rule: every feature declares one), in
+-- the category of its feature key — as 20261100 did for cashfree_billing.
+DO $$
+DECLARE
+  def text;
+  allowed text;
+BEGIN
+  IF to_regclass('public.permissions') IS NULL THEN RETURN; END IF;
+  SELECT pg_get_constraintdef(oid) INTO def
+  FROM pg_constraint
+  WHERE conname = 'permissions_category_check' AND conrelid = 'public.permissions'::regclass;
+  IF def IS NOT NULL AND position('meta_direct_billing' IN def) = 0 THEN
+    SELECT string_agg(quote_literal(c), ', ' ORDER BY c) INTO allowed
+    FROM (
+      SELECT DISTINCT category AS c FROM public.permissions WHERE category IS NOT NULL
+      UNION SELECT key FROM public.feature_registry
+      UNION SELECT 'meta_direct_billing'
+    ) s;
+    ALTER TABLE public.permissions DROP CONSTRAINT permissions_category_check;
+    EXECUTE format('ALTER TABLE public.permissions ADD CONSTRAINT permissions_category_check CHECK (category IN (%s))', allowed);
+  END IF;
+  INSERT INTO public.permissions (key, name, description, category, min_role)
+  VALUES (
+    'meta_direct_billing.view', 'See that messages are paid to Meta',
+    'See on Billing that this workspace pays Meta directly for its messages.',
+    'meta_direct_billing', 'admin'
+  )
+  ON CONFLICT (key) DO UPDATE SET name = excluded.name, description = excluded.description,
+    category = excluded.category, min_role = excluded.min_role;
+  IF to_regclass('public.role_permissions') IS NOT NULL THEN
+    INSERT INTO public.role_permissions (role, permission_key)
+    VALUES ('owner', 'meta_direct_billing.view'), ('admin', 'meta_direct_billing.view')
+    ON CONFLICT DO NOTHING;
+  END IF;
+END $$;
 
 -- (2) ------------------------------------------------------------- the plan
 INSERT INTO public.plans (key, name, tagline, sort_order, is_active, is_public)

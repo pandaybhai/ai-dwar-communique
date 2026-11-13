@@ -1401,7 +1401,14 @@ export const FEATURES: readonly FeatureManifest[] = [
     icon: "credit-card",
     flag_key: "meta_direct_billing",
     flag_default_enabled: false,
-    permissions: [],
+    permissions: [
+      {
+        key: "meta_direct_billing.view",
+        name: "See that messages are paid to Meta",
+        description: "See on Billing that this workspace pays Meta directly for its messages.",
+        min_role: "admin",
+      },
+    ],
     analytics: none,
     activity_actions: [],
     data_tables: [],
