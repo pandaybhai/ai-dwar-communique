@@ -2,9 +2,11 @@ import { cn } from "@/lib/utils";
 import {
   BUSINESS_TYPES,
   ENQUIRY_BANDS,
+  LANDING_999_LEAD_SOURCE,
   LEAD_STATUSES,
   NO_ANSWER,
   PRIMARY_NEEDS,
+  isCheckoutAbandoned,
   isStartLead,
   labelFor,
   leadAnswer,
@@ -72,6 +74,39 @@ export function VerifiedBadge({ verified }: { verified: boolean }) {
   );
 }
 
+/**
+ * Batch 80: a /999 checkout lead — paid, "Checkout abandoned" (reached Pay,
+ * not paid after 30 minutes: call them) or still in checkout.
+ */
+export function CheckoutBadge({ lead }: { lead: LeadRow }) {
+  if (lead.source !== LANDING_999_LEAD_SOURCE) return null;
+  if (lead.paid_at) {
+    return (
+      <span
+        className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-800"
+        data-testid="paid-999-badge"
+      >
+        /999 · Paid ✓
+      </span>
+    );
+  }
+  if (isCheckoutAbandoned(lead)) {
+    return (
+      <span
+        className="ml-2 rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-800"
+        data-testid="abandoned-badge"
+      >
+        /999 · Checkout abandoned
+      </span>
+    );
+  }
+  return (
+    <span className="ml-2 rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-800">
+      From /999
+    </span>
+  );
+}
+
 export function LeadsTable({ leads, onOpen }: { leads: LeadRow[]; onOpen: (id: string) => void }) {
   return (
     <div className="overflow-x-auto rounded-2xl border border-border bg-card">
@@ -107,6 +142,7 @@ export function LeadsTable({ leads, onOpen }: { leads: LeadRow[]; onOpen: (id: s
                   {leadTitle(lead)}
                   {isStartLead(lead) ? <StartBadge /> : null}
                   {isStartLead(lead) ? <VerifiedBadge verified={Boolean(lead.verified_at)} /> : null}
+                  <CheckoutBadge lead={lead} />
                   {lead.nudged_at ? <RemindedBadge /> : null}
                   {lead.is_test ? (
                     <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase text-muted-foreground">
@@ -180,6 +216,18 @@ export function LeadSummary({ lead }: { lead: LeadRow }) {
 
       <dl className="mt-5 grid grid-cols-2 gap-3 text-sm">
         <Detail label="Business name" value={lead.business_name?.trim() || NO_ANSWER} />
+        {lead.source === LANDING_999_LEAD_SOURCE ? (
+          <Detail
+            label="₹999 checkout"
+            value={
+              lead.paid_at
+                ? `Paid ✓ ${leadTime(lead.paid_at)}`
+                : lead.checkout_at
+                  ? `${isCheckoutAbandoned(lead) ? "Abandoned — call them" : "At payment"} (${leadTime(lead.checkout_at)})`
+                  : "Didn't reach payment"
+            }
+          />
+        ) : null}
         <Detail
           label="WhatsApp verified"
           value={lead.verified_at ? `Verified ✓ ${leadTime(lead.verified_at)}` : "Not verified"}

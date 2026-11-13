@@ -268,7 +268,11 @@ describe("(2) the sweep: low_credits once per low spell, until credits recover",
         if (op.table === "topup_tasks") return { data: [], error: null };
         return undefined;
       },
-      (call) => (call.name === "org_flag_enabled" ? { data: true, error: null } : undefined),
+      // Batch 80: every flag on as before, except the Basic plan's "pays Meta itself".
+      (call) =>
+        call.name === "org_flag_enabled"
+          ? { data: call.args["p_flag"] !== "meta_direct_billing", error: null }
+          : undefined,
     );
   const queued = (db: ReturnType<typeof fakeDb>) =>
     db.ops.filter((o) => o.table === "billing_notifications" && o.kind === "insert");

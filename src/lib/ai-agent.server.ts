@@ -386,6 +386,14 @@ export async function runAgentOnInbound(
 
   const flags = prep.flags;
   if (!flags.has("ai_features")) return { acted: false, reason: "feature_off" };
+  // Batch 80: read alongside the gates below (plan-aware, like every flag the
+  // database resolves); only a Basic workspace goes on to the allowance read.
+  const paysMeta =
+    mode === "replying"
+      ? import("@/lib/billing.server")
+          .then((m) => m.metaDirectBilling(supabase, args.organizationId))
+          .catch(() => false)
+      : Promise.resolve(false);
 
   if (prep.aiEnabled === false) {
     // Every save keeps ai_enabled equal to mode (syncAiSwitch); a row edited
@@ -425,6 +433,26 @@ export async function runAgentOnInbound(
 
   const common = { organizationId: args.organizationId, actorUserId: null, actingRole: null };
   timer?.mark("ai_gates");
+
+  // Batch 80: Basic (pays Meta itself, no wallet) — past this month's answer
+  // allowance Aiden hands the chat to the inbox instead of a charged answer.
+  if (mode === "replying" && (await paysMeta)) {
+    const { answerAllowanceReached } = await import("@/lib/answer-allowance.server");
+    const allowance = await answerAllowanceReached(supabase, args.organizationId);
+    if (allowance.reached) {
+      mark("held_back");
+      await handToPerson(supabase, timed, {
+        agentId: (agentRow as { id?: string } | null)?.id ?? null,
+        reason: "ai_allowance_reached",
+        status: "capped",
+        signal: null,
+        question,
+        runId: null,
+        fileGap: false,
+      });
+      return { acted: true, mode: "replying", runId: null, status: "capped", sent: false };
+    }
+  }
 
   // The Cards page switch, read once and only when a picture goes out (or is
   // about to: the first card is drawn while the model writes its closing words).

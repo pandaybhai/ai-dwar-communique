@@ -66,7 +66,11 @@ export function world(spec: {
     }
     return null;
   });
-  db.rpcs.set("org_flag_enabled", () => spec.billing ?? false);
+  // Batch 80: 'meta_direct_billing' (the Basic plan's "pays Meta itself") is
+  // off in these worlds — every other flag follows spec.billing as before.
+  db.rpcs.set("org_flag_enabled", (a) =>
+    a["p_flag"] === "meta_direct_billing" ? false : (spec.billing ?? false),
+  );
   db.rpcs.set("price_message", () => true);
   db.rpcs.set(
     "wallet_apply",

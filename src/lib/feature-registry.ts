@@ -1389,6 +1389,24 @@ export const FEATURES: readonly FeatureManifest[] = [
     data_tables: [],
   },
   {
+    // Batch 80: a switch, not a page. On in the Basic plan (₹999, /999): the
+    // workspace pays Meta for its messages on its own card — no message
+    // debits, campaign holds or credit gates, no AI overage (Aiden hands chats
+    // to the inbox at the allowance). Rows are in 20261430_batch80.sql.
+    key: "meta_direct_billing",
+    depends_on: ["billing"],
+    name: "Pays Meta directly",
+    description:
+      "This workspace pays Meta for its messages on its own card: AiDwar never debits credits for messages, holds credits for campaigns or charges AI answers past the allowance.",
+    icon: "credit-card",
+    flag_key: "meta_direct_billing",
+    flag_default_enabled: false,
+    permissions: [],
+    analytics: none,
+    activity_actions: [],
+    data_tables: [],
+  },
+  {
     // Batch 34: a merchant's own billing software sends an invoice PDF through
     // the workspace's approved template (POST /api/v1/messages/template) and
     // hears back about sent / delivered / read / failed on its own webhook.

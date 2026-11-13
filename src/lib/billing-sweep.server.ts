@@ -259,8 +259,12 @@ export async function runBillingSweep(supabase: SupabaseClient): Promise<SweepCo
       // (back at or above the threshold), so the next drop warns again.
       const threshold = Number(s["low_credit_threshold"] ?? 0);
       const lowSince = (s["last_low_credit_notice_at"] as string | null) ?? null;
+      // Batch 80: a workspace that pays Meta itself (Basic) is never told to top up.
+      const { metaDirectBilling } = await import("@/lib/billing.server");
+      const goingLow = threshold > 0 && available < threshold && !lowSince;
+      const paysMeta = goingLow ? await metaDirectBilling(supabase, orgId) : false;
       if (threshold > 0 && available < threshold) {
-        if (!lowSince) {
+        if (!lowSince && !paysMeta) {
           await notify(supabase, {
             organizationId: orgId,
             audience: "client",

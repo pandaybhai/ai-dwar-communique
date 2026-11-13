@@ -415,8 +415,11 @@ describe("flag off: today's Settings, Billing and journey", () => {
     );
     // Re-pinned in Batch 70: Buy credits fires the InitiateCheckout the server
     // returns (`meta`, fireFromServer); the request and everything else as before.
+    // Re-pinned in Batch 80: a workspace that pays Meta directly (Basic,
+    // summary.pays_meta_directly) sees "You pay Meta directly for messages"
+    // instead of the credit buttons and the low-credit banner; everyone else as before.
     expect(sha(withoutNd(src("components/billing/billing-view.tsx")))).toBe(
-      "e13a56dd3fd2a93edef6a2c0f6b5d23b08a24470a138fe03803391530dce33e3",
+      "d073a6cafadc44bed6995679924ff35b126ba6ed242759e856ff1d4a7ebeaf64",
     );
     // Batch 58: re-pinned — an unpaid invoice whose credit notes cover its
     // total reads "Cancelled (credit note CN/…)" with no Pay button
@@ -540,7 +543,8 @@ describe("the public site: new_site switch, default off", () => {
       // Batch 70: + the Meta Pixel / Conversions API paragraph in section 6 (batch70-meta.test.ts).
       // Batch 72: + "When you submit a form or create an account, we share a one-way hashed…".
       "routes/privacy.tsx": "ebb712c1b5fadd88a068dcba4e15142000276ec5c271b379aca22d4d1b554530",
-      "routes/refunds.tsx": "5c607bfde33a444b086b4ac8a56548580307d33bf7c3eac5412a4108f0e385ab",
+      // Batch 80: + the AiDwar Basic 7-day money-back line in section 1 (batch80-999.test.tsx).
+      "routes/refunds.tsx": "6b2e1b8bb21e3d212c273cd295aad1e6c7c99bad2e5a0e81ee917e9e5647dfbe",
       "routes/refund-policy.tsx":
         "804c9591fb15bec80f1fd8aa537cac15cc4a111e387a3b86a49024d2369ee382",
       "routes/cancellation-policy.tsx":

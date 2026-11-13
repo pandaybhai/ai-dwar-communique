@@ -10,3 +10,9 @@ export const getPublicRates = createServerFn({ method: "GET" }).handler(async ()
     return { rates: [] as ClientRate[], ok: false as const };
   }
 });
+
+/** Batch 80: Meta's base India rates for the /999 calculator (never throws). */
+export const getMetaBaseRates = createServerFn({ method: "GET" }).handler(async () => {
+  const { loadMetaBaseRates } = await import("./public-rates.server");
+  return loadMetaBaseRates();
+});

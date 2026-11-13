@@ -134,7 +134,37 @@ export type LeadRow = {
   verified_at?: string | null;
   /** Batch 77: the stage events sent to Meta, by stage ({ event, event_id, at }). */
   meta_events_sent?: Record<string, { event: string; event_id: string; at: string }> | null;
+  /** Batch 80 (/999): when the buyer reached Pay; null = never. */
+  checkout_at?: string | null;
+  /** Batch 80 (/999): when the Basic plan payment was confirmed. */
+  paid_at?: string | null;
 };
+
+/** Batch 80: the ₹999 Basic page's checkout leads. */
+export const LANDING_999_LEAD_SOURCE = "landing_999";
+const ABANDONED_AFTER_MS = 30 * 60_000;
+
+/**
+ * Batch 80: a /999 buyer who reached Pay and didn't pay (30 minutes on) —
+ * for the team to call. Pure; the same rule as checkoutAbandoned on the server.
+ */
+export function isCheckoutAbandoned(
+  lead: Pick<LeadRow, "source" | "checkout_at" | "paid_at">,
+  now: number = Date.now(),
+): boolean {
+  if (lead.source !== LANDING_999_LEAD_SOURCE || !lead.checkout_at || lead.paid_at) return false;
+  return Date.parse(lead.checkout_at) <= now - ABANDONED_AFTER_MS;
+}
+
+/** Batch 80: where a lead came from, for the list's Source filter. */
+export const LEAD_SOURCE_FILTERS = [
+  { value: "all", label: "Any" },
+  { value: "landing_start", label: "/start" },
+  { value: "landing_999", label: "/999" },
+  { value: "landing", label: "Demo form" },
+  { value: "abandoned", label: "/999 · checkout abandoned" },
+] as const;
+export type LeadSourceFilter = (typeof LEAD_SOURCE_FILTERS)[number]["value"];
 
 /** Batch 77: the side sheet's "Sent to Meta ✓" lines, in stage order. */
 export function metaStageLines(
@@ -201,6 +231,9 @@ export function filterLeads<T extends LeadRow>(
     customers?: AnswerFilter;
     /** Batch 78: "yes" = verified on WhatsApp, "no" = not (yet). */
     verified?: "all" | "yes" | "no";
+    /** Batch 80: a source, or "abandoned" (/999 buyers who reached Pay and didn't pay). */
+    source?: LeadSourceFilter;
+    now?: number;
   },
 ): T[] {
   return leads.filter(
@@ -212,6 +245,11 @@ export function filterLeads<T extends LeadRow>(
       answerMatches(l.qualification?.customers, opts.customers) &&
       (!opts.verified ||
         opts.verified === "all" ||
-        (opts.verified === "yes") === Boolean(l.verified_at)),
+        (opts.verified === "yes") === Boolean(l.verified_at)) &&
+      (!opts.source ||
+        opts.source === "all" ||
+        (opts.source === "abandoned"
+          ? isCheckoutAbandoned(l, opts.now)
+          : l.source === opts.source)),
   );
 }

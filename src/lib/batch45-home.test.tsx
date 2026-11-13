@@ -785,8 +785,10 @@ describe("flag off: today's Home, unchanged", () => {
   it("the Batch 41 Home's code is byte for byte what main had", () => {
     const file = readFileSync(join(process.cwd(), "src/routes/app/index.tsx"), "utf8");
     const classic = file.slice(file.indexOf("const SOURCE_LABEL"));
+    // Re-pinned in Batch 80: "Top up your credits" is never suggested to a
+    // workspace that pays Meta directly (Basic, pays_meta_directly); else as before.
     expect(createHash("sha256").update(classic).digest("hex")).toBe(
-      "e86666478cf7fc8cda532fb9e73cdf09afc5ad33fb21725c9e06bd17180e8cf1",
+      "a0ba7b0d2c3bbe78ccc58b465195aca65b60d24eb16fa5c91c1a927a1e06e9b4",
     );
   });
 });

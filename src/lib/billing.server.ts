@@ -89,6 +89,45 @@ export async function billingEnabled(
   return data === true;
 }
 
+/** Batch 80: the Basic plan's switch — the workspace pays Meta for its messages itself. */
+export const META_DIRECT_BILLING_FLAG = "meta_direct_billing";
+
+/**
+ * Batch 80: true when this workspace pays Meta directly (Basic): AiDwar never
+ * debits it for messages, holds credits for its campaigns or asks it to buy
+ * credits. A missing flag or a failed read is false — everything as before.
+ */
+export async function metaDirectBilling(
+  supabase: SupabaseClient,
+  organizationId: string,
+): Promise<boolean> {
+  try {
+    const { data, error } = await supabase.rpc("org_flag_enabled", {
+      p_org: organizationId,
+      p_flag: META_DIRECT_BILLING_FLAG,
+    });
+    return !error && data === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Batch 80: whether AiDwar charges this workspace's messages from its credits
+ * (billing on, and it doesn't pay Meta directly). Campaign holds and the
+ * workers' "wait for the hold" read this.
+ */
+export async function messagesBilled(
+  supabase: SupabaseClient,
+  organizationId: string,
+): Promise<boolean> {
+  const [billed, paysMeta] = await Promise.all([
+    billingEnabled(supabase, organizationId),
+    metaDirectBilling(supabase, organizationId),
+  ]);
+  return billed && !paysMeta;
+}
+
 function monthWindow(now = new Date()): { start: string; end: string } {
   const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
   const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
@@ -237,10 +276,11 @@ async function summaryUnchecked(
   organizationId: string,
 ): Promise<BillingSummary> {
   const { start, end } = monthWindow();
-  const [enabled, wallet, settings] = await Promise.all([
+  const [enabled, wallet, settings, paysMeta] = await Promise.all([
     billingEnabled(supabase, organizationId),
     ensureWallet(supabase, organizationId),
     ensureSettings(supabase, organizationId),
+    metaDirectBilling(supabase, organizationId),
   ]);
 
   const [{ data: org }, rates, usage, { data: packs }, { data: allowance }] = await Promise.all([
@@ -346,6 +386,7 @@ async function summaryUnchecked(
     },
     period: { start, end },
     gst_registered: gstRegistered,
+    pays_meta_directly: paysMeta,
   };
 }
 
@@ -2236,7 +2277,12 @@ export async function campaignCostEstimate(
   },
 ): Promise<CampaignCostEstimate> {
   const category = input.category ?? "marketing";
-  const enabled = await billingEnabled(supabase, input.organizationId);
+  // Batch 80: a workspace that pays Meta itself is never charged for messages.
+  const [billed, paysMeta] = await Promise.all([
+    billingEnabled(supabase, input.organizationId),
+    metaDirectBilling(supabase, input.organizationId),
+  ]);
+  const enabled = billed && !paysMeta;
 
   const [{ rate, currency }, wallet, settings] = await Promise.all([
     rateFor(supabase, input.organizationId, category),
@@ -2303,6 +2349,8 @@ export async function holdCampaignSpend(
     await requirePerm(supabase, input.organizationId, { userId: input.actorId }, "campaigns.send");
   }
   if (input.amount <= 0) return { ok: true };
+  // Batch 80: nothing to hold — the workspace pays Meta itself.
+  if (await metaDirectBilling(supabase, input.organizationId)) return { ok: true };
 
   const { error } = await supabase.rpc("wallet_apply", {
     p_org: input.organizationId,
@@ -2335,16 +2383,18 @@ export async function creditsCover(
   organizationId: string,
   amount: number,
 ): Promise<{ covers: boolean; available: number }> {
-  const [wallet, settings] = await Promise.all([
+  const [wallet, settings, paysMeta] = await Promise.all([
     ensureWallet(supabase, organizationId),
     ensureSettings(supabase, organizationId),
+    metaDirectBilling(supabase, organizationId),
   ]);
   const available = round2(
     Number(wallet["balance"] ?? 0) +
       Number(settings["overdraft_limit"] ?? 0) -
       Number(wallet["held"] ?? 0),
   );
-  return { covers: amount <= 0 || available >= round2(amount), available };
+  // Batch 80: messages are paid to Meta directly — credits never limit them.
+  return { covers: paysMeta || amount <= 0 || available >= round2(amount), available };
 }
 
 // --------------------------------------------------------------- admin view

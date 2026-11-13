@@ -278,7 +278,7 @@ export function track(
   }
 }
 
-/** What the server said to fire (InitiateCheckout, StartTrial, Subscribe, Purchase). */
+/** What the server said to fire (AddPaymentInfo, StartTrial, Subscribe, Purchase). */
 export function fireFromServer(meta: BrowserMetaEvent | null | undefined): boolean {
   if (!meta || typeof meta !== "object" || !meta.event || !meta.event_id) return false;
   return track(meta.event, meta.event_id, meta.params ?? {}, { once: true });
@@ -317,13 +317,20 @@ export function relayToServer(body: Record<string, unknown>): void {
  * number). The server sends its copies whatever the cookie choice (sign-up
  * terms); the pixel only after Accept.
  */
-export function trackRegistration(userId: string, phone: string | null = null): void {
+export function trackRegistration(
+  userId: string,
+  phone: string | null = null,
+  /** Batch 80: "landing_999" — an account made in the /999 checkout: no Lead. */
+  source: "landing_999" | null = null,
+): void {
   track("CompleteRegistration", metaEventId("CompleteRegistration", userId), {}, { once: true });
-  void leadEventId(phone, userId)
-    .then((id) =>
-      track("Lead", id, { content_name: "signup", lead_source: "signup" }, { once: true }),
-    )
-    .catch(() => undefined);
+  if (source !== "landing_999") {
+    void leadEventId(phone, userId)
+      .then((id) =>
+        track("Lead", id, { content_name: "signup", lead_source: "signup" }, { once: true }),
+      )
+      .catch(() => undefined);
+  }
   try {
     void fetch("/api/public/meta-event", {
       method: "POST",
@@ -332,6 +339,7 @@ export function trackRegistration(userId: string, phone: string | null = null): 
         event: "CompleteRegistration",
         user_id: userId,
         url: window.location.href.split("#")[0],
+        ...(source ? { source } : {}),
         ...fbclidForLead(),
       }),
       keepalive: true,
@@ -401,6 +409,17 @@ export function pageChanged(pathname: string): void {
     if (track("ViewContent", id, { content_name: name }))
       relayToServer({ event: "ViewContent", event_id: id, content_name: name });
   }
+}
+
+/**
+ * Batch 80: the /999 checkout sheet opened — InitiateCheckout (value 999),
+ * the pixel only after Accept, the server copy with the same id under the
+ * same rule as a page view.
+ */
+export function trackInitiateCheckout999(): void {
+  const id = randomEventId("InitiateCheckout");
+  if (track("InitiateCheckout", id, { content_name: "basic", value: 999, currency: "INR" }))
+    relayToServer({ event: "InitiateCheckout", event_id: id });
 }
 
 /** A click on our email / phone / WhatsApp link on a public page: Contact. */

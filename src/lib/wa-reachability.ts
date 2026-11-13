@@ -90,6 +90,8 @@ const REASONS: Record<string, string> = {
   "132016": "Template is disabled",
   "130472": "Customer is part of a WhatsApp experiment",
   "131000": "WhatsApp had a problem sending it",
+  // Batch 80: the WhatsApp account has no card in Meta (pay-Meta-directly plans).
+  "131042": "Add a payment method in Meta (WhatsApp Manager → Payment settings) to send these",
 };
 
 /** One short, plain sentence for a failure (the Sent report, the daily summary). */

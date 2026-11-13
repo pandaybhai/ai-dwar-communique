@@ -43,6 +43,7 @@ export function RefundsPage() {
             "After you cancel, the plan stays active until the end of the period you have already paid for. It does not renew after that.",
             "Fees for a billing period that has already started are not refunded.",
             "Exception: a yearly plan cancelled within 7 days of payment is refunded in full.",
+            "AiDwar Basic (₹999/month, bought on aidwar.in/999) comes with a 7-day money-back guarantee: ask within 7 days of your first payment and we refund that payment in full — no questions asked. Messages are paid to Meta directly, so there is nothing else to refund.",
           ]}
         />
       </Section>

@@ -22,6 +22,8 @@ export type MetaStandardEvent =
   | "CompleteRegistration"
   | "StartTrial"
   | "InitiateCheckout"
+  /** Batch 80: Pay tapped in the /999 checkout. */
+  | "AddPaymentInfo"
   | "Subscribe"
   | "Purchase"
   /** Batch 77: a lead's demo was booked (Admin → Leads, "Demo booked"). Server only. */
@@ -159,6 +161,8 @@ const PUBLIC_EXACT = new Set([
   "/signup",
   // Batch 72: the ad landing page.
   "/start",
+  // Batch 80: the ₹999 Basic landing page.
+  "/999",
 ]);
 
 /**
@@ -187,6 +191,7 @@ export function viewContentName(pathname: string): string | null {
   if (path === "/pricing") return "Pricing";
   if (path === "/developers" || path.startsWith("/developers/")) return "Developers";
   if (path === "/demo") return "Demo";
+  if (path === "/999") return "999_page";
   return null;
 }
 

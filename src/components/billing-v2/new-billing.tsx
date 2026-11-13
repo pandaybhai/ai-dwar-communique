@@ -293,15 +293,17 @@ function BillingBody({
   }
 
   const wallet = summary.wallet;
-  const low = wallet.available <= summary.settings.low_credit_threshold;
+  // Batch 80: a workspace that pays Meta itself (Basic) never needs credits.
+  const paysMeta = summary.pays_meta_directly === true;
+  const low = !paysMeta && wallet.available <= summary.settings.low_credit_threshold;
   const aiUsed = summary.ai_answers.used;
   const aiIncluded = summary.ai_answers.included;
   const since = new Date(summary.period.start).toLocaleDateString("en-IN", {
     day: "numeric",
     month: "short",
   });
-  const payButton = can("billing.pay");
-  const askButton = can("billing.request") && !can("billing.pay");
+  const payButton = !paysMeta && can("billing.pay");
+  const askButton = !paysMeta && can("billing.request") && !can("billing.pay");
 
   return (
     <div className="flex flex-col gap-10">
@@ -353,7 +355,15 @@ function BillingBody({
               ) : null}
             </div>
           ) : null}
-          {!planActive ? <p className="text-sm text-muted-foreground">{C.planFirst}</p> : null}
+          {paysMeta ? (
+            <p className="rounded-xl bg-muted px-4 py-3 text-body text-foreground">
+              <span className="font-semibold">You pay Meta directly for messages.</span> Meta bills
+              the card on your WhatsApp account at its own rates — AiDwar adds nothing.
+            </p>
+          ) : null}
+          {!planActive && !paysMeta ? (
+            <p className="text-sm text-muted-foreground">{C.planFirst}</p>
+          ) : null}
         </section>
 
         <section aria-labelledby="month-title" {...rise(1)} className="nd-rise flex flex-col gap-1">

@@ -147,7 +147,9 @@ export function BillingView({
   }
 
   const wallet = summary.wallet;
-  const low = wallet.available <= summary.settings.low_credit_threshold;
+  // Batch 80: a workspace that pays Meta itself (Basic) never needs credits.
+  const paysMeta = summary.pays_meta_directly === true;
+  const low = !paysMeta && wallet.available <= summary.settings.low_credit_threshold;
   const aiUsed = summary.ai_answers.used;
   const aiIncluded = summary.ai_answers.included;
 
@@ -193,34 +195,42 @@ export function BillingView({
         />
       </div>
 
-      <div className="space-y-2">
-        <div className="flex flex-wrap gap-3">
-          {can("billing.pay") ? (
-            <Button
-              onClick={() => setBuyOpen(true)}
-              disabled={!planActive}
-              className="rounded-full"
-            >
-              Buy credits
-            </Button>
-          ) : null}
-          {can("billing.request") && !can("billing.pay") ? (
-            <Button
-              variant="outline"
-              className="rounded-full"
-              disabled={!planActive}
-              onClick={() => setAskOpen(true)}
-            >
-              Request a top-up
-            </Button>
+      {paysMeta ? (
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-950">
+          <span className="font-semibold">You pay Meta directly for messages.</span> Meta bills the
+          card on your WhatsApp account at its own rates — AiDwar adds nothing and never needs
+          credits for your messages.
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <div className="flex flex-wrap gap-3">
+            {can("billing.pay") ? (
+              <Button
+                onClick={() => setBuyOpen(true)}
+                disabled={!planActive}
+                className="rounded-full"
+              >
+                Buy credits
+              </Button>
+            ) : null}
+            {can("billing.request") && !can("billing.pay") ? (
+              <Button
+                variant="outline"
+                className="rounded-full"
+                disabled={!planActive}
+                onClick={() => setAskOpen(true)}
+              >
+                Request a top-up
+              </Button>
+            ) : null}
+          </div>
+          {!planActive ? (
+            <p className="text-sm text-muted-foreground">
+              Pick a plan first — a locked or cancelled workspace can't buy credits.
+            </p>
           ) : null}
         </div>
-        {!planActive ? (
-          <p className="text-sm text-muted-foreground">
-            Pick a plan first — a locked or cancelled workspace can't buy credits.
-          </p>
-        ) : null}
-      </div>
+      )}
 
       {aiIncluded > 0 ? (
         <Card className="rounded-2xl">

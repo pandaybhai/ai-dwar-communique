@@ -17,7 +17,7 @@
 -- query_to_xml only when to_regclass('cron.job') finds it, so the query
 -- still runs where pg_cron is absent (every cron job is then listed).
 --
--- Expected objects: table 98, column 1163, view 2, function 124, index 176, trigger 71, cron_job 14.
+-- Expected objects: table 98, column 1166, view 2, function 125, index 176, trigger 72, cron_job 14.
 WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, introduced_in_file) AS (
   VALUES
     ('table', 'aidwar_private', 'mcp_db_proof', NULL, NULL, NULL, '20261300_batch56_mcp_hardening.sql'),
@@ -584,6 +584,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('column', 'public', 'demo_leads', 'assigned_to', NULL, 'uuid', '20260915_demo_leads.sql'),
     ('column', 'public', 'demo_leads', 'business_name', NULL, 'text', '20260915_demo_leads.sql'),
     ('column', 'public', 'demo_leads', 'business_type', NULL, 'text', '20260915_demo_leads.sql'),
+    ('column', 'public', 'demo_leads', 'checkout_at', NULL, 'timestamp with time zone', '20261430_batch80.sql'),
     ('column', 'public', 'demo_leads', 'consent', NULL, 'boolean', '20260915_demo_leads.sql'),
     ('column', 'public', 'demo_leads', 'consent_at', NULL, 'timestamp with time zone', '20260915_demo_leads.sql'),
     ('column', 'public', 'demo_leads', 'consent_version', NULL, 'text', '20260915_demo_leads.sql'),
@@ -607,6 +608,8 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('column', 'public', 'demo_leads', 'next_follow_up_at', NULL, 'timestamp with time zone', '20260915_demo_proof.sql'),
     ('column', 'public', 'demo_leads', 'nudged_at', NULL, 'timestamp with time zone', '20261390_batch75.sql'),
     ('column', 'public', 'demo_leads', 'organization_id', NULL, 'uuid', '20260915_demo_leads.sql'),
+    ('column', 'public', 'demo_leads', 'paid_at', NULL, 'timestamp with time zone', '20261430_batch80.sql'),
+    ('column', 'public', 'demo_leads', 'payment_id', NULL, 'uuid', '20261430_batch80.sql'),
     ('column', 'public', 'demo_leads', 'phone', NULL, 'text', '20260915_demo_leads.sql'),
     ('column', 'public', 'demo_leads', 'primary_need', NULL, 'text', '20260915_demo_leads.sql'),
     ('column', 'public', 'demo_leads', 'qualification', NULL, 'jsonb', '20260915_demo_leads.sql'),
@@ -1401,6 +1404,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('function', 'public', 'trg_messages_meta_consume', NULL, '{}'::text[], 'public.trg_messages_meta_consume()', '20261066_live_only_billing.sql'),
     ('function', 'public', 'trg_org_plan_assigned_before', NULL, '{}'::text[], 'public.trg_org_plan_assigned_before()', '20261066_live_only_billing.sql'),
     ('function', 'public', 'trg_org_plan_assigned_billing_on', NULL, '{}'::text[], 'public.trg_org_plan_assigned_billing_on()', '20261066_live_only_billing.sql'),
+    ('function', 'public', 'trg_org_plan_meta_direct', NULL, '{}'::text[], 'public.trg_org_plan_meta_direct()', '20261430_batch80.sql'),
     ('function', 'public', 'wallet_apply', NULL, ARRAY['uuid', 'text', 'numeric', 'text', 'uuid', 'text', 'jsonb', 'uuid'], 'public.wallet_apply(uuid, text, numeric, text, uuid, text, jsonb, uuid)', '20261054_live_only_functions.sql'),
     ('function', 'public', 'wallet_apply_version', NULL, '{}'::text[], 'public.wallet_apply_version()', '20261065_batch26a_wallet.sql'),
     ('function', 'public', 'wallet_campaign_hold_lock', NULL, ARRAY['uuid', 'uuid'], 'public.wallet_campaign_hold_lock(uuid, uuid)', '20261065_batch26a_wallet.sql'),
@@ -1643,6 +1647,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('trigger', 'public', 'organizations', 'org_plan_assigned_billing_on', NULL, 'on public.organizations', '20261066_live_only_billing.sql'),
     ('trigger', 'public', 'organizations', 'organizations_seed_ai_defaults', NULL, 'on public.organizations', '20260902_ai_core.sql'),
     ('trigger', 'public', 'organizations', 'seed_flows_after_org_insert', NULL, 'on public.organizations', '20260825_flows.sql'),
+    ('trigger', 'public', 'organizations', 'trg_org_plan_meta_direct', NULL, 'on public.organizations', '20261430_batch80.sql'),
     ('trigger', 'public', 'organizations', 'trg_organizations_chat_media_purge', NULL, 'on public.organizations', '20261110_batch32_media.sql'),
     ('trigger', 'public', 'product_collections', 'product_collections_set_updated_at', NULL, 'on public.product_collections', '20260910_catalog.sql'),
     ('trigger', 'public', 'products', 'products_set_updated_at', NULL, 'on public.products', '20260910_catalog.sql'),
