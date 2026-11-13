@@ -95,6 +95,10 @@ export const Route = createFileRoute("/api/admin/leads")({
           // Batch 76: lead_status on the lead's contact in AiDwar's workspace.
           const { mirrorLead } = await import("@/lib/lead-mirror.server");
           await mirrorLead(auth.supabase, leadId);
+          // Batch 77: the first time a lead reaches contacted / qualified /
+          // demo_booked / won, one server event to Meta (never for new / lost).
+          const { sendLeadStageEvent } = await import("@/lib/lead-stage-events.server");
+          await sendLeadStageEvent(auth.supabase, leadId, patch["status"]);
         }
         return result.ok
           ? Response.json({ ok: true })

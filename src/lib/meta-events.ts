@@ -23,7 +23,9 @@ export type MetaStandardEvent =
   | "StartTrial"
   | "InitiateCheckout"
   | "Subscribe"
-  | "Purchase";
+  | "Purchase"
+  /** Batch 77: a lead's demo was booked (Admin → Leads, "Demo booked"). Server only. */
+  | "Schedule";
 
 /** Custom events sent from the server only (no pixel inside /app). */
 export type MetaCustomEvent =
@@ -33,7 +35,11 @@ export type MetaCustomEvent =
   | "AidenEnabled"
   | "PlanUpgraded"
   /** Batch 75: a /start lead answered what they sell and how many customers they have. */
-  | "LeadQualified";
+  | "LeadQualified"
+  /** Batch 77: a lead's stage in Admin → Leads ("Contacted", "Qualified", "Won"). */
+  | "LeadContacted"
+  | "SalesQualifiedLead"
+  | "LeadWon";
 
 export type MetaEventName = MetaStandardEvent | MetaCustomEvent;
 
@@ -44,6 +50,9 @@ export const CUSTOM_EVENTS: readonly MetaCustomEvent[] = [
   "AidenEnabled",
   "PlanUpgraded",
   "LeadQualified",
+  "LeadContacted",
+  "SalesQualifiedLead",
+  "LeadWon",
 ];
 
 /** The only parameters ever sent with an event (custom_data). Nothing else passes. */
@@ -57,6 +66,8 @@ export type MetaParams = {
   /** Batch 75 (LeadQualified): the /start answers, from their fixed lists only. */
   sells?: string;
   customers?: string;
+  /** Batch 77: the lead's stage (demo_leads.status) that fired the event. */
+  stage?: string;
 };
 
 export const PARAM_KEYS = [
@@ -67,6 +78,7 @@ export const PARAM_KEYS = [
   "lead_source",
   "sells",
   "customers",
+  "stage",
 ] as const;
 
 /** Keeps only the allowed parameters: finite money, INR, a short page name. */
@@ -91,6 +103,8 @@ export function safeParams(input: Record<string, unknown> | null | undefined): M
   if (typeof customers === "string" && CUSTOMERS.some((o) => o.value === customers)) {
     out.customers = customers;
   }
+  const stage = input?.["stage"];
+  if (typeof stage === "string" && /^[a-z_]{1,20}$/.test(stage)) out.stage = stage;
   return out;
 }
 
@@ -306,6 +320,22 @@ export function fbcFromFbclid(fbclid: unknown, atMs: unknown): string | null {
   const ms = Number(atMs);
   if (!Number.isFinite(ms) || ms <= 0) return null;
   return `fb.1.${Math.floor(ms)}.${fbclid}`;
+}
+
+/**
+ * Batch 77: the event a lead's stage sends to Meta the first time the lead
+ * reaches it (Admin → Leads). "new" and "lost" send nothing.
+ */
+export const LEAD_STAGE_EVENTS: Readonly<Record<string, MetaEventName>> = {
+  contacted: "LeadContacted",
+  qualified: "SalesQualifiedLead",
+  demo_booked: "Schedule",
+  won: "LeadWon",
+};
+
+/** "<EventName>." + the lead id: once per lead per stage (Meta dedups by it too). */
+export function leadStageEventId(event: MetaEventName, leadId: string): string {
+  return metaEventId(event, leadId);
 }
 
 /** What the server tells the browser to fire (same name, id and parameters). */

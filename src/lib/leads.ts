@@ -130,7 +130,19 @@ export type LeadRow = {
   qualification?: { sells?: string; customers?: string; answered_at?: string } | null;
   /** Batch 75: when the one "finish sign-up" WhatsApp reminder went (null = not reminded). */
   nudged_at?: string | null;
+  /** Batch 77: the stage events sent to Meta, by stage ({ event, event_id, at }). */
+  meta_events_sent?: Record<string, { event: string; event_id: string; at: string }> | null;
 };
+
+/** Batch 77: the side sheet's "Sent to Meta ✓" lines, in stage order. */
+export function metaStageLines(
+  lead: Pick<LeadRow, "meta_events_sent">,
+): Array<{ stage: string; event: string; at: string }> {
+  const sent = lead.meta_events_sent ?? {};
+  return LEAD_STATUSES.map((s) => s.value)
+    .filter((stage) => sent[stage])
+    .map((stage) => ({ stage, event: sent[stage]!.event, at: sent[stage]!.at }));
+}
 
 export type LeadNote = {
   id: string;
