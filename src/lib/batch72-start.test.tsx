@@ -98,7 +98,9 @@ describe("/start: the page", () => {
     expect(card).toContain('inputMode="numeric"');
     expect(card).toContain('autoComplete="tel-national"');
     expect(card).toContain(">\n                +91\n              <");
-    expect(card).toContain("By continuing you agree we may contact you on WhatsApp about your trial.");
+    expect(card).toContain(
+      "By continuing you agree we may contact you on WhatsApp about your trial.",
+    );
   });
 
   it("pricing comes from the public plans: change a price and the text changes", () => {
@@ -200,7 +202,9 @@ describe("/start: step 1 and the hand-over to /signup", () => {
     );
     // Batch 78: the hand-off is useToSignup (after WhatsApp verification, or
     // "Continue without verifying"), still through this tab's storage.
-    expect(form).toMatch(/writeStartPrefill\(\{\s*name: f\.name\.trim\(\),\s*phone: f\.savedPhone \?\? f\.phone/);
+    expect(form).toMatch(
+      /writeStartPrefill\(\{\s*name: f\.name\.trim\(\),\s*phone: f\.savedPhone \?\? f\.phone/,
+    );
   });
 
   it("sign-up reads the prefill from this tab's storage (editable fields)", async () => {
@@ -345,9 +349,7 @@ describe("(server) submitLead: the landing_start path, and /demo unchanged", () 
     expect(a).toMatchObject({ ok: true, duplicate: false, name: "Asha Rao" });
     expect(b).toMatchObject({ ok: true, duplicate: true });
     expect(w.rows("demo_leads")).toHaveLength(1);
-    expect(
-      await submitLead(w.supabase, { ...full, phone: "123" } as never, meta),
-    ).toMatchObject({
+    expect(await submitLead(w.supabase, { ...full, phone: "123" } as never, meta)).toMatchObject({
       ok: false,
       status: 400,
     });
@@ -456,7 +458,7 @@ describe("(server) the Lead: one id per person, always sent, hashed matching onl
     expect(JSON.stringify(w.graph[0]!.body)).not.toMatch(/9812345670|98123|Asha|Rao|asha@/i);
   });
 
-  it("/demo and sign-up send the same Lead id for the same number (Meta counts the person once)", async () => {
+  it("/demo sends the Lead; sign-up sends only CompleteRegistration (Batch 78: 'Lead' means verified only)", async () => {
     const w = world();
     const POST = await handler("@/routes/api/public/demo-leads");
     const res = await POST({
@@ -478,8 +480,7 @@ describe("(server) the Lead: one id per person, always sent, hashed matching onl
     });
     expect((w.graph[0]!.body["data"] as Row[])[0]!["event_id"]).toBe(LEAD_ID_FOR_PHONE);
 
-    // Sign-up (account created): CompleteRegistration + the same Lead id; the
-    // Lead was already sent for this person, so the server doesn't send it twice.
+    // Sign-up (account created): CompleteRegistration only.
     const relay = await handler("@/routes/api/public/meta-event");
     await relay({
       request: post("https://aidwar.in/api/public/meta-event", {
@@ -491,7 +492,8 @@ describe("(server) the Lead: one id per person, always sent, hashed matching onl
     const names = w.graph.map((g) => (g.body["data"] as Row[])[0]!["event_name"]);
     expect(names).toEqual(["Lead", "CompleteRegistration"]);
 
-    // A new person signing up straight away gets their own Lead (content_name signup).
+    // A new person signing up straight away: still no Lead (Batch 72 sent
+    // one with content_name "signup"; Batch 78 retired it).
     const w2 = world();
     const relay2 = await handler("@/routes/api/public/meta-event");
     await relay2({
@@ -500,23 +502,8 @@ describe("(server) the Lead: one id per person, always sent, hashed matching onl
         user_id: OWNER,
       }),
     });
-    const lead = w2.graph
-      .map((g) => (g.body["data"] as Row[])[0]!)
-      .find((e) => e["event_name"] === "Lead")!;
-    expect(lead).toMatchObject({
-      event_id: LEAD_ID_FOR_PHONE,
-      custom_data: { content_name: "signup", lead_source: "signup" },
-    });
-    expect(Object.keys(lead["user_data"] as Row).sort()).toEqual([
-      "client_ip_address",
-      "client_user_agent",
-      "country",
-      "em",
-      "external_id",
-      "fn",
-      "ln",
-      "ph",
-    ]);
+    const names2 = w2.graph.map((g) => (g.body["data"] as Row[])[0]!["event_name"]);
+    expect(names2).toEqual(["CompleteRegistration"]);
   });
 });
 
@@ -567,15 +554,14 @@ describe("(browser) the Lead pixel: only after Accept, same id", () => {
     expect(calls).toEqual([["track", "Lead", meta.params, { eventID: LEAD_ID_FOR_PHONE }]]);
   });
 
-  it("sign-up's browser Lead uses the same id as /start for the same number", async () => {
+  it("sign-up's browser sends CompleteRegistration and no Lead (Batch 78: 'Lead' means verified only)", async () => {
     const calls = fakeBrowser("accepted", "/signup");
     vi.resetModules();
     const m = await import("./meta-pixel");
     m.trackRegistration(OWNER, PHONE);
     await new Promise((r) => setTimeout(r, 20));
-    const lead = calls.find((c) => c[1] === "Lead")!;
-    expect(lead[3]).toEqual({ eventID: LEAD_ID_FOR_PHONE });
-    expect(lead[2]).toEqual({ content_name: "signup", lead_source: "signup" });
+    expect(calls.some((c) => c[1] === "CompleteRegistration")).toBe(true);
+    expect(calls.some((c) => c[1] === "Lead")).toBe(false);
   });
 });
 
