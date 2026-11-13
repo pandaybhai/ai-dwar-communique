@@ -45,6 +45,21 @@ export function OnboardingJourney({
   const [step, setStep] = useState<JourneyStep | null>(organizationId ? null : "business");
   const [brandColor, setBrandColor] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Batch 78: the business name typed on /start (their own linked lead), to
+  // prefill the workspace name for a brand-new sign-up. Still editable.
+  const [suggestedName, setSuggestedName] = useState<string | null>(null);
+  useEffect(() => {
+    if (organizationId) return;
+    let live = true;
+    void callApi<{ business_name: string | null }>("/api/onboarding/prefill", {
+      method: "GET",
+    }).then((res) => {
+      if (live && res.data?.business_name) setSuggestedName(res.data.business_name);
+    });
+    return () => {
+      live = false;
+    };
+  }, [organizationId]);
 
   const refresh = useCallback(async () => {
     if (!organizationId) return null;
@@ -161,6 +176,7 @@ export function OnboardingJourney({
       ) : current === "business" ? (
         <StepBusiness
           existingName={state?.business.name || null}
+          suggestedName={organizationId ? null : suggestedName}
           existingUrl={state?.website?.url ?? null}
           onBrand={setBrandColor}
           onSubmit={submitBusiness}

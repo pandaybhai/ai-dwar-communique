@@ -459,3 +459,106 @@ describe("the no-website interview on WhatsApp", () => {
     expect(src).toContain("That answer came from ${from}, not a script.");
   });
 });
+
+/* ------------------------------- business name prefilled from /start --- */
+
+describe("the business step prefills the name typed on /start (founder's call, #82)", () => {
+  const ME = "11111111-2222-4333-8444-555555555555";
+  const OTHER = "99999999-2222-4333-8444-555555555555";
+
+  it("reads only this account's own linked /start lead, newest first; nothing = null", async () => {
+    const { leadBusinessNameFor } = await import("./lead-prefill.server");
+    const db = memoryDb({
+      demo_leads: [
+        {
+          id: "l1",
+          source: "landing_start",
+          linked_user_id: ME,
+          business_name: "Old Name",
+          created_at: "2026-11-10T10:00:00Z",
+        },
+        {
+          id: "l2",
+          source: "landing_start",
+          linked_user_id: ME,
+          business_name: "  ZOORI Jewels ",
+          created_at: "2026-11-12T10:00:00Z",
+        },
+        {
+          id: "l3",
+          source: "landing_start",
+          linked_user_id: OTHER,
+          business_name: "Someone Else",
+          created_at: "2026-11-13T10:00:00Z",
+        },
+        // A /demo lead is never read for this.
+        {
+          id: "l4",
+          source: "landing",
+          linked_user_id: ME,
+          business_name: "Demo Lead",
+          created_at: "2026-11-13T11:00:00Z",
+        },
+      ],
+    });
+    const supabase = db.supabase as never;
+    expect(await leadBusinessNameFor(supabase, ME)).toBe("ZOORI Jewels");
+    expect(await leadBusinessNameFor(supabase, OTHER)).toBe("Someone Else");
+    expect(await leadBusinessNameFor(supabase, "00000000-0000-4000-8000-000000000000")).toBeNull();
+    // A failed read: no prefill, the step starts empty as before.
+    const broken = {
+      from: () => {
+        throw new Error("down");
+      },
+    } as never;
+    expect(await leadBusinessNameFor(broken, ME)).toBeNull();
+  });
+
+  it("GET /api/onboarding/prefill needs a signed-in person; nothing is added to /signup", async () => {
+    const { Route } = await import("@/routes/api/onboarding/prefill");
+    const handlers = (
+      Route.options as unknown as {
+        server: { handlers: Record<string, (a: { request: Request }) => Promise<Response>> };
+      }
+    ).server.handlers;
+    const res = await handlers["GET"]!({
+      request: new Request("https://aidwar.in/api/onboarding/prefill"),
+    });
+    expect(res.status).toBe(401);
+    const signup = readFileSync("src/routes/signup.tsx", "utf8");
+    expect(signup).not.toMatch(/business_name|businessName|Business name/);
+  });
+
+  it("the step shows the suggested name (editable) unless one is already on file", async () => {
+    // (The name field shows once a choice is made; a website on file chooses "Yes".)
+    const { StepBusiness } = await import("@/components/onboarding/step-business");
+    const html = renderToStaticMarkup(
+      <StepBusiness
+        existingName={null}
+        suggestedName="ZOORI Jewels"
+        existingUrl="https://zoori.in"
+        onBrand={() => undefined}
+        onSubmit={async () => null}
+      />,
+    );
+    expect(html).toMatch(
+      /id="ob-name"[^>]*value="ZOORI Jewels"|value="ZOORI Jewels"[^>]*id="ob-name"/,
+    );
+    expect(html).not.toMatch(/id="ob-name"[^>]*readonly|id="ob-name"[^>]*disabled/i);
+    const onFile = renderToStaticMarkup(
+      <StepBusiness
+        existingName="My Shop"
+        suggestedName="ZOORI Jewels"
+        existingUrl="https://zoori.in"
+        onBrand={() => undefined}
+        onSubmit={async () => null}
+      />,
+    );
+    expect(onFile).toContain('value="My Shop"');
+    expect(onFile).not.toContain("ZOORI Jewels");
+    // Asked for only before a workspace exists.
+    const journey = readFileSync("src/components/onboarding/onboarding-journey.tsx", "utf8");
+    expect(journey).toContain('"/api/onboarding/prefill"');
+    expect(journey).toContain("suggestedName={organizationId ? null : suggestedName}");
+  });
+});

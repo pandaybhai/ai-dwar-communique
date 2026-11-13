@@ -1,7 +1,6 @@
 import {
   META_PIXEL_ID,
   isContactHref,
-  leadEventId,
   metaEventId,
   pixelZone,
   viewContentName,
@@ -312,18 +311,14 @@ export function relayToServer(body: Record<string, unknown>): void {
 }
 
 /**
- * Account created (signup): CompleteRegistration and, Batch 72, the person's
- * Lead (same id as their /start or /demo Lead: "Lead." + sha256 of the
- * number). The server sends its copies whatever the cookie choice (sign-up
- * terms); the pixel only after Accept.
+ * Account created (signup): CompleteRegistration. The server sends its copy
+ * whatever the cookie choice (sign-up terms); the pixel only after Accept.
+ * Batch 78: no Lead from sign-up any more — "Lead" means a number proved on
+ * WhatsApp (/start's verification) or a /demo enquiry, never a sign-up.
  */
 export function trackRegistration(userId: string, phone: string | null = null): void {
+  void phone;
   track("CompleteRegistration", metaEventId("CompleteRegistration", userId), {}, { once: true });
-  void leadEventId(phone, userId)
-    .then((id) =>
-      track("Lead", id, { content_name: "signup", lead_source: "signup" }, { once: true }),
-    )
-    .catch(() => undefined);
   try {
     void fetch("/api/public/meta-event", {
       method: "POST",
