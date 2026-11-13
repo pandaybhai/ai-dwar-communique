@@ -19,6 +19,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getScript } from "@/lib/scripts.server";
 import { normalizePhone } from "@/lib/phone";
 import { CODE_RE as CODE_PATTERN } from "@/lib/teach-guard";
+import { VERIFY_CODE_RE } from "@/lib/lead-verify";
 import {
   sendServiceText,
   sendServiceImage,
@@ -416,6 +417,16 @@ export async function handleMerchantInbound(
     text: string,
     rows: Array<{ id: string; title: string; description?: string }>,
   ) => sendServiceList(supabase, { ...channel, body: withPrefix(prefix, text), buttonText: "Choose", rows });
+
+  // Batch 78: "VERIFY V-XXXX" — proof that this WhatsApp number is the one
+  // typed on /start. First, before AD codes, owners and strangers, so it is
+  // never read as a code, a question or a greeting. Anything else costs one
+  // regex here.
+  if (!interactiveId && VERIFY_CODE_RE.test(body)) {
+    willReply();
+    const { handleVerifyMessage } = await import("@/lib/lead-verify.server");
+    if (await handleVerifyMessage(supabase, { channel, waId: args.waId, body })) return;
+  }
 
   // Which businesses this number speaks for. More than one and every message
   // says which one it is about.

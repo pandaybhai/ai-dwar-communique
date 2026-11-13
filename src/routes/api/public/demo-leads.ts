@@ -38,21 +38,23 @@ export const Route = createFileRoute("/api/public/demo-leads")({
         // Batch 75: a /start honeypot hit looks like any other "ok" — nothing
         // saved, nothing fired, no cookie.
         if (result.honeypot) return Response.json({ ok: true, duplicate: false, meta: null });
-        // Batch 72: Lead to Meta's Conversions API for every lead, whatever
-        // the cookie banner said (as our other server events; the browser
-        // pixel still waits for Accept). One id per person — "Lead." +
+        // Batch 78: /start has its own answer (verify on WhatsApp; no Lead yet).
+        if (body["source"] === "landing_start") {
+          const { startLeadResponse } = await import("@/lib/start-submit.server");
+          return startLeadResponse(getServiceClient(), request, body, result);
+        }
+        // Batch 72: Lead to Meta's Conversions API for every /demo lead,
+        // whatever the cookie banner said (as our other server events; the
+        // browser pixel still waits for Accept). One id per person — "Lead." +
         // sha256 of the number — so /start, /demo and sign-up count once.
         // Only hashed matching (number, name, lead id); fbc from the fbclid
-        // the visitor arrived with, never stored.
+        // the visitor arrived with, never stored. (Batch 78: /start's Lead
+        // waits for WhatsApp verification — start-submit.server.ts.)
         let meta: import("@/lib/meta-events").BrowserMetaEvent | null = null;
         try {
           const { fbcFromFbclid, leadEventId, safeParams } = await import("@/lib/meta-events");
-          const start = body["source"] === "landing_start";
           const eventId = await leadEventId(result.phone ?? null, result.id);
-          const params = safeParams({
-            content_name: start ? "start_free_trial" : "demo",
-            lead_source: start ? "landing_start" : "landing",
-          });
+          const params = safeParams({ content_name: "demo", lead_source: "landing" });
           const { queueMetaEvent } = await import("@/lib/meta-capi.server");
           await queueMetaEvent(getServiceClient(), {
             event: "Lead",
@@ -74,19 +76,7 @@ export const Route = createFileRoute("/api/public/demo-leads")({
           const { mirrorLead } = await import("@/lib/lead-mirror.server");
           await mirrorLead(getServiceClient(), result.id);
         }
-        // Batch 75: the /start lead this browser created (or repeated) is
-        // signed into an httpOnly cookie, so the two questions that follow
-        // can answer for this lead and no other.
-        const headers = new Headers();
-        if (body["source"] === "landing_start" && result.id) {
-          try {
-            const { startLeadSetCookie } = await import("@/lib/start-lead-cookie.server");
-            headers.append("set-cookie", await startLeadSetCookie(result.id));
-          } catch {
-            // no signing key: the lead is saved; the questions just can't be stored
-          }
-        }
-        return Response.json({ ok: true, duplicate: result.duplicate, meta }, { headers });
+        return Response.json({ ok: true, duplicate: result.duplicate, meta });
       },
     },
   },

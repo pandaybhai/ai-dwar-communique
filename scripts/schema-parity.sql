@@ -17,7 +17,7 @@
 -- query_to_xml only when to_regclass('cron.job') finds it, so the query
 -- still runs where pg_cron is absent (every cron job is then listed).
 --
--- Expected objects: table 97, column 1149, view 2, function 123, index 175, trigger 71, cron_job 14.
+-- Expected objects: table 98, column 1159, view 2, function 124, index 176, trigger 71, cron_job 14.
 WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, introduced_in_file) AS (
   VALUES
     ('table', 'aidwar_private', 'mcp_db_proof', NULL, NULL, NULL, '20261300_batch56_mcp_hardening.sql'),
@@ -81,6 +81,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('table', 'public', 'knowledge_sources', NULL, NULL, NULL, '20260902_ai_knowledge.sql'),
     ('table', 'public', 'knowledge_urls', NULL, NULL, NULL, '20260924080000_reading_settings.sql'),
     ('table', 'public', 'lead_source_markers', NULL, NULL, NULL, '20260814_lead_source_attribution.sql'),
+    ('table', 'public', 'lead_verifications', NULL, NULL, NULL, '20261420_batch78.sql'),
     ('table', 'public', 'member_permissions', NULL, NULL, NULL, '20260816_permissions.sql'),
     ('table', 'public', 'message_rates', NULL, NULL, NULL, '20260831_message_cost_receipts.sql'),
     ('table', 'public', 'message_templates', NULL, NULL, NULL, '20260813_message_templates.sql'),
@@ -609,6 +610,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('column', 'public', 'demo_leads', 'source', NULL, 'text', '20260915_demo_leads.sql'),
     ('column', 'public', 'demo_leads', 'status', NULL, 'text', '20260915_demo_leads.sql'),
     ('column', 'public', 'demo_leads', 'updated_at', NULL, 'timestamp with time zone', '20260915_demo_leads.sql'),
+    ('column', 'public', 'demo_leads', 'verified_at', NULL, 'timestamp with time zone', '20261420_batch78.sql'),
     ('column', 'public', 'demo_leads', 'website', NULL, 'text', '20260915_demo_leads.sql'),
     ('column', 'public', 'demo_proof_runs', 'answer', NULL, 'text', '20260915_demo_proof.sql'),
     ('column', 'public', 'demo_proof_runs', 'captured_at', NULL, 'timestamp with time zone', '20260915_demo_proof.sql'),
@@ -838,6 +840,15 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('column', 'public', 'lead_source_markers', 'organization_id', NULL, 'uuid', '20260814_lead_source_attribution.sql'),
     ('column', 'public', 'lead_source_markers', 'source', NULL, 'text', '20260814_lead_source_attribution.sql'),
     ('column', 'public', 'lead_source_markers', 'updated_at', NULL, 'timestamp with time zone', '20260814_lead_source_attribution.sql'),
+    ('column', 'public', 'lead_verifications', 'attempts', NULL, 'integer', '20261420_batch78.sql'),
+    ('column', 'public', 'lead_verifications', 'browser_nonce_hash', NULL, 'text', '20261420_batch78.sql'),
+    ('column', 'public', 'lead_verifications', 'code', NULL, 'text', '20261420_batch78.sql'),
+    ('column', 'public', 'lead_verifications', 'created_at', NULL, 'timestamp with time zone', '20261420_batch78.sql'),
+    ('column', 'public', 'lead_verifications', 'expires_at', NULL, 'timestamp with time zone', '20261420_batch78.sql'),
+    ('column', 'public', 'lead_verifications', 'id', NULL, 'uuid', '20261420_batch78.sql'),
+    ('column', 'public', 'lead_verifications', 'lead_id', NULL, 'uuid', '20261420_batch78.sql'),
+    ('column', 'public', 'lead_verifications', 'phone', NULL, 'text', '20261420_batch78.sql'),
+    ('column', 'public', 'lead_verifications', 'used_at', NULL, 'timestamp with time zone', '20261420_batch78.sql'),
     ('column', 'public', 'member_permissions', 'created_at', NULL, 'timestamp with time zone', '20260816_permissions.sql'),
     ('column', 'public', 'member_permissions', 'granted', NULL, 'boolean', '20260816_permissions.sql'),
     ('column', 'public', 'member_permissions', 'granted_by', NULL, 'uuid', '20260816_permissions.sql'),
@@ -1335,6 +1346,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('function', 'public', 'handle_new_user', NULL, '{}'::text[], 'public.handle_new_user()', '20260907_handle_new_user_phone.sql'),
     ('function', 'public', 'has_permission', NULL, ARRAY['uuid', 'text'], 'public.has_permission(uuid, text)', '20260816_permissions.sql'),
     ('function', 'public', 'is_auth_send_error', NULL, ARRAY['text'], 'public.is_auth_send_error(text)', '20260924_send_health_scope_diff.sql'),
+    ('function', 'public', 'lead_verifications_purge', NULL, '{}'::text[], 'public.lead_verifications_purge()', '20261420_batch78.sql'),
     ('function', 'public', 'log_super_admin_write', NULL, '{}'::text[], 'public.log_super_admin_write()', '20260816_permissions.sql'),
     ('function', 'public', 'match_knowledge_chunks', NULL, ARRAY['uuid', 'vector', 'text', 'uuid', 'integer', 'numeric'], 'public.match_knowledge_chunks(uuid, vector, text, uuid, integer, numeric)', '20260902_ai_knowledge.sql'),
     ('function', 'public', 'mcp_block_oauth_reads', NULL, '{}'::text[], 'public.mcp_block_oauth_reads()', '20261300_batch56_mcp_hardening.sql'),
@@ -1496,6 +1508,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('index', 'public', 'knowledge_documents_org_idx', NULL, NULL, 'on public.knowledge_documents', '20260902_ai_knowledge.sql'),
     ('index', 'public', 'knowledge_sources_org_idx', NULL, NULL, 'on public.knowledge_sources', '20260902_ai_knowledge.sql'),
     ('index', 'public', 'lead_source_markers_unique', NULL, NULL, 'unique on public.lead_source_markers', '20260814_lead_source_attribution.sql'),
+    ('index', 'public', 'lead_verifications_phone_created_idx', NULL, NULL, 'on public.lead_verifications', '20261420_batch78.sql'),
     ('index', 'public', 'member_permissions_lookup_idx', NULL, NULL, 'on public.member_permissions', '20260816_permissions.sql'),
     ('index', 'public', 'message_rates_lookup_idx', NULL, NULL, 'on public.message_rates', '20260831_message_cost_receipts.sql'),
     ('index', 'public', 'message_rates_unique_period_idx', NULL, NULL, 'unique on public.message_rates', '20260831_message_cost_receipts.sql'),
@@ -1649,7 +1662,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('cron_job', 'cron', 'aidwar-plan-billing', NULL, NULL, 'schedule 30 3 * * *', '20260923_plan_billing_cron.sql'),
     ('cron_job', 'cron', 'aidwar-reprice-sweep', NULL, NULL, 'schedule */10 * * * *', '20261053_cron_jobs.sql'),
     ('cron_job', 'cron', 'aidwar-reprocess-events', NULL, NULL, 'schedule */5 * * * *', '20261053_cron_jobs.sql'),
-    ('cron_job', 'cron', 'aidwar-retention-purge', NULL, NULL, 'schedule 0 2 * * *', '20261370_batch67.sql'),
+    ('cron_job', 'cron', 'aidwar-retention-purge', NULL, NULL, 'schedule 0 2 * * *', '20261420_batch78.sql'),
     ('cron_job', 'cron', 'aidwar-shopify-sync', NULL, NULL, 'schedule * * * * *', '20261053_cron_jobs.sql')
 ),
 cron_jobs AS (

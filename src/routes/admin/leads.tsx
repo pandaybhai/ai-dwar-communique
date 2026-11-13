@@ -67,6 +67,8 @@ function AdminLeads() {
   const [sells, setSells] = useState("all");
   const [customers, setCustomers] = useState("all");
   const { lead: linkedLead } = Route.useSearch();
+  // Batch 78: verified on WhatsApp, or not.
+  const [verified, setVerified] = useState<"all" | "yes" | "no">("all");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -99,8 +101,9 @@ function AdminLeads() {
   }, [data]);
 
   const visible = useMemo(
-    () => filterLeads(data?.leads ?? [], { status, search, unassignedOnly, sells, customers }),
-    [data, status, search, unassignedOnly, sells, customers],
+    () =>
+      filterLeads(data?.leads ?? [], { status, search, unassignedOnly, sells, customers, verified }),
+    [data, status, search, unassignedOnly, sells, customers, verified],
   );
 
   const unassignedNew = (data?.leads ?? []).filter((l) => l.status === "new" && !l.assigned_to).length;
@@ -158,6 +161,19 @@ function AdminLeads() {
           options={CUSTOMERS}
           testId="filter-customers"
         />
+        <label className="inline-flex items-center gap-2 text-sm">
+          <span className="font-medium text-muted-foreground">WhatsApp</span>
+          <select
+            value={verified}
+            onChange={(e) => setVerified(e.target.value as "all" | "yes" | "no")}
+            data-testid="filter-verified"
+            className="h-9 rounded-full border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            <option value="all">Any</option>
+            <option value="yes">Verified ✓</option>
+            <option value="no">Not verified</option>
+          </select>
+        </label>
         <div className="relative ml-auto w-full max-w-xs">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input

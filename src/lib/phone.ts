@@ -125,3 +125,81 @@ export function typedPhone(
     return { error: codeError ?? "Add the country code, e.g. +91 98765 43210." };
   return { error: `${phoneProblemText(entered.problem)}. ${ENTER_WITH_COUNTRY}` };
 }
+
+/** Batch 78: the one line for a typed Indian WhatsApp number we can't use. */
+export const INDIA_MOBILE_ERROR = "Please enter your 10-digit WhatsApp number";
+
+/**
+ * Batch 78: a person's own WhatsApp number typed into one of our forms
+ * (/start with its +91 chip, /signup, and the Settings numbers of an Indian
+ * workspace). Live leads came in as +1 917002867193 and +7 3078015438:
+ * enteredPhone reads 11–15 digits typed without "+" as already carrying a
+ * country code, so "73078015438" (a slip) became +7… and "1917002867193"
+ * became +1…, although the field shows +91. Here a number typed without "+"
+ * is always Indian:
+ *  - 10 digits → +91 + those 10;
+ *  - 0 + 10 digits → +91 + the 10;
+ *  - 91 + 10 digits (12) → +91 + the 10;
+ *  - anything else → refused (never a guessed country);
+ * and an Indian mobile is exactly 10 digits starting 6–9 (no landline, no
+ * 5-digit stub). "+91 …" / "0091 …" follow the same national rule. A number
+ * written with "+" and another country code is refused unless `foreign`
+ * (Settings, where a foreign number is typed on purpose), then Batch 66's
+ * rule as before.
+ */
+export function indiaWhatsApp(
+  typed: unknown,
+  opts: { foreign?: boolean } = {},
+): { phone: string } | { error: string } {
+  if (typeof typed !== "string" && typeof typed !== "number") return { error: INDIA_MOBILE_ERROR };
+  const text = String(typed).trim();
+  const explicit = /^[\s().-]*(\+|00)/.test(text);
+  let digits = toWaId(text);
+  if (!digits) return { error: INDIA_MOBILE_ERROR };
+  if (explicit && /^[\s().-]*00/.test(text)) digits = digits.slice(2);
+  let national: string;
+  if (explicit) {
+    if (!digits.startsWith("91")) {
+      if (!opts.foreign) return { error: INDIA_MOBILE_ERROR };
+      const t = typedPhone(text, null);
+      return "error" in t ? t : { phone: t.phone };
+    }
+    national = digits.slice(2);
+  } else if (digits.length === 12 && digits.startsWith("91")) {
+    national = digits.slice(2);
+  } else {
+    national = digits;
+  }
+  if (national.length === 11 && national.startsWith("0")) national = national.slice(1);
+  if (!/^[6-9]\d{9}$/.test(national)) return { error: INDIA_MOBILE_ERROR };
+  return { phone: `+91${national}` };
+}
+
+/**
+ * Batch 78: typedPhone for a person's own number in an Indian workspace's
+ * form (staff alert numbers, the onboarding number, the billing WhatsApp):
+ * India's code (or a typed "+91…") goes through indiaWhatsApp, so a slip is
+ * refused instead of becoming a foreign number; any other code is Batch 69's
+ * rule unchanged.
+ */
+export function typedPersonPhone(
+  typed: unknown,
+  defaultCountryCode: string | null,
+  codeError: string | null = null,
+): { phone: string; addedCountry: boolean } | { error: string } {
+  const text = typeof typed === "string" || typeof typed === "number" ? String(typed).trim() : "";
+  const explicit = /^[\s().-]*(\+|00)/.test(text);
+  let digits = toWaId(text);
+  if (explicit && /^[\s().-]*00/.test(text)) digits = digits.slice(2);
+  if ((explicit && digits.startsWith("91")) || (!explicit && defaultCountryCode === "91")) {
+    const out = indiaWhatsApp(text, { foreign: true });
+    return "error" in out ? out : { phone: out.phone, addedCountry: !explicit };
+  }
+  return typedPhone(typed, defaultCountryCode, codeError);
+}
+
+/** "+919812345670" → "+91 98123 45670" for people to read; any other number as stored. */
+export function displayPhone(phone: string): string {
+  const m = /^\+91(\d{5})(\d{5})$/.exec(phone.replace(/[\s()-]/g, ""));
+  return m ? `+91 ${m[1]} ${m[2]}` : phone;
+}

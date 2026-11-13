@@ -5,13 +5,18 @@
  */
 const KEY = "aidwar.start.prefill";
 
-export type StartPrefill = { name: string; phone: string };
+/** Batch 78: + the business name typed on /start (sign-up itself has no field for it). */
+export type StartPrefill = { name: string; phone: string; business?: string };
 
 export function writeStartPrefill(value: StartPrefill): void {
   try {
     window.sessionStorage.setItem(
       KEY,
-      JSON.stringify({ name: value.name.slice(0, 100), phone: value.phone.slice(0, 30) }),
+      JSON.stringify({
+        name: value.name.slice(0, 100),
+        phone: value.phone.slice(0, 30),
+        business: (value.business ?? "").slice(0, 150),
+      }),
     );
   } catch {
     // sign-up simply starts empty
@@ -25,9 +30,10 @@ export function readStartPrefill(): StartPrefill {
     return {
       name: typeof v.name === "string" ? v.name : "",
       phone: typeof v.phone === "string" ? v.phone : "",
+      business: typeof v.business === "string" ? v.business : "",
     };
   } catch {
-    return { name: "", phone: "" };
+    return { name: "", phone: "", business: "" };
   }
 }
 

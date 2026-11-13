@@ -301,13 +301,18 @@ describe("the resume link (/start/continue?t=…)", () => {
       }),
     });
     expect(res.status).toBe(200);
+    // Batch 78: + the business name and whether the number is verified (the
+    // same link is in the "✅ Verified" reply); no Meta event for an unverified lead.
     expect(await res.json()).toEqual({
       ok: true,
       signed_up: false,
       name: "Asha Rao",
       phone: "+919812345670",
+      business_name: "",
+      verified: false,
       sells: "jewellery",
       customers: "500_5000",
+      meta: null,
     });
     // The cookie it sets answers for lead-a and nobody else.
     const cookie = (res.headers.get("set-cookie") ?? "").split(";")[0]!;

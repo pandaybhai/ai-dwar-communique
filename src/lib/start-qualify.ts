@@ -1,4 +1,4 @@
-import { DEFAULT_COUNTRY_CODE, typedPhone } from "@/lib/phone";
+import { indiaWhatsApp } from "@/lib/phone";
 
 /**
  * Batch 75: the /start qualification step (two taps after name + number) and
@@ -60,22 +60,19 @@ export function customersLabel(value: unknown): string | null {
 export const REAL_NUMBER_ERROR = "Please enter your real WhatsApp number";
 
 /**
- * A /start number: Batch 66's rule first (a 10-digit number gets +91), then
- * the obviously fake ones — one digit repeated (9999999999), a straight run
- * up or down (1234567890, 0123456789, 9876543210), and an Indian number that
- * isn't exactly 10 digits.
+ * A /start number. Batch 78: the field shows +91, so it is always an Indian
+ * WhatsApp mobile (indiaWhatsApp: "91 70028 67193", "917002867193",
+ * "07002867193" and "7002867193" are all +917002867193; a slip is refused,
+ * never read as +1 or +7). Then (Batch 75) the obviously fake ones — one
+ * digit repeated (9999999999), a straight run up or down (6789012345,
+ * 9876543210).
  */
 export function checkRealNumber(
   typed: unknown,
 ): { ok: true; phone: string } | { ok: false; error: string } {
-  const t = typedPhone(typed, DEFAULT_COUNTRY_CODE);
-  // A badly written number keeps Batch 66's sentence (how to write it).
+  const t = indiaWhatsApp(typed);
   if ("error" in t) return { ok: false, error: t.error };
-  const digits = t.phone.replace(/\D/g, "");
-  if (digits.startsWith("91") && digits.length !== 12) {
-    return { ok: false, error: REAL_NUMBER_ERROR };
-  }
-  const national = digits.startsWith("91") ? digits.slice(2) : digits;
+  const national = t.phone.slice(3);
   if (/^(\d)\1+$/.test(national) || isStraightRun(national)) {
     return { ok: false, error: REAL_NUMBER_ERROR };
   }

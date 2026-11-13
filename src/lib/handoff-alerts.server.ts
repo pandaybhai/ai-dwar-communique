@@ -25,7 +25,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { DEFAULT_COUNTRY_CODE, enteredPhone, typedPhone } from "@/lib/phone";
+import { DEFAULT_COUNTRY_CODE, enteredPhone, typedPersonPhone } from "@/lib/phone";
 import { DEFAULT_BUSINESS_HOURS, isBusinessOpen, type BusinessHours } from "@/lib/flow-graph";
 import type { HandoffAlertResult } from "@/lib/ai-outcome";
 import { STAFF_HANDOFF_TEMPLATE } from "@/lib/platform-notice-templates";
@@ -74,7 +74,8 @@ export function validateAlertSettings(
     if (!text) continue;
     // Batch 69: the one phone rule with the workspace's default country code
     // ("81213 10333" → +918121310333), refused with Batch 66's sentence.
-    const typed = typedPhone(text, defaultCountryCode);
+    // Batch 78: for India, a slip is refused, never read as another country.
+    const typed = typedPersonPhone(text, defaultCountryCode);
     if ("error" in typed) return { ok: false, error: `“${text}”: ${typed.error}` };
     const phone = typed.phone;
     const own = ownNumbers.find((n) => samePhone(n, phone));

@@ -33,7 +33,12 @@ export type MetaCustomEvent =
   | "AidenEnabled"
   | "PlanUpgraded"
   /** Batch 75: a /start lead answered what they sell and how many customers they have. */
-  | "LeadQualified";
+  | "LeadQualified"
+  /**
+   * Batch 78: a /start lead submitted its details but hasn't proved the
+   * number on WhatsApp yet. Lead itself waits for that proof.
+   */
+  | "LeadUnverified";
 
 export type MetaEventName = MetaStandardEvent | MetaCustomEvent;
 
@@ -44,6 +49,7 @@ export const CUSTOM_EVENTS: readonly MetaCustomEvent[] = [
   "AidenEnabled",
   "PlanUpgraded",
   "LeadQualified",
+  "LeadUnverified",
 ];
 
 /** The only parameters ever sent with an event (custom_data). Nothing else passes. */
@@ -57,6 +63,8 @@ export type MetaParams = {
   /** Batch 75 (LeadQualified): the /start answers, from their fixed lists only. */
   sells?: string;
   customers?: string;
+  /** Batch 78 (Lead from /start): the number was proved on WhatsApp. */
+  verified?: boolean;
 };
 
 export const PARAM_KEYS = [
@@ -67,6 +75,7 @@ export const PARAM_KEYS = [
   "lead_source",
   "sells",
   "customers",
+  "verified",
 ] as const;
 
 /** Keeps only the allowed parameters: finite money, INR, a short page name. */
@@ -91,6 +100,7 @@ export function safeParams(input: Record<string, unknown> | null | undefined): M
   if (typeof customers === "string" && CUSTOMERS.some((o) => o.value === customers)) {
     out.customers = customers;
   }
+  if (input?.["verified"] === true) out.verified = true;
   return out;
 }
 
@@ -279,6 +289,12 @@ export async function hashedUserData(person: {
 export async function qualifiedEventId(phone: string | null): Promise<string | null> {
   const ph = normalizeMetaPhone(phone);
   return ph ? metaEventId("LeadQualified", await sha256Hex(ph)) : null;
+}
+
+/** Batch 78: one LeadUnverified per person — the same key as their Lead. */
+export async function unverifiedEventId(phone: string | null): Promise<string | null> {
+  const ph = normalizeMetaPhone(phone);
+  return ph ? metaEventId("LeadUnverified", await sha256Hex(ph)) : null;
 }
 
 /**

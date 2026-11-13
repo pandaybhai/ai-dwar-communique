@@ -13,6 +13,7 @@ import {
   Proof,
 } from "@/components/start/start-sections";
 import { StartStickyBar } from "@/components/start/start-sticky-bar";
+import { useStartVerification } from "@/components/start/use-start-funnel";
 import { lowestPaidPrice, pricingTeaser, rupees, type StartPlan } from "@/lib/start-page";
 import { pricingHeadline } from "@/lib/start-story";
 import { START_CSS } from "@/components/start/start-css";
@@ -37,10 +38,13 @@ export function StartPage({
   const low = lowestPaidPrice(plans);
   const headline = pricingHeadline(low === null ? null : rupees(low), gstRegistered);
   const teaser = pricingTeaser(plans, gstRegistered);
+  // Batch 78: one watcher for the WhatsApp verification (both cards share it).
+  useStartVerification();
+  /** To the hero card, where the visitor left off (step 1, or further). */
   const toForm = () => {
     heroForm.current?.scrollIntoView({ behavior: "smooth", block: "center" });
     heroForm.current
-      ?.querySelector<HTMLInputElement>("input[name=name]")
+      ?.querySelector<HTMLElement>("h2[tabindex], [role=radio], input:not([tabindex='-1']), a")
       ?.focus({ preventScroll: true });
   };
 
@@ -71,7 +75,7 @@ export function StartPage({
         {" · "}© Meezoy Ventures Pvt Ltd
       </footer>
 
-      <StartStickyBar heroForm={heroForm} finalForm={finalForm} />
+      <StartStickyBar heroForm={heroForm} finalForm={finalForm} onStart={toForm} />
     </div>
   );
 }

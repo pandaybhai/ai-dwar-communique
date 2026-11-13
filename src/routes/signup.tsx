@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { DEFAULT_COUNTRY_CODE, typedPhone } from "@/lib/phone";
+import { checkRealNumber } from "@/lib/start-qualify";
 import { signupSubmitted, trackRegistration } from "@/lib/meta-pixel";
 import { clearStartPrefill, linkStartLead, readStartPrefill } from "@/lib/start-prefill";
 import { useEffect, useState } from "react";
@@ -57,13 +57,14 @@ export const Route = createFileRoute("/signup")({
 });
 
 /**
- * Aiden recognises the owner by this number. Batch 69: the one phone rule
- * (typedPhone) with India's code, as there is no workspace yet: a 10-digit
- * mobile (or 0 + 10 digits) becomes +91…, anything else needs its country code.
+ * Aiden recognises the owner by this number. Batch 78: the same rule as
+ * /start (checkRealNumber) — an Indian WhatsApp mobile, 10 digits starting
+ * 6–9 ("91 70028 67193", "07002867193" … all +917002867193; never a guessed
+ * +1 or +7), and no obviously fake number (9999999999, 9876543210).
  */
 export function signupPhone(raw: string): { phone: string } | { error: string } {
-  const out = typedPhone(raw, DEFAULT_COUNTRY_CODE);
-  return "error" in out ? out : { phone: out.phone };
+  const out = checkRealNumber(raw);
+  return out.ok ? { phone: out.phone } : { error: out.error };
 }
 
 function SignupPage() {
@@ -119,9 +120,15 @@ function SignupPage() {
       setError("Use at least 8 characters for your password.");
       return;
     }
+    // Batch 78: a hidden field no person fills. A bot that fills it sees the
+    // usual "check your email" screen and no account is made.
+    if (String(form.get("company_website_confirm") ?? "").trim()) {
+      setSentTo(email || "your inbox");
+      return;
+    }
     const typed = signupPhone(String(form.get("phone") ?? ""));
     if ("error" in typed) {
-      setError(`Your WhatsApp number: ${typed.error}`);
+      setError(typed.error);
       return;
     }
     const phone = typed.phone;
@@ -268,6 +275,18 @@ function SignupPage() {
         </>
       ) : null}
       <form onSubmit={onSubmit} className="space-y-4" noValidate>
+        {/* Batch 78: a honeypot — hidden from people and screen readers. */}
+        <div aria-hidden="true" className="absolute -left-[9999px] h-px w-px overflow-hidden">
+          <label htmlFor="company_website_confirm">Company website (leave empty)</label>
+          <input
+            id="company_website_confirm"
+            name="company_website_confirm"
+            type="text"
+            tabIndex={-1}
+            autoComplete="off"
+            defaultValue=""
+          />
+        </div>
         <div className="space-y-2">
           <Label htmlFor="full_name">Your name (optional)</Label>
           <Input

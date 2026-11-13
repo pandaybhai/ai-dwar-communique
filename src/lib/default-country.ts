@@ -1,4 +1,4 @@
-import { DEFAULT_COUNTRY_CODE, enteredPhone, isCountryCode, typedPhone } from "@/lib/phone";
+import { DEFAULT_COUNTRY_CODE, isCountryCode, typedPersonPhone } from "@/lib/phone";
 
 /**
  * Batch 66: a workspace's default country code (organizations.default_country_code,
@@ -69,19 +69,21 @@ export async function loadDefaultCountryCode(
 }
 
 /**
- * Batch 69: a number typed into a form for this workspace, through the one
- * rule (typedPhone). The workspace's code is read only when the number needs
- * it, so a number that already has its country code is stored exactly as
- * before, without a read. A failed read refuses the number (never a guess).
+ * Batch 69: a number typed into a form for this workspace (the billing
+ * WhatsApp, the onboarding number). Batch 78: one written with "+" or "00"
+ * needs no read (+91… goes through India's rule, any other code as before);
+ * one typed without them is read with the workspace's code — for India
+ * (typedPersonPhone) a slip like "73078015438" is refused instead of becoming
+ * +7…. A failed read refuses the number (never a guess).
  */
 export async function workspaceTypedPhone(
   client: unknown,
   organizationId: string,
   typed: unknown,
 ): Promise<{ phone: string; addedCountry: boolean } | { error: string }> {
-  const first = enteredPhone(typed, null);
-  if (first.ok || first.problem !== "needs_country") return typedPhone(typed, null);
+  const text = typeof typed === "string" || typeof typed === "number" ? String(typed).trim() : "";
+  if (/^[\s().-]*(\+|00)/.test(text)) return typedPersonPhone(typed, null);
   const code = await loadDefaultCountryCode(client, organizationId);
   if ("error" in code) return { error: code.error };
-  return typedPhone(typed, code.code);
+  return typedPersonPhone(typed, code.code);
 }

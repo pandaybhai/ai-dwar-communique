@@ -110,12 +110,3 @@ export function nextBarState(
   }
   return next;
 }
-
-/**
- * Batch 75: what the /start card does once the lead request answers — a 400
- * shows the inline error; anything else (saved, repeated, or no answer from a
- * busy network) asks the two required questions, and only then /signup.
- */
-export function afterLeadSubmit(status: number | null): "error" | "questions" {
-  return status === 400 ? "error" : "questions";
-}

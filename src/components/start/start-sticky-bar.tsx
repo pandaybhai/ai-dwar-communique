@@ -1,23 +1,29 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
+import { ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { nextBarState, stickyBarVisible } from "@/lib/start-page";
-import { StartLeadForm } from "@/components/start/start-lead-form";
 
 /**
  * Batch 72: the conversion bar. On a phone it sits at the bottom (above the
- * home indicator, and above the keyboard while typing); on a desktop it is a
+ * home indicator); on a desktop it is a
  * slim bar at the top. It appears once the hero form has scrolled out of
  * view and hides whenever the hero form or the final form is on screen. The
  * cookie banner sits above it (--aidwar-bottom-bar). Batch 73: the button
  * shimmers every few seconds until the first interaction, and the desktop bar
- * says who already uses AiDwar.
+ * says who already uses AiDwar. Batch 78: no field any more — one
+ * "Start free trial →" button that scrolls to the hero card and puts the
+ * visitor where they left off (step 1, or wherever they were). Nothing is
+ * saved from the bar, so it can't make a number-only lead.
  */
 export function StartStickyBar({
   heroForm,
   finalForm,
+  onStart,
 }: {
   heroForm: RefObject<HTMLElement | null>;
   finalForm: RefObject<HTMLElement | null>;
+  /** Scrolls to the hero card and focuses it. */
+  onStart: () => void;
 }) {
   const [state, setState] = useState({
     heroFormVisible: true,
@@ -25,7 +31,6 @@ export function StartStickyBar({
     finalFormVisible: false,
   });
   const barRef = useRef<HTMLDivElement | null>(null);
-  const [keyboardLift, setKeyboardLift] = useState(0);
   // Batch 73: the button's shimmer runs until the visitor first interacts with the page.
   const [shimmer, setShimmer] = useState(true);
   const visible = stickyBarVisible(state);
@@ -62,20 +67,6 @@ export function StartStickyBar({
     };
   }, [visible]);
 
-  // iOS: keep the bar above the on-screen keyboard while its field is in use.
-  useEffect(() => {
-    const vv = window.visualViewport;
-    if (!vv) return;
-    const onResize = () =>
-      setKeyboardLift(Math.max(0, window.innerHeight - vv.height - vv.offsetTop));
-    vv.addEventListener("resize", onResize);
-    vv.addEventListener("scroll", onResize);
-    return () => {
-      vv.removeEventListener("resize", onResize);
-      vv.removeEventListener("scroll", onResize);
-    };
-  }, []);
-
   return (
     <>
       {/* Phone: the bottom bar. */}
@@ -86,14 +77,14 @@ export function StartStickyBar({
         aria-hidden={!visible}
         inert={!visible}
         style={{
-          transform: visible ? `translateY(-${keyboardLift}px)` : "translateY(110%)",
+          transform: visible ? "translateY(0)" : "translateY(110%)",
           paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom))",
         }}
         className={cn(
           "fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/95 px-3 pt-3 shadow-[0_-12px_30px_-18px_rgba(6,40,28,0.35)] backdrop-blur transition-transform duration-300 ease-out motion-reduce:transition-none md:hidden",
         )}
       >
-        <StartLeadForm variant="bar" shimmer={shimmer} />
+        <StartButton shimmer={shimmer} onStart={onStart} className="w-full" />
       </div>
       {/* Desktop: a slim bar at the top. */}
       <div
@@ -111,9 +102,35 @@ export function StartStickyBar({
             </span>
             Join ZOORI Jewels, Meezoy and more
           </span>
-          <StartLeadForm variant="bar" className="w-[460px]" shimmer={shimmer} />
+          <StartButton shimmer={shimmer} onStart={onStart} />
         </div>
       </div>
     </>
+  );
+}
+
+function StartButton({
+  shimmer,
+  onStart,
+  className,
+}: {
+  shimmer: boolean;
+  onStart: () => void;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onStart}
+      data-testid="start-bar-button"
+      data-shimmer={shimmer ? "on" : "off"}
+      className={cn(
+        "s73-shimmer inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-success px-6 text-base font-bold text-success-foreground shadow-[0_10px_28px_-12px_var(--success)] transition hover:bg-success/90 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-success/30",
+        className,
+      )}
+    >
+      Start free trial
+      <ArrowRight className="h-4 w-4" aria-hidden="true" />
+    </button>
   );
 }

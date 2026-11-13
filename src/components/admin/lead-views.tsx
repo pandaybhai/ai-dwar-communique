@@ -53,6 +53,25 @@ export function RemindedBadge() {
   );
 }
 
+/** Batch 78: a /start lead proved its number on WhatsApp — or hasn't (yet). */
+export function VerifiedBadge({ verified }: { verified: boolean }) {
+  return verified ? (
+    <span
+      className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-800"
+      data-testid="verified-badge"
+    >
+      Verified ✓
+    </span>
+  ) : (
+    <span
+      className="ml-2 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-800"
+      data-testid="not-verified-badge"
+    >
+      Not verified
+    </span>
+  );
+}
+
 export function LeadsTable({ leads, onOpen }: { leads: LeadRow[]; onOpen: (id: string) => void }) {
   return (
     <div className="overflow-x-auto rounded-2xl border border-border bg-card">
@@ -60,6 +79,7 @@ export function LeadsTable({ leads, onOpen }: { leads: LeadRow[]; onOpen: (id: s
         <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
           <tr>
             <th className="px-4 py-3 font-medium">Business</th>
+            <th className="px-4 py-3 font-medium">Business name</th>
             <th className="px-4 py-3 font-medium">Needs</th>
             <th className="px-4 py-3 font-medium">Enquiries/day</th>
             <th className="px-4 py-3 font-medium">Sells</th>
@@ -86,6 +106,7 @@ export function LeadsTable({ leads, onOpen }: { leads: LeadRow[]; onOpen: (id: s
                 <p className="font-medium text-foreground">
                   {leadTitle(lead)}
                   {isStartLead(lead) ? <StartBadge /> : null}
+                  {isStartLead(lead) ? <VerifiedBadge verified={Boolean(lead.verified_at)} /> : null}
                   {lead.nudged_at ? <RemindedBadge /> : null}
                   {lead.is_test ? (
                     <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase text-muted-foreground">
@@ -94,6 +115,9 @@ export function LeadsTable({ leads, onOpen }: { leads: LeadRow[]; onOpen: (id: s
                   ) : null}
                 </p>
                 <p className="text-xs text-muted-foreground">{leadContact(lead)}</p>
+              </td>
+              <td className="px-4 py-3 text-muted-foreground" data-testid="lead-business">
+                {lead.business_name?.trim() || NO_ANSWER}
               </td>
               <td className="px-4 py-3 text-muted-foreground">
                 {labelFor(PRIMARY_NEEDS, lead.primary_need)}
@@ -155,6 +179,11 @@ export function LeadSummary({ lead }: { lead: LeadRow }) {
       </p>
 
       <dl className="mt-5 grid grid-cols-2 gap-3 text-sm">
+        <Detail label="Business name" value={lead.business_name?.trim() || NO_ANSWER} />
+        <Detail
+          label="WhatsApp verified"
+          value={lead.verified_at ? `Verified ✓ ${leadTime(lead.verified_at)}` : "Not verified"}
+        />
         <Detail label="Business type" value={labelFor(BUSINESS_TYPES, lead.business_type)} />
         <Detail label="Enquiries a day" value={labelFor(ENQUIRY_BANDS, lead.enquiry_band)} />
         <Detail label="Sells" value={leadAnswer(lead, "sells")} />

@@ -222,11 +222,13 @@ describe("only the audited places call the phone rule", () => {
       }
     };
     walk(root);
+    // Batch 78: indiaWhatsApp / typedPersonPhone (a person's own number in an
+    // Indian form: /start, /signup, Settings) are the same rule's wrappers.
     // Batch 69 added typedPhone (the form wording) and its callers: the
     // billing WhatsApp (Super Admin, the customer's plan purchase), staff
     // alert numbers, the onboarding and sign-up numbers.
     const rule =
-      /\b(enteredPhone|apiPhoneNumber|apiPhoneError|needsDefaultCountry|requestNeedsDefaultCountry|pathPhone|planImportRows|typedPhone|workspaceTypedPhone|alertPhonesNeedCountry|signupPhone)\b/;
+      /\b(enteredPhone|apiPhoneNumber|apiPhoneError|needsDefaultCountry|requestNeedsDefaultCountry|pathPhone|planImportRows|typedPhone|workspaceTypedPhone|alertPhonesNeedCountry|signupPhone|indiaWhatsApp|typedPersonPhone)\b/;
     const callers = files
       .filter((f) => rule.test(readFileSync(f, "utf8")))
       .map((f) => relative(root, f))

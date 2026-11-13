@@ -3,6 +3,8 @@ import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Loader2 } from "lucide-react";
 import { StartQuestions } from "@/components/start/start-questions";
 import { writeStartPrefill } from "@/lib/start-prefill";
+import { fireFromServer } from "@/lib/meta-pixel";
+import type { BrowserMetaEvent } from "@/lib/meta-events";
 import { signupSearchFrom } from "@/lib/start-page";
 import type { Customers, Sells } from "@/lib/start-qualify";
 
@@ -12,6 +14,12 @@ import type { Customers, Sells } from "@/lib/start-qualify";
  * hours: the name and number come back prefilled and any answers already
  * given are remembered; both questions are still required, then /signup as
  * from /start. Not indexed; the token never leaves this site in a referrer.
+ *
+ * Batch 78: the same link is in the "✅ Verified" WhatsApp reply (for someone
+ * who verified on another device). A lead that already answered both
+ * questions (every lead since Batch 78) goes straight to /signup prefilled —
+ * name, number, business name; Meta's Lead for a verified lead comes back
+ * from the server for the browser pixel (after consent).
  */
 export const Route = createFileRoute("/start_/continue")({
   validateSearch: (search: Record<string, unknown>): { t?: string } =>
@@ -29,6 +37,8 @@ export const Route = createFileRoute("/start_/continue")({
 type Resumed = {
   name: string;
   phone: string;
+  business: string;
+  verified: boolean;
   sells: Sells | null;
   customers: Customers | null;
 };
@@ -54,12 +64,30 @@ function ContinueSignup() {
         if (!live) return;
         if (!res.ok) return setState("expired");
         if (out["signed_up"]) return setState("signed_up");
-        setLead({
+        const resumed: Resumed = {
           name: String(out["name"] ?? ""),
           phone: String(out["phone"] ?? ""),
+          business: String(out["business_name"] ?? ""),
+          verified: out["verified"] === true,
           sells: (out["sells"] as Sells | null) ?? null,
           customers: (out["customers"] as Customers | null) ?? null,
-        });
+        };
+        fireFromServer((out["meta"] as BrowserMetaEvent | null | undefined) ?? null);
+        setLead(resumed);
+        // Batch 78: both answers already given → straight on to sign-up.
+        if (resumed.sells && resumed.customers) {
+          setState("ready");
+          writeStartPrefill({ name: resumed.name, phone: resumed.phone, business: resumed.business });
+          window.setTimeout(
+            () =>
+              void navigate({
+                to: "/signup",
+                search: signupSearchFrom(window.location.search) as never,
+              }),
+            resumed.verified ? 900 : 0,
+          );
+          return;
+        }
         setState("ready");
       } catch {
         if (live) setState("expired");
@@ -83,7 +111,7 @@ function ContinueSignup() {
     } catch {
       // both answers were given; a busy network never strands the visitor
     }
-    writeStartPrefill({ name: lead.name, phone: lead.phone });
+    writeStartPrefill({ name: lead.name, phone: lead.phone, business: lead.business });
     await navigate({ to: "/signup", search: signupSearchFrom(window.location.search) as never });
   }
 
@@ -120,6 +148,17 @@ function ContinueSignup() {
             >
               Log in
             </Link>
+          </div>
+        ) : lead && lead.sells && lead.customers ? (
+          <div className="mt-6 space-y-2" data-testid="continue-verified" role="status">
+            <h1 className="text-2xl font-bold">
+              {lead.verified ? "✅ Verified" : "Welcome back"}
+              {first ? `, ${first}` : ""}
+            </h1>
+            <p className="flex items-center gap-2 text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Taking you to
+              sign-up…
+            </p>
           </div>
         ) : lead ? (
           <div className="mt-6 space-y-5" data-testid="continue-ready">

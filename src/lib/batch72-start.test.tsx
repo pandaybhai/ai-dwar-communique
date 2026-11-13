@@ -86,15 +86,19 @@ describe("/start: the page", () => {
     expect(html).toMatch(/<span[^>]*aria-label="AiDwar"/);
   });
 
-  it("the forms: real labels, +91 chip, tel keyboard, 44px+ targets; the consent line under each button", () => {
-    expect(html.match(/<label/g)!.length).toBeGreaterThanOrEqual(6); // hero + final (name, number) + 2 bars
-    expect(html).toMatch(/inputMode="tel"|inputmode="tel"/);
-    expect(html).toMatch(/autoComplete="tel"|autocomplete="tel"/);
-    expect(html).toContain(">+91<");
-    expect(html.match(/min-h-12/g)!.length).toBeGreaterThanOrEqual(5);
-    expect(
-      html.match(/By continuing you agree we may contact you on WhatsApp about your trial\./g),
-    ).toHaveLength(2);
+  // Batch 78: the card opens on step 1 (seven big tap cards); the fields and
+  // the consent line are step 3, so they are checked in the card's source.
+  it("the forms: real labels, +91 chip, numeric keypad, big targets; the consent line under the button", () => {
+    expect(html.match(/role="radio"/g)!.length).toBe(14); // hero + final, 7 cards each
+    expect(html.match(/min-h-14/g)!.length).toBeGreaterThanOrEqual(14);
+    const card = readFileSync("src/components/start/start-lead-form.tsx", "utf8");
+    expect(card.match(/<label/g)!.length).toBeGreaterThanOrEqual(1);
+    expect(card).toContain('label="Your name"');
+    expect(card).toContain('label="WhatsApp number"');
+    expect(card).toContain('inputMode="numeric"');
+    expect(card).toContain('autoComplete="tel-national"');
+    expect(card).toContain(">\n                +91\n              <");
+    expect(card).toContain("By continuing you agree we may contact you on WhatsApp about your trial.");
   });
 
   it("pricing comes from the public plans: change a price and the text changes", () => {
@@ -156,10 +160,12 @@ describe("/start: the sticky bar", () => {
     expect(stickyBarVisible(s)).toBe(false);
   });
 
-  it("the bar sits above the home indicator and keyboard; the cookie banner sits above the bar", () => {
+  // Batch 78: the bar has no field any more (one button), so it no longer
+  // needs to ride above the on-screen keyboard (visualViewport).
+  it("the bar sits above the home indicator; the cookie banner sits above the bar", () => {
     const bar = readFileSync("src/components/start/start-sticky-bar.tsx", "utf8");
     expect(bar).toContain("env(safe-area-inset-bottom)");
-    expect(bar).toContain("visualViewport");
+    expect(bar).not.toContain("<input");
     expect(bar).toContain("--aidwar-bottom-bar");
     expect(readFileSync("src/components/consent-banner.tsx", "utf8")).toContain(
       'bottom: "var(--aidwar-bottom-bar, 0px)"',
@@ -188,13 +194,13 @@ describe("/start: step 1 and the hand-over to /signup", () => {
       utm_source: "meta",
       utm_campaign: "launch",
     });
-    const form = readFileSync("src/components/start/start-lead-form.tsx", "utf8");
+    const form = readFileSync("src/components/start/use-start-funnel.ts", "utf8");
     expect(form).toContain(
       'navigate({ to: "/signup", search: signupSearchFrom(window.location.search)',
     );
-    // Batch 75: the hand-off moved into toSignup (after the two questions or Skip).
-    expect(form).toContain("const person = { name: checked.name, phone: checked.phone };");
-    expect(form).toContain("writeStartPrefill(person);");
+    // Batch 78: the hand-off is useToSignup (after WhatsApp verification, or
+    // "Continue without verifying"), still through this tab's storage.
+    expect(form).toMatch(/writeStartPrefill\(\{\s*name: f\.name\.trim\(\),\s*phone: f\.savedPhone \?\? f\.phone/);
   });
 
   it("sign-up reads the prefill from this tab's storage (editable fields)", async () => {
@@ -208,10 +214,11 @@ describe("/start: step 1 and the hand-over to /signup", () => {
     });
     const { writeStartPrefill, readStartPrefill, clearStartPrefill } =
       await import("./start-prefill");
+    // Batch 78: the business name rides along (sign-up has no field for it).
     writeStartPrefill({ name: "Asha Rao", phone: PHONE });
-    expect(readStartPrefill()).toEqual({ name: "Asha Rao", phone: PHONE });
+    expect(readStartPrefill()).toEqual({ name: "Asha Rao", phone: PHONE, business: "" });
     clearStartPrefill();
-    expect(readStartPrefill()).toEqual({ name: "", phone: "" });
+    expect(readStartPrefill()).toEqual({ name: "", phone: "", business: "" });
     const signup = readFileSync("src/routes/signup.tsx", "utf8");
     expect(signup).toContain("defaultValue={prefill.name}");
     expect(signup).toContain("defaultValue={prefill.phone}");
@@ -275,6 +282,8 @@ const post = (url: string, body: Row) =>
 describe("(server) submitLead: the landing_start path, and /demo unchanged", () => {
   beforeEach(() => vi.spyOn(console, "log").mockImplementation(() => undefined));
 
+  // Batch 78: step 3 sends the two answers and the business name with the
+  // number, all at once (nothing is saved before).
   it("stores source landing_start, /start, the +91 number, the name, utm attribution only", async () => {
     const w = world();
     const { submitLead } = await import("./leads.server");
@@ -283,6 +292,9 @@ describe("(server) submitLead: the landing_start path, and /demo unchanged", () 
       {
         source: "landing_start",
         name: "Asha Rao",
+        business_name: "Asha Jewels",
+        sells: "jewellery",
+        customers: "500_5000",
         phone: "98123 45670",
         attribution: {
           utm_source: "meta",
@@ -299,10 +311,11 @@ describe("(server) submitLead: the landing_start path, and /demo unchanged", () 
       landing_path: "/start",
       phone: PHONE,
       name: "Asha Rao",
-      business_type: null,
+      business_type: "retail",
       enquiry_band: null,
       primary_need: null,
-      business_name: null,
+      business_name: "Asha Jewels",
+      qualification: { sells: "jewellery", customers: "500_5000" },
       consent: true,
       consent_version: "start-2026-11-12",
       first_attribution: { utm_source: "meta", utm_campaign: "launch" },
@@ -310,25 +323,30 @@ describe("(server) submitLead: the landing_start path, and /demo unchanged", () 
     expect(JSON.stringify(w.rows("demo_leads")[0])).not.toMatch(/fbclid|gclid|IwAR0/);
   });
 
-  it("the sticky bar (number only) works; a repeat number still continues (duplicate, no error)", async () => {
+  // Batch 78: the sticky bar has no field any more and a number on its own is
+  // refused (no more number-only rows); a repeat full submission still continues.
+  it("a number on its own is refused; a repeat number still continues (duplicate, no error)", async () => {
     const w = world();
     const { submitLead } = await import("./leads.server");
     const meta = { ip: "203.0.113.5", referrer: null };
-    const a = await submitLead(
-      w.supabase,
-      { source: "landing_start", phone: "9812345670" } as never,
-      meta,
-    );
-    const b = await submitLead(
-      w.supabase,
-      { source: "landing_start", phone: "+91 98123 45670" } as never,
-      meta,
-    );
-    expect(a).toMatchObject({ ok: true, duplicate: false, name: null });
+    expect(
+      await submitLead(w.supabase, { source: "landing_start", phone: "9812345670" } as never, meta),
+    ).toMatchObject({ ok: false, status: 400 });
+    expect(w.rows("demo_leads")).toHaveLength(0);
+    const full = {
+      source: "landing_start",
+      name: "Asha Rao",
+      business_name: "Asha Jewels",
+      sells: "fashion",
+      customers: "under_500",
+    };
+    const a = await submitLead(w.supabase, { ...full, phone: "9812345670" } as never, meta);
+    const b = await submitLead(w.supabase, { ...full, phone: "+91 98123 45670" } as never, meta);
+    expect(a).toMatchObject({ ok: true, duplicate: false, name: "Asha Rao" });
     expect(b).toMatchObject({ ok: true, duplicate: true });
     expect(w.rows("demo_leads")).toHaveLength(1);
     expect(
-      await submitLead(w.supabase, { source: "landing_start", phone: "123" } as never, meta),
+      await submitLead(w.supabase, { ...full, phone: "123" } as never, meta),
     ).toMatchObject({
       ok: false,
       status: 400,
@@ -390,13 +408,18 @@ describe("(server) the Lead: one id per person, always sent, hashed matching onl
     expect(fbcFromFbclid("bad id!", 1)).toBeNull();
   });
 
-  it("/start: server Lead sent (no cookie consent needed) with ph/fn/ln/external_id/country hashes, ip, ua, fbc from fbclid", async () => {
+  // Batch 78: step 3 no longer sends Lead — it sends LeadUnverified (Lead waits
+  // for the WhatsApp proof); the matching is Batch 72's, unchanged.
+  it("/start: server LeadUnverified sent (no cookie consent needed) with ph/fn/ln/external_id/country hashes, ip, ua, fbc from fbclid", async () => {
     const w = world();
     const POST = await handler("@/routes/api/public/demo-leads");
     const res = await POST({
       request: post("https://aidwar.in/api/public/demo-leads", {
         source: "landing_start",
         name: "Asha Rao",
+        business_name: "Asha Jewels",
+        sells: "jewellery",
+        customers: "500_5000",
         phone: "98123 45670",
         meta_consent: false,
         fbclid: "IwAR0abcdefghij",
@@ -404,21 +427,19 @@ describe("(server) the Lead: one id per person, always sent, hashed matching onl
       }),
     });
     const body = (await res.json()) as Row;
+    const unverifiedId = LEAD_ID_FOR_PHONE.replace(/^Lead\./, "LeadUnverified.");
+    const params = { lead_source: "landing_start", sells: "jewellery", customers: "500_5000" };
     expect(body).toMatchObject({
       ok: true,
-      meta: {
-        event: "Lead",
-        event_id: LEAD_ID_FOR_PHONE,
-        params: { content_name: "start_free_trial", lead_source: "landing_start" },
-      },
+      meta: { event: "LeadUnverified", event_id: unverifiedId, params },
     });
     expect(w.graph).toHaveLength(1);
     const event = (w.graph[0]!.body["data"] as Row[])[0]!;
     expect(event).toMatchObject({
-      event_name: "Lead",
-      event_id: LEAD_ID_FOR_PHONE,
+      event_name: "LeadUnverified",
+      event_id: unverifiedId,
       action_source: "website",
-      custom_data: { content_name: "start_free_trial", lead_source: "landing_start" },
+      custom_data: params,
     });
     const leadId = String(w.rows("demo_leads")[0]!["id"]);
     expect(event["user_data"]).toEqual({
@@ -585,10 +606,28 @@ describe("Super Admin > Leads: a /start lead with only a number", () => {
     const w = world();
     const { submitLead, listLeads } = await import("./leads.server");
     const meta = { ip: "203.0.113.5", referrer: null };
-    // The sticky bar: a number and nothing else.
-    expect(
-      await submitLead(w.supabase, { source: "landing_start", phone: "9812345670" } as never, meta),
-    ).toMatchObject({ ok: true });
+    // A number-only /start row from before Batch 78 (the old sticky bar);
+    // such rows stay in the table, so the list must still read them.
+    w.rows("demo_leads").push({
+      id: "old-start-lead",
+      source: "landing_start",
+      phone: PHONE,
+      name: null,
+      business_name: null,
+      business_type: null,
+      enquiry_band: null,
+      primary_need: null,
+      qualification: null,
+      is_test: false,
+      first_attribution: {},
+      latest_attribution: {},
+      landing_path: "/start",
+      consent: true,
+      consent_version: "start-2026-11-12",
+      consent_at: "2026-11-12T10:00:00.000Z",
+      referrer_host: null,
+      website: null,
+    });
     // A /demo lead next to it, with every answer.
     expect(
       await submitLead(

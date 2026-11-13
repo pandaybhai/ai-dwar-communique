@@ -6,6 +6,11 @@ import { createFileRoute } from "@tanstack/react-router";
  * any answers already given, and signs the same lead into this browser's
  * cookie so the questions can be saved. A lead that already has an account
  * is sent to log in instead. Never lists or reveals any other lead.
+ *
+ * Batch 78: the same link is in the "✅ Verified" WhatsApp reply. It also
+ * answers the business name and whether the number is verified; a verified
+ * lead's Meta Lead is sent from here if the verifying page didn't (one id,
+ * so Meta counts it once).
  */
 export const Route = createFileRoute("/api/public/start-continue")({
   server: {
@@ -27,21 +32,9 @@ export const Route = createFileRoute("/api/public/start-continue")({
           return Response.json({ error: "This link has expired." }, { status: 410 });
         }
         const supabase = getServiceClient();
-        const { data } = await supabase
-          .from("demo_leads")
-          .select("id, name, phone, source, qualification, linked_user_id, organization_id")
-          .eq("id", leadId)
-          .maybeSingle();
-        const lead = data as {
-          id: string;
-          name: string | null;
-          phone: string;
-          source: string;
-          qualification: { sells?: string; customers?: string } | null;
-          linked_user_id: string | null;
-          organization_id: string | null;
-        } | null;
-        if (!lead || lead.source !== "landing_start") {
+        const { readStartLead, sendVerifiedLead } = await import("@/lib/lead-verify.server");
+        const lead = await readStartLead(supabase, leadId);
+        if (!lead) {
           return Response.json({ error: "This link has expired." }, { status: 410 });
         }
         if (lead.linked_user_id || lead.organization_id) {
@@ -49,14 +42,18 @@ export const Route = createFileRoute("/api/public/start-continue")({
         }
         const headers = new Headers();
         headers.append("set-cookie", await startLeadSetCookie(lead.id));
+        const meta = lead.verified_at ? await sendVerifiedLead(supabase, lead, { request }) : null;
         return Response.json(
           {
             ok: true,
             signed_up: false,
             name: lead.name ?? "",
             phone: lead.phone,
+            business_name: lead.business_name ?? "",
+            verified: Boolean(lead.verified_at),
             sells: lead.qualification?.sells ?? null,
             customers: lead.qualification?.customers ?? null,
+            meta,
           },
           { headers },
         );
