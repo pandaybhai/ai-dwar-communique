@@ -176,6 +176,7 @@ export async function loadJourneyState(
     hasMaterial: sourceRows.some((s) => !s.config?.["deleted_at"]),
     connected: Boolean(account),
     connectSkipped: recorded.has("connect_skipped"),
+    noWebsite: recorded.has("no_website"),
     tested: recorded.has("aiden_tested") || ((tests.data ?? []) as unknown[]).length > 0,
     wentLive: recorded.has("went_live") || mode === "draft" || mode === "replying",
   };

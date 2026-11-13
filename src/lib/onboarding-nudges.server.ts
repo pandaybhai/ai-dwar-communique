@@ -66,7 +66,10 @@ type SessionRow = {
 function stoppedAt(session: SessionRow): string {
   switch (session.status) {
     case "bound":
-      return "your website link";
+      // Batch 78: no website — the interview on WhatsApp, not a link.
+      return session.step === "no_site" || (session.step ?? "").startsWith("interview_")
+        ? "a few quick questions about your business"
+        : "your website link";
     case "learning":
       return "reading your website";
     case "ready":

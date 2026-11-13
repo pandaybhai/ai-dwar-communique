@@ -23,7 +23,13 @@ describe("20261420, as text", () => {
           "SELECT public.mcp_block_oauth_writes();\nSELECT public.mcp_block_oauth_reads();",
         ),
     ).toBe(true);
-    expect(sql).not.toMatch(/^\s*(UPDATE|INSERT|DROP TABLE|DROP COLUMN)\b/im);
+    expect(sql).not.toMatch(/^\s*(UPDATE|DROP TABLE|DROP COLUMN)\b/im);
+    // The only insert: the six interview Scripts, only when missing.
+    expect(sql.match(/^\s*INSERT\b/gim)).toHaveLength(1);
+    expect(sql).toContain(
+      "INSERT INTO public.ai_prompt_blocks (key, name, description, content, default_content)",
+    );
+    expect(sql).toContain("ON CONFLICT (key) DO NOTHING;");
     expect(sql).toContain(
       "$cmd$SELECT public.retention_purge(); SELECT public.api_refusals_purge(); SELECT public.lead_verifications_purge();$cmd$",
     );
@@ -113,6 +119,21 @@ describe.runIf(pgAvailable() || Boolean(process.env["CI"]))(
           )
           .trim(),
       ).toBe("V-NEW1");
+    });
+
+    it("the six interview Scripts are seeded once; an admin's own wording is never overwritten", () => {
+      expect(
+        pg
+          .sql(
+            `select string_agg(key, ',' order by key) from public.ai_prompt_blocks where key like 'interview_%'`,
+          )
+          .trim(),
+      ).toBe("interview_done,interview_media,interview_q1,interview_q2,interview_q3,interview_q4");
+      pg.sql(`update public.ai_prompt_blocks set content = 'Mine' where key = 'interview_q2'`);
+      pg.file(MIGRATION);
+      expect(
+        pg.sql(`select content from public.ai_prompt_blocks where key = 'interview_q2'`).trim(),
+      ).toBe("Mine");
     });
 
     it("deleting a lead removes its codes", () => {

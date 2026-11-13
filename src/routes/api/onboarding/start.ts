@@ -136,7 +136,7 @@ export const Route = createFileRoute("/api/onboarding/start")({
 
         const { data: existing } = await supabaseAdmin
           .from("onboarding_sessions")
-          .select("id, code, status")
+          .select("id, code, status, step")
           .eq("organization_id", auth.organizationId)
           .not("status", "in", '("completed","expired")')
           .order("created_at", { ascending: false })
@@ -163,6 +163,13 @@ export const Route = createFileRoute("/api/onboarding/start")({
         const { EXPIRE_AFTER_MS } = await import("@/lib/onboarding-nudges.server");
         const codeExpiresAt = new Date(Date.now() + EXPIRE_AFTER_MS).toISOString();
 
+        // Batch 78: "I don't have a website" at setup → Aiden interviews on WhatsApp.
+        const { setupStepPatch } = await import("@/lib/no-site-interview");
+        const stepPatch = setupStepPatch(
+          payload["no_website"],
+          (existing as unknown as { status?: string; step?: string | null } | null) ?? null,
+        );
+
         let code = (existing as unknown as { code?: string } | null)?.code ?? null;
         if (!code) {
           // A collision on the unique code is possible but rare; try a few.
@@ -176,6 +183,7 @@ export const Route = createFileRoute("/api/onboarding/start")({
               status: "pending",
               attribution,
               expires_at: codeExpiresAt,
+              ...(stepPatch ?? {}),
             });
             if (!error) code = candidate;
           }
@@ -189,6 +197,7 @@ export const Route = createFileRoute("/api/onboarding/start")({
                 ? { expires_at: codeExpiresAt }
                 : {}),
               ...(hasAttribution ? { attribution } : {}),
+              ...(stepPatch ?? {}),
             })
             .eq("id", (existing as unknown as { id: string }).id);
         }

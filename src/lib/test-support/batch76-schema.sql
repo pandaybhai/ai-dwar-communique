@@ -35,3 +35,14 @@ create or replace function public.update_updated_at_column() returns trigger lan
 begin new.updated_at := now(); return new; end $$;
 create function public.mcp_block_oauth_writes() returns void language sql as $$ select $$;
 create function public.mcp_block_oauth_reads() returns void language sql as $$ select $$;
+-- Batch 78: the Scripts table (20260914) the no-website interview seeds.
+create table public.ai_prompt_blocks (
+  key text primary key,
+  name text not null,
+  description text not null default '',
+  content text not null default '',
+  default_content text not null default '',
+  version int not null default 1,
+  updated_by uuid,
+  updated_at timestamptz not null default now()
+);

@@ -12,8 +12,14 @@
 --   (2) demo_leads.verified_at.
 --   (3) public.lead_verifications_purge(): used or expired codes older than
 --       7 days, added to the nightly retention job, which keeps its calls.
--- No data changes. Without this file /start still works: the lead is saved,
--- verification answers "not available" and the page goes on to /signup.
+--   (4) The no-website interview's six Scripts (interview_q1–q4,
+--       interview_media, interview_done) as ai_prompt_blocks rows, so they
+--       are editable in /admin/aiden — inserted only when missing (an
+--       admin's own wording is never overwritten). Same text as the code's
+--       built-in defaults (src/lib/scripts.ts), which are used until then.
+-- Without this file /start still works: the lead is saved, verification
+-- answers "not available" and the page goes on to /signup; the interview
+-- uses the built-in Script texts.
 
 -- ---------------------------------------------- (1) verification codes
 CREATE TABLE IF NOT EXISTS public.lead_verifications (
@@ -76,6 +82,17 @@ BEGIN
     );
   END IF;
 END $$;
+
+-- ---------------------------------------------- (4) interview Scripts
+INSERT INTO public.ai_prompt_blocks (key, name, description, content, default_content)
+VALUES
+  (E'interview_q1', E'No website: question 1', E'First of the no-website interview (the owner chose "I don''t have a website"). Saved as a fact: products and prices.', E'No website? No problem — I''ll ask you 4 quick questions, one at a time. Type skip to skip any.\n\n1/4 — What do you sell, and what''s your price range? (For example: cotton kurtas, ₹600–₹2,500.)', E'No website? No problem — I''ll ask you 4 quick questions, one at a time. Type skip to skip any.\n\n1/4 — What do you sell, and what''s your price range? (For example: cotton kurtas, ₹600–₹2,500.)'),
+  (E'interview_q2', E'No website: question 2', E'Saved as a fact: timings and location / delivery area.', E'2/4 — What are your timings, and where are you? If you deliver, which areas?', E'2/4 — What are your timings, and where are you? If you deliver, which areas?'),
+  (E'interview_q3', E'No website: question 3', E'Saved as a fact: payment options / COD.', E'3/4 — How can customers pay? UPI, cards, cash on delivery?', E'3/4 — How can customers pay? UPI, cards, cash on delivery?'),
+  (E'interview_q4', E'No website: question 4', E'Saved as a fact: return / exchange policy.', E'4/4 — What''s your return or exchange policy?', E'4/4 — What''s your return or exchange policy?'),
+  (E'interview_media', E'No website: price list', E'After the 4 questions: asks for a photo or PDF of the price list or catalogue (with a Skip button).', E'Last thing: send me a photo or PDF of your price list or catalogue — or tap Skip.', E'Last thing: send me a photo or PDF of your price list or catalogue — or tap Skip.'),
+  (E'interview_done', E'No website: done', E'The owner skipped the price list: Aiden is ready to be tested.', E'Thanks — I''ve saved all that for {business}. Now test me: ask me anything a customer would ask, like your prices or your timings.', E'Thanks — I''ve saved all that for {business}. Now test me: ask me anything a customer would ask, like your prices or your timings.')
+ON CONFLICT (key) DO NOTHING;
 
 -- Batch 52 / 56: a migration ends by re-applying the AI-app token guards.
 SELECT public.mcp_block_oauth_writes();

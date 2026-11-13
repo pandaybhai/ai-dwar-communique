@@ -20,6 +20,7 @@ import {
 } from "@/lib/onboarding-client";
 import { landingStep, resumeStep, type JourneyStep } from "@/lib/onboarding-journey";
 import { trackStartTrial } from "@/lib/meta-pixel";
+import { beginBusiness } from "@/lib/onboarding-begin";
 
 /**
  * Batch 40: the whole first run, full screen — Your business → Connect
@@ -88,33 +89,28 @@ export function OnboardingJourney({
     url: string | null;
     about: string | null;
     brand: SiteBrand | null;
+    noWebsite?: boolean;
   }): Promise<string | null> {
-    let orgId = organizationId;
-    if (!orgId) {
-      const { data: created, error } = await aidwar.rpc("create_organization", {
-        org_name: input.name,
-      });
-      if (error || !created) return "We couldn't create your workspace. Please try again.";
-      orgId = created as string;
-      await logActivity("organization.created", orgId, { name: input.name });
-      // Batch 70: trial started — the server sends its copy and says what the
-      // pixel fires. Never awaited by setup.
-      trackStartTrial(orgId);
-    }
-    const begun = await journeyApi<{ source_id?: string }>({
-      action: "begin",
-      organization_id: orgId,
-      name: input.name,
-      url: input.url,
-      about: input.about,
-      brand: input.brand ? { logoUrl: input.brand.logoUrl, color: input.brand.color } : {},
+    // Batch 78: one create path for both choices (website / no website):
+    // create_organization from the name, the journey's begin, then the
+    // WhatsApp setup session — so a nudge can reach the owner and "chat from
+    // your phone" works on Meet Aiden.
+    const begun = await beginBusiness(organizationId, input, {
+      createOrganization: async (name) => {
+        const { data, error } = await aidwar.rpc("create_organization", { org_name: name });
+        return { id: (data as string | null) ?? null, error };
+      },
+      onCreated: async (orgId, name) => {
+        await logActivity("organization.created", orgId, { name });
+        // Batch 70: trial started — the server sends its copy and says what
+        // the pixel fires. Never awaited by setup.
+        trackStartTrial(orgId);
+      },
+      journey: async (payload) => journeyApi<{ source_id?: string }>(payload),
+      startSession: (body) =>
+        callApi("/api/onboarding/start", { body: { ...body, attribution: takeAttribution() } }),
     });
-    if (begun.error) return begun.error;
-    // The WhatsApp setup session (and its code) exists from the start, so a
-    // nudge can reach the owner and "chat from your phone" works on Meet Aiden.
-    await callApi("/api/onboarding/start", {
-      body: { organization_id: orgId, attribution: takeAttribution() },
-    });
+    if (!begun.ok) return begun.error;
 
     if (!organizationId) {
       await navigate({ to: "/app/start", search: { step: "connect" }, replace: true });

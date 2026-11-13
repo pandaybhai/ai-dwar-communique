@@ -18,7 +18,13 @@ export type ScriptKey =
   | "on_duty"
   | "handover_default"
   | "full_read_done"
-  | "owner_reply_held";
+  | "owner_reply_held"
+  | "interview_q1"
+  | "interview_q2"
+  | "interview_q3"
+  | "interview_q4"
+  | "interview_media"
+  | "interview_done";
 
 export const SCRIPTS: Record<
   ScriptKey,
@@ -102,6 +108,45 @@ export const SCRIPTS: Record<
       "A customer is waiting for the team and the owner sends a plain message on the AiDwar number: it is neither saved as a fact nor sent to anyone.",
     vars: [],
     text: "A customer is waiting for your team, so I haven't saved that or sent it to anyone. Reply to them from the AiDwar Inbox. To teach me something for every customer, add it under Knowledge.",
+  },
+  // Batch 78: no website — a short interview on WhatsApp, one question at a time.
+  interview_q1: {
+    name: "No website: question 1",
+    description:
+      'First of the no-website interview (the owner chose "I don\'t have a website"). Saved as a fact: products and prices.',
+    vars: [],
+    text: "No website? No problem — I'll ask you 4 quick questions, one at a time. Type skip to skip any.\n\n1/4 — What do you sell, and what's your price range? (For example: cotton kurtas, ₹600–₹2,500.)",
+  },
+  interview_q2: {
+    name: "No website: question 2",
+    description: "Saved as a fact: timings and location / delivery area.",
+    vars: [],
+    text: "2/4 — What are your timings, and where are you? If you deliver, which areas?",
+  },
+  interview_q3: {
+    name: "No website: question 3",
+    description: "Saved as a fact: payment options / COD.",
+    vars: [],
+    text: "3/4 — How can customers pay? UPI, cards, cash on delivery?",
+  },
+  interview_q4: {
+    name: "No website: question 4",
+    description: "Saved as a fact: return / exchange policy.",
+    vars: [],
+    text: "4/4 — What's your return or exchange policy?",
+  },
+  interview_media: {
+    name: "No website: price list",
+    description:
+      "After the 4 questions: asks for a photo or PDF of the price list or catalogue (with a Skip button).",
+    vars: [],
+    text: "Last thing: send me a photo or PDF of your price list or catalogue — or tap Skip.",
+  },
+  interview_done: {
+    name: "No website: done",
+    description: "The owner skipped the price list: Aiden is ready to be tested.",
+    vars: ["business"],
+    text: "Thanks — I've saved all that for {business}. Now test me: ask me anything a customer would ask, like your prices or your timings.",
   },
 };
 

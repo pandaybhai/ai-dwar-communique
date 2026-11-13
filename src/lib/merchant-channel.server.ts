@@ -20,6 +20,7 @@ import { getScript } from "@/lib/scripts.server";
 import { normalizePhone } from "@/lib/phone";
 import { CODE_RE as CODE_PATTERN } from "@/lib/teach-guard";
 import { VERIFY_CODE_RE } from "@/lib/lead-verify";
+import { SKIP_MEDIA_ID, isInterviewStep, isNoSiteStep } from "@/lib/no-site-interview";
 import {
   sendServiceText,
   sendServiceImage,
@@ -538,8 +539,22 @@ export async function handleMerchantInbound(
 
   const { renderCard } = await import("@/lib/onboarding-cards.server");
 
+  // Batch 78: the no-website interview's replies and session updates.
+  const interviewIo = {
+    reply,
+    replyButtons: (text: string, buttons: Array<{ id: string; title: string }>) =>
+      replyButtons(text, buttons, null),
+    patchSession: (id: string, patch: Record<string, unknown>) => patchSession(supabase, id, patch),
+  };
+
   /** The Day One script: meeting the employee, then asking for the website. */
   const dayOneStep = async (): Promise<void> => {
+    // Batch 78: mid-interview (no website): the current question again.
+    if (isInterviewStep(session.step)) {
+      const { askAgain } = await import("@/lib/no-site-interview.server");
+      await askAgain(supabase, session.step, interviewIo);
+      return;
+    }
     if (currentStatus === "bound" && session.step !== "await_site") {
       const persona = await personaNameFor(supabase, session.organization_id);
       const idCard = await renderCard(supabase, "id-card", {
@@ -562,6 +577,12 @@ export async function handleMerchantInbound(
         [{ id: "start", title: "Your own AI employee" }],
         idCard,
       );
+      // Batch 78: no website (chosen at setup) → four quick questions instead.
+      if (isNoSiteStep(session.step)) {
+        const { startInterview } = await import("@/lib/no-site-interview.server");
+        await startInterview(supabase, session, interviewIo);
+        return;
+      }
       await patchSession(supabase, session.id, { status: "bound", step: "await_site" });
       return;
     }
@@ -643,6 +664,33 @@ export async function handleMerchantInbound(
     currentStatus === "tested" ||
     currentStatus === "connected" ||
     currentStatus === "completed";
+
+  // Batch 78: the no-website interview — one question at a time, each answer
+  // saved as a fact. A picture or a file goes on to stage 3 and a website
+  // link to stage 4 as always; a tap other than its own buttons too.
+  if (
+    currentStatus === "bound" &&
+    isInterviewStep(session.step) &&
+    !args.mediaUrl &&
+    (!interactiveId || interactiveId === "start" || interactiveId === SKIP_MEDIA_ID) &&
+    !(body && !interactiveId && extractSiteLink(body))
+  ) {
+    const { controlWord: control } = await import("@/lib/teach-guard");
+    const { interviewTurn } = await import("@/lib/no-site-interview.server");
+    const taken = await interviewTurn(
+      supabase,
+      {
+        session,
+        step: session.step,
+        body,
+        interactiveId,
+        businessName,
+        control: interactiveId ? null : control(body),
+      },
+      interviewIo,
+    );
+    if (taken) return;
+  }
 
   // ------------------------------------------------------ 2. CONTROL WORDS
   const { controlWord, isBareReference } = await import("@/lib/teach-guard");
@@ -843,7 +891,8 @@ export async function handleMerchantInbound(
       if (firstMaterial) {
         await patchSession(supabase, session.id, {
           status: "bound",
-          step: "await_site",
+          // Batch 78: mid-interview, back to the same question (not "send your website").
+          step: isInterviewStep(session.step) ? session.step : "await_site",
           source_id: null,
         });
       }
@@ -1166,10 +1215,17 @@ export async function handleMerchantInbound(
       first_sourced_run_id: run.runId,
     });
 
+    // Batch 78: a workspace without a website learned from what the owner told Aiden.
+    const { count: websites } = await supabase
+      .from("knowledge_sources")
+      .select("id", { count: "exact", head: true })
+      .eq("organization_id", session.organization_id)
+      .eq("type", "website");
+    const from = (websites ?? 0) > 0 ? "your website" : "what you told me";
     const ledger = credit as { id: string; created_at?: string } | null;
     if (!ledger) {
       await replyButtons(
-        `That answer came from your website, not a script.\n\nReady to put me on your number? It takes about two minutes:\n${CONNECT_LINK}`,
+        `That answer came from ${from}, not a script.\n\nReady to put me on your number? It takes about two minutes:\n${CONNECT_LINK}`,
         [{ id: "connect", title: "Connect my WhatsApp" }],
         null,
       );
@@ -1185,7 +1241,7 @@ export async function handleMerchantInbound(
       });
 
       await replyButtons(
-        "That answer came from your website, not a script. So here's my first day's work, on the house: ₹100 credits, about 700 customer conversations.\n\nReady to put me on your number?",
+        `That answer came from ${from}, not a script. So here's my first day's work, on the house: ₹100 credits, about 700 customer conversations.\n\nReady to put me on your number?`,
         [{ id: "connect", title: "Connect my WhatsApp" }],
         creditsCard,
       );
