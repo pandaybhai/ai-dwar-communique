@@ -66,14 +66,18 @@ function asPostgres(cmd: string, args: string[]): string {
 
 /**
  * initdb + start on a random port. Several SQL test files start their own
- * server at once (eight since Batch 35), so two can pick the same port; a
- * start that fails is retried on a new port (three tries), and the last
- * failure carries the server log.
+ * server at once (eight since Batch 35, eighteen by Batch 76), so two can pick
+ * the same port; a start that fails is retried on a new port (five tries),
+ * and the last failure carries the server log. The port is picked below
+ * Linux's ephemeral range (32768–60999): every psql call opens a client
+ * connection whose local port comes from that range, so a port picked inside
+ * it can already be held by another test's connection ("Address already in
+ * use", seen on CI 12 Nov).
  */
 function initAndStart(): { port: number; data: string } {
   let lastError: unknown = null;
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const port = 55_000 + Math.floor(Math.random() * 5_000);
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const port = 20_000 + Math.floor(Math.random() * 12_000);
     const data = mkdtempSync(join(tmpdir(), "aidwar-scratch-pg-"));
     try {
       chownSync(

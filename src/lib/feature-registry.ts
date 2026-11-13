@@ -668,6 +668,8 @@ export const FEATURES: readonly FeatureManifest[] = [
       "super_admin_granted",
       "super_admin_revoked",
       "test_email_sent",
+      // Batch 76: the new-lead alert numbers.
+      "lead_alert_numbers_changed",
 
     ],
     settings_path: "/app/settings",

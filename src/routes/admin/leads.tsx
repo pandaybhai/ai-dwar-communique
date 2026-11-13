@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { MessageSquarePlus, RefreshCw, Search, Sparkles } from "lucide-react";
+import { BellRing, MessageSquarePlus, RefreshCw, Search, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -26,6 +26,12 @@ import { CUSTOMERS, SELLS } from "@/lib/start-qualify";
 const DESCRIPTION = "Demo enquiries from the website — who asked, what they need, and where they are.";
 
 export const Route = createFileRoute("/admin/leads")({
+  // Batch 76: ?lead=<id> opens that lead (the new-lead alert's "Open lead" button).
+  // (The search parser may read an all-digit value as a number.)
+  validateSearch: (search: Record<string, unknown>): { lead?: string } => {
+    const v = search["lead"];
+    return typeof v === "string" || typeof v === "number" ? { lead: String(v).slice(0, 64) } : {};
+  },
   head: () => ({
     meta: [
       { title: "Leads & Demos — AiDwar Admin" },
@@ -43,6 +49,8 @@ type Payload = {
   leads: LeadRow[];
   new_count: number;
   admins: Array<{ id: string; name: string }>;
+  /** Batch 76: who gets the new-lead WhatsApp alert. */
+  alert_numbers?: string[];
 };
 
 function AdminLeads() {
@@ -58,6 +66,7 @@ function AdminLeads() {
   // Batch 75: the /start answers ("all", a value, or "none" = skipped).
   const [sells, setSells] = useState("all");
   const [customers, setCustomers] = useState("all");
+  const { lead: linkedLead } = Route.useSearch();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -74,6 +83,11 @@ function AdminLeads() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Batch 76: the alert's "Open lead" link opens that lead once the list is in.
+  useEffect(() => {
+    if (linkedLead && data?.leads.some((l) => l.id === linkedLead)) setOpenId(linkedLead);
+  }, [linkedLead, data]);
 
   const counts = useMemo(() => {
     const c: Record<string, number> = { all: 0 };
@@ -94,6 +108,12 @@ function AdminLeads() {
   return (
     <>
       <PageHeader title="Leads & Demos" description={DESCRIPTION} />
+      {data ? (
+        <LeadAlertNumbers
+          numbers={data.alert_numbers ?? []}
+          onSaved={(alert_numbers) => setData((d) => (d ? { ...d, alert_numbers } : d))}
+        />
+      ) : null}
 
       {data ? (
         <span className="mb-4 inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1.5 text-sm font-semibold text-primary">
@@ -405,5 +425,81 @@ function AnswerFilter({
         <option value="none">— (skipped)</option>
       </select>
     </label>
+  );
+}
+
+/**
+ * Batch 76 (super admin only): who gets a WhatsApp alert from AiDwar's number
+ * for every new lead. One number per line; +91 is added to a 10-digit number.
+ */
+function LeadAlertNumbers({
+  numbers,
+  onSaved,
+}: {
+  numbers: string[];
+  onSaved: (numbers: string[]) => void;
+}) {
+  const [text, setText] = useState(numbers.join("\n"));
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  useEffect(() => setText(numbers.join("\n")), [numbers]);
+  async function save() {
+    setBusy(true);
+    setMsg(null);
+    const list = text
+      .split(/[\n,]+/)
+      .map((n) => n.trim())
+      .filter(Boolean);
+    const { data, error } = await callApi<{ alert_numbers: string[] }>("/api/admin/leads", {
+      method: "POST",
+      body: { action: "alert_numbers", numbers: list },
+    });
+    setBusy(false);
+    if (error || !data) {
+      setMsg({ ok: false, text: error ?? "We couldn't save that." });
+      return;
+    }
+    onSaved(data.alert_numbers);
+    setMsg({ ok: true, text: "Saved." });
+  }
+  return (
+    <section
+      className="mb-5 rounded-2xl border border-border/70 bg-card p-4 shadow-sm sm:p-5"
+      aria-labelledby="alert-numbers"
+      data-testid="alert-numbers"
+    >
+      <h2 id="alert-numbers" className="flex items-center gap-2 text-base font-semibold">
+        <BellRing className="h-4 w-4 text-primary" /> New-lead WhatsApp alerts
+      </h2>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Every new lead is sent to these numbers from AiDwar&apos;s WhatsApp number. One per line.
+      </p>
+      <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-start">
+        <Textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          rows={2}
+          className="max-w-sm font-mono text-sm"
+          aria-label="Alert numbers"
+          placeholder="+91 98123 45670"
+        />
+        <Button
+          size="sm"
+          className="w-fit rounded-full"
+          disabled={busy}
+          onClick={() => void save()}
+        >
+          {busy ? "Saving…" : "Save"}
+        </Button>
+      </div>
+      {msg ? (
+        <p
+          className={cn("mt-2 text-xs", msg.ok ? "text-muted-foreground" : "text-destructive")}
+          role="status"
+        >
+          {msg.text}
+        </p>
+      ) : null}
+    </section>
   );
 }

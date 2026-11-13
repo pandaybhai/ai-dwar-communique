@@ -17,7 +17,7 @@
 -- query_to_xml only when to_regclass('cron.job') finds it, so the query
 -- still runs where pg_cron is absent (every cron job is then listed).
 --
--- Expected objects: table 97, column 1146, view 2, function 123, index 175, trigger 71, cron_job 14.
+-- Expected objects: table 97, column 1149, view 2, function 123, index 175, trigger 71, cron_job 14.
 WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, introduced_in_file) AS (
   VALUES
     ('table', 'aidwar_private', 'mcp_db_proof', NULL, NULL, NULL, '20261300_batch56_mcp_hardening.sql'),
@@ -579,6 +579,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('column', 'public', 'demo_lead_notes', 'created_at', NULL, 'timestamp with time zone', '20260915_demo_leads.sql'),
     ('column', 'public', 'demo_lead_notes', 'id', NULL, 'uuid', '20260915_demo_leads.sql'),
     ('column', 'public', 'demo_lead_notes', 'lead_id', NULL, 'uuid', '20260915_demo_leads.sql'),
+    ('column', 'public', 'demo_leads', 'alerted_at', NULL, 'timestamp with time zone', '20261400_batch76.sql'),
     ('column', 'public', 'demo_leads', 'assigned_to', NULL, 'uuid', '20260915_demo_leads.sql'),
     ('column', 'public', 'demo_leads', 'business_name', NULL, 'text', '20260915_demo_leads.sql'),
     ('column', 'public', 'demo_leads', 'business_type', NULL, 'text', '20260915_demo_leads.sql'),
@@ -596,6 +597,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('column', 'public', 'demo_leads', 'landing_path', NULL, 'text', '20260915_demo_leads.sql'),
     ('column', 'public', 'demo_leads', 'latest_attribution', NULL, 'jsonb', '20260915_demo_leads.sql'),
     ('column', 'public', 'demo_leads', 'linked_user_id', NULL, 'uuid', '20260915_demo_leads.sql'),
+    ('column', 'public', 'demo_leads', 'mirrored_at', NULL, 'timestamp with time zone', '20261400_batch76.sql'),
     ('column', 'public', 'demo_leads', 'name', NULL, 'text', '20260915_demo_leads.sql'),
     ('column', 'public', 'demo_leads', 'next_follow_up_at', NULL, 'timestamp with time zone', '20260915_demo_proof.sql'),
     ('column', 'public', 'demo_leads', 'nudged_at', NULL, 'timestamp with time zone', '20261390_batch75.sql'),
@@ -996,6 +998,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('column', 'public', 'platform_settings', 'gst_registered', NULL, 'boolean', '20261290_batch55_no_gst.sql'),
     ('column', 'public', 'platform_settings', 'id', NULL, 'boolean', '20260903_ai_resale.sql'),
     ('column', 'public', 'platform_settings', 'knowledge_auto_refresh', NULL, 'boolean', '20261022_knowledge_auto_refresh.sql'),
+    ('column', 'public', 'platform_settings', 'lead_alert_numbers', NULL, 'text[]', '20261400_batch76.sql'),
     ('column', 'public', 'platform_settings', 'link_reread_days', NULL, 'integer', '20260924100000_reading_link_limits.sql'),
     ('column', 'public', 'platform_settings', 'manual_refresh_cooldown_hours', NULL, 'integer', '20260924080000_reading_settings.sql'),
     ('column', 'public', 'platform_settings', 'map_engine', NULL, 'text', '20260924090000_reader_engines.sql'),

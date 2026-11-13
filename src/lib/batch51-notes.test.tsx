@@ -181,6 +181,12 @@ describe("Aiden: no new AI call, and notes don't reach him", () => {
     expect(readers.sort()).toEqual([
       "src/components/customers-v2/customer-notes.tsx",
       "src/lib/feature-registry.ts",
+      // Batch 76: writes the one "Lead from /start …" note; never reads notes.
+      "src/lib/lead-mirror.server.ts",
+    ]);
+    const mirror = readFileSync("src/lib/lead-mirror.server.ts", "utf8");
+    expect(mirror.match(/\.from\("contact_notes"\)\.\w+/g)).toEqual([
+      '.from("contact_notes").insert',
     ]);
   });
 

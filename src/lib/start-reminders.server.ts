@@ -107,6 +107,30 @@ async function accountForNumber(supabase: SupabaseClient, phone: string): Promis
   return ((data ?? []) as Array<{ id: string }>)[0]?.id ?? null;
 }
 
+/**
+ * AiDwar's own number's daily business-initiated budget: its messaging tier
+ * (TIER_250 → 250; unknown → the smallest, 250; unlimited → no cap) and the
+ * template messages the platform workspace sent in the last 24 hours. Shared
+ * by the Batch 75 reminder and the Batch 76 new-lead alerts.
+ */
+export async function platformTemplateBudget(
+  supabase: SupabaseClient,
+  platformOrgId: string,
+  accountId: string,
+  now: number,
+): Promise<{ limit: number; used: number }> {
+  const { data: account } = await supabase
+    .from("whatsapp_accounts")
+    .select("messaging_tier")
+    .eq("id", accountId)
+    .maybeSingle();
+  const { messagingTierLimit } = await import("@/lib/billing");
+  const tier = (account as { messaging_tier?: string | null } | null)?.messaging_tier ?? null;
+  const limit =
+    tier === "TIER_UNLIMITED" ? Infinity : (messagingTierLimit(tier) ?? DEFAULT_DAILY_LIMIT);
+  return { limit, used: await templatesSentToday(supabase, platformOrgId, now) };
+}
+
 /** Business-initiated (template) messages the platform workspace sent in the last 24 hours. */
 async function templatesSentToday(
   supabase: SupabaseClient,
@@ -176,16 +200,9 @@ export async function runStartReminders(
       ?.onboarding_whatsapp_account_id ?? null;
   if (!accountId) return log({ sent: 0, skipped: "no_onboarding_number" });
 
-  const { data: account } = await supabase
-    .from("whatsapp_accounts")
-    .select("messaging_tier")
-    .eq("id", accountId)
-    .maybeSingle();
-  const { messagingTierLimit } = await import("@/lib/billing");
-  const tier = (account as { messaging_tier?: string | null } | null)?.messaging_tier ?? null;
-  const dailyLimit =
-    tier === "TIER_UNLIMITED" ? Infinity : (messagingTierLimit(tier) ?? DEFAULT_DAILY_LIMIT);
-  let used = await templatesSentToday(supabase, platformOrgId, now);
+  const budget = await platformTemplateBudget(supabase, platformOrgId, accountId, now);
+  const dailyLimit = budget.limit;
+  let used = budget.used;
   if (used >= dailyLimit) return log({ sent: 0, skipped: "daily_limit" });
 
   const { loadSenderContext, sendCampaignTemplate } = await import("@/lib/campaigns.server");
@@ -207,6 +224,9 @@ export async function runStartReminders(
         .update({ linked_user_id: existing })
         .eq("id", lead.id)
         .is("linked_user_id", null);
+      // Batch 76: signed_up on the lead's contact in AiDwar's workspace.
+      const { mirrorLead } = await import("@/lib/lead-mirror.server");
+      await mirrorLead(supabase, lead.id, { now });
       continue;
     }
     // Opted out of AiDwar's own number: never.

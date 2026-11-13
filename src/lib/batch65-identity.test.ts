@@ -241,6 +241,8 @@ describe("only the audited places call the phone rule", () => {
       "lib/contact-import.ts",
       "lib/default-country.ts",
       "lib/handoff-alerts.server.ts",
+      // Batch 76: the sales numbers that get the new-lead alert (Super Admin).
+      "lib/lead-alerts.server.ts",
       // Batch 70: the owner's own phone, normalised before hashing for Meta.
       "lib/meta-events.ts",
       "lib/phone.ts",

@@ -39,7 +39,12 @@ export const Route = createFileRoute("/api/admin/leads")({
         if (leadId) {
           return Response.json({ notes: await listNotes(auth.supabase, leadId) });
         }
-        return Response.json(await listLeads(auth.supabase));
+        // Batch 76: the new-lead WhatsApp alert numbers, for the editor.
+        const { readLeadAlertNumbers } = await import("@/lib/lead-alerts.server");
+        return Response.json({
+          ...(await listLeads(auth.supabase)),
+          alert_numbers: await readLeadAlertNumbers(auth.supabase),
+        });
       },
 
       POST: async ({ request }) => {
@@ -47,6 +52,25 @@ export const Route = createFileRoute("/api/admin/leads")({
         if (auth instanceof Response) return auth;
 
         const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+
+        // Batch 76: replace the new-lead WhatsApp alert numbers.
+        if (body["action"] === "alert_numbers") {
+          const { saveLeadAlertNumbers } = await import("@/lib/lead-alerts.server");
+          const saved = await saveLeadAlertNumbers(auth.supabase, body["numbers"], auth.userId);
+          return saved.ok
+            ? Response.json({ ok: true, alert_numbers: saved.numbers })
+            : Response.json({ error: saved.error }, { status: 400 });
+        }
+        // Batch 76: the one-off backfill of existing leads into AiDwar's own
+        // workspace (re-run until remaining is 0; idempotent).
+        if (body["action"] === "mirror_backfill") {
+          const { backfillLeadMirror } = await import("@/lib/lead-mirror.server");
+          const out = await backfillLeadMirror(auth.supabase);
+          return out.ok
+            ? Response.json(out)
+            : Response.json({ error: out.error }, { status: 409 });
+        }
+
         const leadId = typeof body["lead_id"] === "string" ? body["lead_id"] : "";
         if (!leadId) return Response.json({ error: "Missing lead." }, { status: 400 });
 
@@ -67,6 +91,11 @@ export const Route = createFileRoute("/api/admin/leads")({
         if ("demo_attended_at" in body) patch["demo_attended_at"] = body["demo_attended_at"] ?? null;
 
         const result = await updateLead(auth.supabase, leadId, patch);
+        if (result.ok && "status" in patch) {
+          // Batch 76: lead_status on the lead's contact in AiDwar's workspace.
+          const { mirrorLead } = await import("@/lib/lead-mirror.server");
+          await mirrorLead(auth.supabase, leadId);
+        }
         return result.ok
           ? Response.json({ ok: true })
           : Response.json({ error: result.error }, { status: 400 });
