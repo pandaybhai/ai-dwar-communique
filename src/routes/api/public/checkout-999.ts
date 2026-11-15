@@ -38,6 +38,7 @@ export const Route = createFileRoute("/api/public/checkout-999")({
             ip,
             referrer: request.headers.get("referer"),
             cookieLeadId: await c.leadFromCookie(request).catch(() => null),
+            request,
           });
           if (!saved.ok) {
             return Response.json(
@@ -79,6 +80,7 @@ export const Route = createFileRoute("/api/public/checkout-999")({
             phone: checked.lead.phone,
             organizationId: orgId,
             request,
+            ...("admin_test_price" in body ? { adminTestPrice: body["admin_test_price"] } : {}),
           });
           if (!started.ok) {
             return Response.json(

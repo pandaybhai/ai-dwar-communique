@@ -403,6 +403,8 @@ export async function trackPaidPayment(paymentId: string): Promise<void> {
 export function pageChanged(pathname: string): void {
   if (pixelZone(pathname) !== "public" || !pixelAllowed(pathname)) return;
   track("PageView", randomEventId("PageView"));
+  // Batch 80b: /999 sends its own ViewContent (trackView999, one id per visit).
+  if ((pathname.replace(/\/+$/, "") || "/") === "/999") return;
   const name = viewContentName(pathname);
   if (name) {
     const id = randomEventId("ViewContent");
@@ -412,14 +414,77 @@ export function pageChanged(pathname: string): void {
 }
 
 /**
- * Batch 80: the /999 checkout sheet opened — InitiateCheckout (value 999),
- * the pixel only after Accept, the server copy with the same id under the
- * same rule as a page view.
+ * Batch 80b: /999's two page events. The server copy goes for every visitor
+ * who has not pressed Decline (the pixel itself only after Accept), with the
+ * same event id so Meta counts one: "ViewContent." + this visit's id,
+ * "InitiateCheckout." + this tab's checkout id. Never awaited by the page.
  */
-export function trackInitiateCheckout999(): void {
-  const id = randomEventId("InitiateCheckout");
-  if (track("InitiateCheckout", id, { content_name: "basic", value: 999, currency: "INR" }))
-    relayToServer({ event: "InitiateCheckout", event_id: id });
+function send999(
+  event: "ViewContent" | "InitiateCheckout",
+  key: string,
+  visitId: string,
+  params: Record<string, unknown>,
+): void {
+  try {
+    const choice = readConsent();
+    if (choice === "declined") return;
+    const id = metaEventId(event, key);
+    track(event, id, params, { once: true });
+    if (debugMode()) return;
+    void fetch("/api/public/meta-event", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        event,
+        event_id: id,
+        landing: "999",
+        consent: choice === "accepted" ? "accepted" : "none",
+        visit_id: visitId,
+        url: window.location.href.split("#")[0],
+        ...fbclidForLead(),
+      }),
+      keepalive: true,
+    }).catch(() => undefined);
+  } catch {
+    // measurement never breaks the page
+  }
+}
+
+/** Batch 80b: /999 was shown (once per visit). */
+export function trackView999(visitId: string): void {
+  send999("ViewContent", visitId, visitId, { content_name: "999_page" });
+}
+
+/** Batch 80b: the /999 checkout sheet opened (once per checkout in this tab). */
+export function trackInitiateCheckout999(visitId: string, checkoutId: string): void {
+  send999("InitiateCheckout", checkoutId, visitId, {
+    content_name: "basic",
+    value: 999,
+    currency: "INR",
+  });
+}
+
+/** Batch 80b: a random id for a visit / a checkout (letters, digits and dashes). */
+export function newMetaKey(): string {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
+/**
+ * Batch 80b: ?meta_test=<code> on any page turns on Meta's Test Events for
+ * this browser only, for 2 hours: a cookie the server reads on each of this
+ * browser's requests (test_event_code). Nothing else changes.
+ */
+export const META_TEST_COOKIE = "aidwar_meta_test";
+export function rememberMetaTest(): void {
+  try {
+    const code = new URLSearchParams(window.location.search).get("meta_test");
+    if (!code || !/^[A-Za-z0-9_-]{4,40}$/.test(code)) return;
+    document.cookie = `${META_TEST_COOKIE}=${encodeURIComponent(code)}; Max-Age=7200; Path=/; SameSite=Lax; Secure`;
+  } catch {
+    // no cookie, no test mode
+  }
 }
 
 /** A click on our email / phone / WhatsApp link on a public page: Contact. */

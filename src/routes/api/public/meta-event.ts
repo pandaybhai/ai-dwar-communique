@@ -7,6 +7,8 @@ import { createFileRoute } from "@tanstack/react-router";
  *
  *  - ViewContent / Contact: the server copy of a pixel event (same event id),
  *    only with consent (the pixel itself ran), only from our own pages.
+ *  - Batch 80b: /999's ViewContent and InitiateCheckout: sent unless the
+ *    visitor pressed Decline (the pixel still only after Accept).
  *  - CompleteRegistration: an account created in the last 15 minutes (sign-up
  *    terms), once per user.
  *  - StartTrial: a workspace the signed-in member just created (trial, under
@@ -49,20 +51,35 @@ export const Route = createFileRoute("/api/public/meta-event")({
           }
         };
 
-        // Batch 80: the /999 checkout sheet opened — InitiateCheckout, under the
-        // same rule as a page view (consent, our own page, the pixel's id).
-        if (event === "InitiateCheckout") {
+        // Batch 80b: /999's two page events — ViewContent ("ViewContent." +
+        // the visit id) and InitiateCheckout ("InitiateCheckout." + the
+        // checkout id) — are sent from the server for every visitor who has
+        // not pressed Decline (`consent: "accepted" | "none"`), with the same
+        // id the pixel uses after Accept. external_id is the visit id; fbc is
+        // the _fbc cookie, else the ad click's fbclid.
+        if (
+          (event === "ViewContent" || event === "InitiateCheckout") &&
+          body["landing"] === "999"
+        ) {
           const id = body["event_id"];
-          if (body["consent"] !== true || !meta.isEventId(id) || !id.startsWith(`${event}.`))
-            return ok();
+          const choice = body["consent"];
+          if (choice !== "accepted" && choice !== "none") return ok();
+          if (!meta.isEventId(id) || !id.startsWith(`${event}.`)) return ok();
           const url = ownUrl(body["url"]);
           if (!url || new URL(url).pathname.replace(/\/+$/, "") !== "/999") return ok();
+          const visit = String(body["visit_id"] ?? "");
           await capi.queueMetaEvent(supabase, {
             event,
             eventId: id,
-            params: meta.safeParams({ content_name: "basic", value: 999, currency: "INR" }),
+            params:
+              event === "ViewContent"
+                ? { content_name: "999_page" }
+                : meta.safeParams({ content_name: "basic", value: 999, currency: "INR" }),
             sourceUrl: url,
             request,
+            externalId: /^[A-Za-z0-9-]{8,64}$/.test(visit) ? visit : null,
+            fbc: meta.fbcFromFbclid(body["fbclid"], body["fbclid_at"]),
+            once: true,
           });
           return ok();
         }
@@ -167,6 +184,8 @@ export const Route = createFileRoute("/api/public/meta-event")({
           const paymentId = String(body["payment_id"] ?? "");
           if (!UUID.test(paymentId)) return ok({ meta: null });
           const c = await capi.paymentConversion(supabase, paymentId);
+          // Batch 80b: an admin's ₹1 live test never reaches the pixel.
+          if (c && (await capi.isAdminTestPayment(supabase, paymentId))) return ok({ meta: null });
           return ok({
             meta: c ? { event: c.event, event_id: c.eventId, params: c.params } : null,
           });

@@ -29,6 +29,9 @@ import {
  * Privacy · Terms · Refunds · ©.
  */
 
+/** Batch 80b: one checkout id per tab (InitiateCheckout's event id). */
+const CHECKOUT_ID_KEY = "aidwar.999.checkout_id";
+
 const loadDemo = () => import("@/components/p999/demo-999");
 const loadCalc = () => import("@/components/p999/calculator-999");
 const loadCheckout = () => import("@/components/p999/checkout-999");
@@ -105,10 +108,13 @@ export function Page999({
   rates,
   aidenLink,
   returningPaymentId,
+  adminTestPrice = null,
 }: {
   rates: { marketing: number; utility: number; effective_from: string | null };
   aidenLink: string | null;
   returningPaymentId: string | null;
+  /** Batch 80b: /999?admin_test_price=1 — the server decides whether it's allowed. */
+  adminTestPrice?: 1 | null;
 }) {
   const heroCta = useRef<HTMLDivElement | null>(null);
   const finalCta = useRef<HTMLDivElement | null>(null);
@@ -138,12 +144,37 @@ export function Page999({
     }
   }, [returningPaymentId]);
 
+  // Batch 80b: this visit's id (ViewContent + external_id) and this tab's
+  // checkout id (InitiateCheckout), so the pixel and the server send one id.
+  const visitId = useRef<string | null>(null);
+  useEffect(() => {
+    void import("@/lib/meta-pixel")
+      .then((m) => {
+        visitId.current ??= m.newMetaKey();
+        m.trackView999(visitId.current);
+      })
+      .catch(() => undefined);
+  }, []);
+
   const start = useCallback(() => {
     warmCheckout();
     setMounted(true);
     setOpen(true);
     void import("@/lib/meta-pixel")
-      .then((m) => m.trackInitiateCheckout999())
+      .then((m) => {
+        visitId.current ??= m.newMetaKey();
+        let checkoutId: string | null = null;
+        try {
+          checkoutId = window.sessionStorage.getItem(CHECKOUT_ID_KEY);
+          if (!checkoutId) {
+            checkoutId = m.newMetaKey();
+            window.sessionStorage.setItem(CHECKOUT_ID_KEY, checkoutId);
+          }
+        } catch {
+          checkoutId ??= m.newMetaKey();
+        }
+        m.trackInitiateCheckout999(visitId.current, checkoutId);
+      })
       .catch(() => undefined);
   }, []);
   const close = useCallback(() => setOpen(false), []);
@@ -269,7 +300,12 @@ export function Page999({
 
       {mounted ? (
         <Suspense fallback={null}>
-          <Checkout999 open={open} onClose={close} returningPaymentId={returningPaymentId} />
+          <Checkout999
+            open={open}
+            onClose={close}
+            returningPaymentId={returningPaymentId}
+            adminTestPrice={adminTestPrice}
+          />
         </Suspense>
       ) : null}
     </div>

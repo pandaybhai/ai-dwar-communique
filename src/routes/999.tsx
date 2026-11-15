@@ -13,9 +13,15 @@ const DESCRIPTION =
  * confirms that payment.
  */
 export const Route = createFileRoute("/999")({
-  validateSearch: (search: Record<string, unknown>): { payment?: string } => {
+  validateSearch: (search: Record<string, unknown>): { payment?: string; admin_test_price?: 1 } => {
     const v = search["payment"];
-    return typeof v === "string" && /^[0-9a-f-]{36}$/i.test(v) ? { payment: v } : {};
+    // Batch 80b: ?admin_test_price=1 asks for the ₹1 live test; only the
+    // server decides (Super Admin), the page just passes it on.
+    const admin = String(search["admin_test_price"] ?? "") === "1";
+    return {
+      ...(typeof v === "string" && /^[0-9a-f-]{36}$/i.test(v) ? { payment: v } : {}),
+      ...(admin ? { admin_test_price: 1 as const } : {}),
+    };
   },
   loader: () => getPage999Data(),
   head: () => ({
@@ -34,6 +40,13 @@ export const Route = createFileRoute("/999")({
 
 function Route999() {
   const { rates, aidenLink } = Route.useLoaderData();
-  const { payment } = Route.useSearch();
-  return <Page999 rates={rates} aidenLink={aidenLink} returningPaymentId={payment ?? null} />;
+  const { payment, admin_test_price } = Route.useSearch();
+  return (
+    <Page999
+      rates={rates}
+      aidenLink={aidenLink}
+      returningPaymentId={payment ?? null}
+      adminTestPrice={admin_test_price ?? null}
+    />
+  );
 }

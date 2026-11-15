@@ -290,11 +290,14 @@ export function Checkout999({
   open,
   onClose,
   returningPaymentId,
+  adminTestPrice = null,
 }: {
   open: boolean;
   onClose: () => void;
   /** Back from a payment page Cashfree redirected to: confirm this one. */
   returningPaymentId?: string | null;
+  /** Batch 80b: an admin's ₹1 live test (the server refuses anyone else). */
+  adminTestPrice?: 1 | null;
 }) {
   const navigate = useNavigate();
   const uid = useId();
@@ -459,6 +462,7 @@ export function Checkout999({
         report: (phase) => setStage({ kind: "working", phase }),
         existingAccount: existing,
         signedIn: Boolean(signedIn),
+        adminTestPrice,
       });
     } catch {
       outcome = { kind: "error", message: "Something went wrong. Please try again." };
@@ -640,6 +644,15 @@ export function Checkout999({
               </button>
             </div>
 
+            {adminTestPrice === 1 ? (
+              <p
+                data-testid="admin-test-banner"
+                className="mx-4 mb-2 rounded-xl bg-[#fef3c7] px-3 py-2 text-[13px] font-semibold text-[#92400e]"
+              >
+                Admin test · charges ₹1 on the live gateway (Super Admins only — anyone else is
+                refused). Excluded from revenue; Meta gets it only as a Test Events call.
+              </p>
+            ) : null}
             {/* order summary, pinned */}
             <div className="mx-4 rounded-2xl bg-[#04100b] text-white">
               <button
@@ -820,7 +833,9 @@ export function Checkout999({
                       {PHASE_TEXT[stage.phase]}
                     </span>
                   ) : stage.kind === "failed" ? (
-                    "Try again · Pay ₹999 →"
+                    `Try again · Pay ₹${adminTestPrice === 1 ? 1 : 999} →`
+                  ) : adminTestPrice === 1 ? (
+                    "Pay ₹1 → (admin test)"
                   ) : (
                     ORDER.pay
                   )}

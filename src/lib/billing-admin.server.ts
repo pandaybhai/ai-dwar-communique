@@ -226,7 +226,10 @@ export async function adminOverview(
     .lt("paid_at", end)
     .limit(5000);
 
-  const planRows = (planPayments ?? []) as Record<string, unknown>[];
+  // Batch 80b: an admin's ₹1 live test (/999?admin_test_price=1) isn't revenue.
+  const planRows = ((planPayments ?? []) as Record<string, unknown>[]).filter(
+    (p) => ((p["raw"] ?? {}) as Record<string, unknown>)["admin_test"] !== true,
+  );
   const planFees = round2(planRows.reduce((sum, p) => sum + Number(p["amount"] ?? 0), 0));
   const planFeesGross = round2(
     planRows.reduce((sum, p) => {
