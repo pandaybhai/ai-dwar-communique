@@ -142,7 +142,8 @@ export type LeadRow = {
 
 /** Batch 80: the ₹999 Basic page's checkout leads. */
 export const LANDING_999_LEAD_SOURCE = "landing_999";
-const ABANDONED_AFTER_MS = 30 * 60_000;
+// Batch 81: 10 minutes, the same wait as the team's WhatsApp alert.
+const ABANDONED_AFTER_MS = 10 * 60_000;
 
 /**
  * Batch 80: a /999 buyer who reached Pay and didn't pay (30 minutes on) —
@@ -162,7 +163,7 @@ export const LEAD_SOURCE_FILTERS = [
   { value: "landing_start", label: "/start" },
   { value: "landing_999", label: "/999" },
   { value: "landing", label: "Demo form" },
-  { value: "abandoned", label: "/999 · checkout abandoned" },
+  { value: "abandoned", label: "/999 · reached payment, didn't pay" },
 ] as const;
 export type LeadSourceFilter = (typeof LEAD_SOURCE_FILTERS)[number]["value"];
 

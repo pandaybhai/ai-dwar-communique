@@ -38,6 +38,9 @@ type LeadRow = {
   qualification: { sells?: string; customers?: string; answered_at?: string } | null;
   /** Batch 78: proved on WhatsApp (absent until 20261420 is applied). */
   verified_at?: string | null;
+  /** Batch 80 (/999): reached Pay / paid (absent until 20261430 is applied). */
+  checkout_at?: string | null;
+  paid_at?: string | null;
 };
 
 export type AlertOutcome = {
@@ -171,7 +174,8 @@ export function alertVariables(lead: LeadRow): Record<string, string> {
     "4": a.customers ?? dash,
     // Batch 78: "· verified" once the number was proved on WhatsApp (the
     // submitted template is unchanged — it rides in {{5}}).
-    "5": alertSourceLabel(lead.source) + (lead.verified_at ? " · verified" : ""),
+    "5":
+      alertSourceLabel(lead.source) + (lead.verified_at ? " · verified" : "") + checkoutNote(lead),
   };
 }
 
@@ -194,7 +198,26 @@ export function leadSettled(
   return readyToAlert(lead as LeadRow, now);
 }
 
+/**
+ * Batch 81: a /999 lead says how its checkout went, so the team can call
+ * the ones who stopped at payment within minutes.
+ */
+function checkoutNote(lead: LeadRow): string {
+  if (lead.source !== "landing_999") return "";
+  if (lead.paid_at) return " · paid ✓";
+  if (lead.checkout_at) return " · reached payment, didn't pay";
+  return " · left before payment";
+}
+
+/** Batch 81: a /999 lead is alerted once paid, or 10 minutes after it reached (or never reached) payment. */
+export const CHECKOUT_ALERT_WAIT_MS = 10 * 60 * 1000;
+
 function readyToAlert(lead: LeadRow, now: number): boolean {
+  if (lead.source === "landing_999") {
+    if (lead.paid_at) return true;
+    const since = Date.parse(lead.checkout_at ?? lead.created_at);
+    return since <= now - CHECKOUT_ALERT_WAIT_MS;
+  }
   if (lead.source !== "landing_start") return true; // /demo: answers come with the form
   if (lead.qualification?.answered_at) return true;
   return Date.parse(lead.created_at) <= now - ALERT_WAIT_MS;

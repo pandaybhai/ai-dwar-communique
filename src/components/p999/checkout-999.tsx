@@ -1,20 +1,26 @@
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { useNavigate } from "@tanstack/react-router";
-import { Check, ChevronDown, Eye, EyeOff, Lock, ShieldCheck, X } from "lucide-react";
+import { Check, ChevronDown, Eye, EyeOff, Lock, Mail, ShieldCheck, X } from "lucide-react";
 import {
   EMPTY_VALUES,
+  EXIT,
+  EXIT_SEEN_KEY,
   FIELD_ORDER,
   ORDER,
   SAVED_KEY,
+  SAVED_TTL_MS,
   allErrors,
   fieldError,
+  hasTyped,
   passwordStrength,
+  revealRest,
   savedSubset,
   type CheckoutField,
   type CheckoutValues,
 } from "@/lib/page-999";
 import {
+  PAY_FAILED,
   PHASE_TEXT,
   runCheckout,
   type CheckoutDeps,
@@ -25,38 +31,47 @@ import {
 import { cn } from "@/lib/utils";
 
 /**
- * Batch 80: the one-screen checkout. A full-height sheet on a phone, a right
- * panel on desktop, over the /999 page — no page change, no nav, no footer,
- * no outbound links: the order, five fields and Pay. ✕ closes it back to the
- * page (the back button is never hijacked). What was typed is kept if it is
- * closed and reopened (this tab only; the password stays in memory only).
- * runCheckout (checkout-999-flow.ts) does the work; this file is the screen
- * and the real outside calls.
+ * Batch 80/81: the one-screen checkout, Shiprocket-style. A full-height sheet
+ * on a phone (swipe down or ✕ to close), a right panel on desktop, over the
+ * /999 page — no page change, no nav, no footer, no outbound links.
+ *
+ * Batch 81, fewest steps:
+ *  - phone first: the WhatsApp number is the only field at first; on a valid
+ *    number the name and email slide in;
+ *  - no password: the account is made on the server and this browser is
+ *    signed in; "Set a password" is offered after paying (or emailed);
+ *  - an email or number that already has an account: "Welcome back" and a
+ *    one-time log-in link by email — never a dead end;
+ *  - the business name is asked after paying, on the success screen;
+ *  - leaving with something typed shows one gentle "Your setup is saved"
+ *    screen, once per session; the back button is never touched.
+ * What was typed is kept for 2 hours in this browser (never a password —
+ * there is none). runCheckout (checkout-999-flow.ts) does the work.
  */
 
 type Stage =
   | { kind: "form" }
   | { kind: "working"; phase: Phase }
   | { kind: "failed"; message: string }
-  | { kind: "success"; firstName: string };
+  | { kind: "existing"; sentTo: string | null }
+  | { kind: "exit" }
+  | { kind: "success"; firstName: string; organizationId: string | null };
 
 const LABELS: Record<CheckoutField, string> = {
   phone: "WhatsApp number",
   name: "Your name",
-  business_name: "Business name",
   email: "Email",
-  password: "Create password",
 };
 
 function loadSaved(): CheckoutValues {
   try {
-    const raw = window.sessionStorage.getItem(SAVED_KEY);
-    const v = raw ? (JSON.parse(raw) as Partial<CheckoutValues>) : {};
+    const raw = window.localStorage.getItem(SAVED_KEY);
+    const v = raw ? (JSON.parse(raw) as Partial<CheckoutValues> & { at?: number }) : {};
+    if (!v.at || Date.now() - v.at > SAVED_TTL_MS) return { ...EMPTY_VALUES };
     return {
-      ...EMPTY_VALUES,
-      ...Object.fromEntries(
-        Object.entries(v).filter(([k, val]) => k !== "password" && typeof val === "string"),
-      ),
+      phone: typeof v.phone === "string" ? v.phone : "",
+      name: typeof v.name === "string" ? v.name : "",
+      email: typeof v.email === "string" ? v.email : "",
     };
   } catch {
     return { ...EMPTY_VALUES };
@@ -97,33 +112,42 @@ async function realDeps(): Promise<CheckoutDeps> {
       const s = data.session;
       return s ? { userId: s.user.id, token: s.access_token } : null;
     },
-    // The existing email + password sign-up: the very call /signup makes.
-    signUp: async ({ email, password, phone, fullName }) => {
-      const typed = (await import("@/lib/start-qualify")).checkRealNumber(phone);
-      const e164 = typed.ok ? typed.phone : phone;
-      const { data, error } = await aidwar.auth.signUp({
-        email,
-        password,
-        options: {
-          emailRedirectTo: `${window.location.origin}/login`,
-          data: fullName ? { phone: e164, full_name: fullName } : { phone: e164 },
-        },
-      });
-      // Batch 71: the cookie banner waits until a sign-up form has been sent.
-      pixel.signupSubmitted();
+    // Batch 81: the server makes the account (no password typed) or emails an
+    // existing one a log-in link.
+    account: async ({ phone, name, email }) => {
+      const r = await post("/api/public/checkout-999", { phone, name, email, action: "account" });
+      if (r.status === 200 && r.body["status"] === "created") {
+        return {
+          status: "created",
+          token_hash: String(r.body["token_hash"]),
+          user_id: String(r.body["user_id"]),
+        };
+      }
+      if (r.status === 200 && r.body["status"] === "existing") {
+        return {
+          status: "existing",
+          sent_to: typeof r.body["sent_to"] === "string" ? (r.body["sent_to"] as string) : null,
+        };
+      }
       return {
-        userId: data.user?.id ?? null,
-        token: data.session?.access_token ?? null,
-        error: error?.message ?? null,
+        status: "error",
+        error:
+          typeof r.body["error"] === "string"
+            ? (r.body["error"] as string)
+            : "We couldn't create your account. Please try again.",
+        ...(typeof r.body["field"] === "string" ? { field: r.body["field"] as string } : {}),
       };
     },
-    signIn: async ({ email, password }) => {
-      const { data, error } = await aidwar.auth.signInWithPassword({ email, password });
-      return {
-        userId: data.user?.id ?? null,
-        token: data.session?.access_token ?? null,
-        error: error?.message ?? null,
-      };
+    // The one-time token → this browser's own session (existing auth API).
+    signInWithToken: async (tokenHash) => {
+      const { data, error } = await aidwar.auth.verifyOtp({
+        token_hash: tokenHash,
+        type: "magiclink",
+      });
+      // Batch 71: the cookie banner waits until a sign-up has been sent.
+      pixel.signupSubmitted();
+      const s = data.session;
+      return !error && s ? { userId: s.user.id, token: s.access_token } : null;
     },
     startPay: (token, body) =>
       post("/api/public/checkout-999", body, token) as ReturnType<CheckoutDeps["startPay"]>,
@@ -246,12 +270,67 @@ function Confetti() {
   );
 }
 
-function Success({ firstName }: { firstName: string }) {
+/** Batch 81: paid — name the business, optionally set a password, then setup. */
+function Success({
+  firstName,
+  organizationId,
+  email,
+}: {
+  firstName: string;
+  organizationId: string | null;
+  email: string;
+}) {
+  const navigate = useNavigate();
+  const uid = useId();
+  const [business, setBusiness] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPw, setShowPw] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const strength = passwordStrength(password);
+
+  async function finish() {
+    setBusy(true);
+    setNote(null);
+    const { aidwar } = await import("@/integrations/aidwar/client");
+    const name = business.trim().replace(/\s+/g, " ");
+    if (organizationId && name.length >= 2) {
+      // An owner may rename their own workspace (the org guard keeps every
+      // billing column as it is).
+      await aidwar.from("organizations").update({ name }).eq("id", organizationId);
+    }
+    if (password) {
+      if (password.length < 8) {
+        setBusy(false);
+        setNote("Use at least 8 characters — or leave it empty and set one later.");
+        return;
+      }
+      const { error } = await aidwar.auth.updateUser({ password });
+      if (error) {
+        setBusy(false);
+        setNote("We couldn't save that password. You can set one later from the emailed link.");
+        return;
+      }
+    }
+    void navigate({ to: "/app/start", search: { step: "connect" } });
+  }
+
+  async function emailLink() {
+    const { aidwar } = await import("@/integrations/aidwar/client");
+    const { error } = await aidwar.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/set-password`,
+    });
+    setNote(error ? "We couldn't send it just now." : `Sent to ${email}. You can set it any time.`);
+  }
+
   return (
-    <div className="absolute inset-0 z-20 grid place-items-center overflow-hidden bg-[#04100b] px-6 text-center text-white">
+    <div
+      className="absolute inset-0 z-20 overflow-y-auto bg-[#04100b] px-6 pb-10 pt-12 text-white"
+      data-testid="checkout-success"
+    >
       <Confetti />
-      <div className="relative">
-        <svg viewBox="0 0 96 96" className="mx-auto h-24 w-24" aria-hidden="true">
+      <div className="relative mx-auto max-w-sm">
+        <svg viewBox="0 0 96 96" className="mx-auto h-20 w-20" aria-hidden="true">
           <circle
             cx="48"
             cy="48"
@@ -273,12 +352,71 @@ function Success({ firstName }: { firstName: string }) {
             className="p9-check-mark"
           />
         </svg>
-        <h2 className="mt-6 text-[2rem] font-extrabold leading-tight tracking-[-0.03em]">
+        <h2 className="mt-5 text-center text-[1.9rem] font-extrabold leading-tight tracking-[-0.03em]">
           You're live-ready{firstName ? `, ${firstName}` : ""}!
         </h2>
-        <p className="mt-2 text-[16px] text-white/70">
-          Payment confirmed. Let's connect your WhatsApp number.
+        <p className="mt-1 text-center text-[15px] text-white/70">
+          Payment confirmed. Two quick things, then we connect your WhatsApp.
         </p>
+
+        <label htmlFor={`${uid}-biz`} className="mt-7 block text-[14px] font-semibold">
+          What's your business called?
+        </label>
+        <input
+          id={`${uid}-biz`}
+          value={business}
+          onChange={(e) => setBusiness(e.target.value)}
+          autoComplete="organization"
+          autoCapitalize="words"
+          placeholder="As customers know it"
+          className="mt-1.5 h-14 w-full rounded-2xl border border-white/15 bg-white/[0.06] px-4 text-[17px] text-white outline-none placeholder:text-white/35 focus:border-[#3ee6a0]"
+        />
+
+        <label htmlFor={`${uid}-pw`} className="mt-5 block text-[14px] font-semibold">
+          Set a password <span className="font-normal text-white/55">(optional)</span>
+        </label>
+        <div className="relative mt-1.5">
+          <input
+            id={`${uid}-pw`}
+            type={showPw ? "text" : "password"}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete="new-password"
+            placeholder="For log-in with your email"
+            className="h-14 w-full rounded-2xl border border-white/15 bg-white/[0.06] px-4 pr-14 text-[17px] text-white outline-none placeholder:text-white/35 focus:border-[#3ee6a0]"
+          />
+          <button
+            type="button"
+            onClick={() => setShowPw((s) => !s)}
+            aria-label={showPw ? "Hide password" : "Show password"}
+            className="absolute right-2 top-1/2 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-xl text-white/60"
+          >
+            {showPw ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+          </button>
+        </div>
+        {password ? <p className="mt-1.5 text-[12.5px] text-white/60">{strength.label}</p> : null}
+        <button
+          type="button"
+          onClick={() => void emailLink()}
+          className="mt-2 inline-flex min-h-11 items-center gap-1.5 text-[13.5px] font-semibold text-[#3ee6a0] underline-offset-2 hover:underline"
+        >
+          <Mail className="h-4 w-4" aria-hidden="true" /> Email me a link to set it later
+        </button>
+        {note ? (
+          <p role="status" className="mt-2 text-[13px] text-white/75">
+            {note}
+          </p>
+        ) : null}
+
+        <button
+          type="button"
+          onClick={() => void finish()}
+          disabled={busy}
+          className="p9-cta mt-6 w-full text-[17px]"
+          data-testid="success-continue"
+        >
+          {busy ? "Saving…" : "Continue to setup →"}
+        </button>
       </div>
     </div>
   );
@@ -291,15 +429,18 @@ export function Checkout999({
   onClose,
   returningPaymentId,
   adminTestPrice = null,
+  resumed = false,
 }: {
   open: boolean;
-  onClose: () => void;
+  /** `typed`: something was typed and not paid — the page's bar becomes "Finish setup". */
+  onClose: (state: { typed: boolean; paid: boolean }) => void;
   /** Back from a payment page Cashfree redirected to: confirm this one. */
   returningPaymentId?: string | null;
   /** Batch 80b: an admin's ₹1 live test (the server refuses anyone else). */
   adminTestPrice?: 1 | null;
+  /** Batch 81: back from the emailed log-in link (/999?resume=1). */
+  resumed?: boolean;
 }) {
-  const navigate = useNavigate();
   const uid = useId();
   const [values, setValues] = useState<CheckoutValues>(EMPTY_VALUES);
   const [loaded, setLoaded] = useState(false);
@@ -307,9 +448,7 @@ export function Checkout999({
   const [serverError, setServerError] = useState<Partial<Record<CheckoutField, string>>>({});
   const [stage, setStage] = useState<Stage>({ kind: "form" });
   const [notice, setNotice] = useState<string | null>(null);
-  const [existing, setExisting] = useState(false);
   const [signedIn, setSignedIn] = useState<string | null>(null);
-  const [showPw, setShowPw] = useState(false);
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [shake, setShake] = useState(0);
   const [honeypot, setHoneypot] = useState("");
@@ -317,7 +456,7 @@ export function Checkout999({
   const deps = useRef<Promise<CheckoutDeps> | null>(null);
   const getDeps = () => (deps.current ??= realDeps());
 
-  // What they typed before (this tab), once.
+  // What they typed before (this browser, 2 hours), once.
   useEffect(() => {
     setValues(loadSaved());
     setLoaded(true);
@@ -325,23 +464,51 @@ export function Checkout999({
   useEffect(() => {
     if (!loaded) return;
     try {
-      window.sessionStorage.setItem(SAVED_KEY, JSON.stringify(savedSubset(values)));
+      window.localStorage.setItem(
+        SAVED_KEY,
+        JSON.stringify({ ...savedSubset(values), at: Date.now() }),
+      );
     } catch {
       // private mode: kept in memory only
     }
   }, [values, loaded]);
 
-  // Already signed in (an existing AiDwar account in this browser)?
+  // Already signed in (an AiDwar account in this browser, or back from the link)?
   useEffect(() => {
     if (!open) return;
-    void getDeps()
-      .then(async () => {
-        const { aidwar } = await import("@/integrations/aidwar/client");
+    void import("@/integrations/aidwar/client")
+      .then(async ({ aidwar }) => {
         const { data } = await aidwar.auth.getSession();
         setSignedIn(data.session?.user.email ?? null);
       })
       .catch(() => setSignedIn(null));
   }, [open]);
+
+  const paid = stage.kind === "success";
+  const working = stage.kind === "working";
+
+  /** ✕, Escape, the scrim or a swipe down: the save screen once, then close. */
+  const requestClose = useCallback(() => {
+    if (working) return;
+    if (paid) return;
+    let seen = false;
+    try {
+      seen = window.sessionStorage.getItem(EXIT_SEEN_KEY) === "1";
+    } catch {
+      seen = true;
+    }
+    if (hasTyped(values) && !seen && stage.kind !== "exit") {
+      try {
+        window.sessionStorage.setItem(EXIT_SEEN_KEY, "1");
+      } catch {
+        // shown once anyway (this mount)
+      }
+      setStage({ kind: "exit" });
+      return;
+    }
+    if (stage.kind === "exit") setStage({ kind: "form" });
+    onClose({ typed: hasTyped(values), paid: false });
+  }, [working, paid, values, stage.kind, onClose]);
 
   // Focus, Escape and the page underneath while open.
   useEffect(() => {
@@ -358,7 +525,7 @@ export function Checkout999({
       });
     }, 60);
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && stage.kind !== "working") onClose();
+      if (e.key === "Escape") requestClose();
       if (e.key === "Tab" && panel.current) {
         const items = panel.current.querySelectorAll<HTMLElement>(
           'button:not([disabled]):not([tabindex="-1"]), input:not([tabindex="-1"]), [href]',
@@ -381,22 +548,16 @@ export function Checkout999({
       document.removeEventListener("keydown", onKey);
       prev?.focus?.({ preventScroll: true });
     };
-  }, [open, onClose, stage.kind, uid]);
+  }, [open, requestClose, uid]);
 
-  const done = useCallback(
-    (firstName: string) => {
-      setStage({ kind: "success", firstName });
-      try {
-        window.sessionStorage.removeItem(SAVED_KEY);
-      } catch {
-        // nothing kept
-      }
-      setTimeout(() => {
-        void navigate({ to: "/app/start", search: { step: "connect" } });
-      }, 1600);
-    },
-    [navigate],
-  );
+  const done = useCallback((firstName: string, organizationId: string | null) => {
+    setStage({ kind: "success", firstName, organizationId });
+    try {
+      window.localStorage.removeItem(SAVED_KEY);
+    } catch {
+      // nothing kept
+    }
+  }, []);
 
   // Back from Cashfree's own page (a redirect instead of the popup).
   useEffect(() => {
@@ -411,12 +572,8 @@ export function Checkout999({
         status = await d.confirm(returningPaymentId);
       }
       if (!live) return;
-      if (status === "paid") done(values.name.split(" ")[0] ?? "");
-      else
-        setStage({
-          kind: "failed",
-          message: "Payment didn't go through — try UPI again or another method.",
-        });
+      if (status === "paid") done(values.name.split(" ")[0] ?? "", null);
+      else setStage({ kind: "failed", message: PAY_FAILED });
     })();
     return () => {
       live = false;
@@ -428,23 +585,22 @@ export function Checkout999({
   const errors = allErrors(values, { signedIn: Boolean(signedIn) });
   const shownError = (f: CheckoutField): string | null =>
     serverError[f] ?? (touched[f] ? (errors[f] ?? null) : null);
+  const revealed = revealRest(values);
 
   const set = (f: CheckoutField) => (e: React.ChangeEvent<HTMLInputElement>) => {
     const v =
       f === "phone" ? e.target.value.replace(/[^\d+\s-]/g, "").slice(0, 16) : e.target.value;
     setValues((cur) => ({ ...cur, [f]: v }));
     setServerError((cur) => ({ ...cur, [f]: undefined }));
-    if (f === "email") setExisting(false);
   };
   const blur = (f: CheckoutField) => () => {
     if (values[f].trim()) setTouched((t) => ({ ...t, [f]: true }));
   };
 
   async function pay() {
-    if (stage.kind === "working") return;
+    if (working) return;
     setNotice(null);
-    const all = Object.fromEntries(FIELD_ORDER.map((f) => [f, true]));
-    setTouched(all);
+    setTouched(Object.fromEntries(FIELD_ORDER.map((f) => [f, true])));
     const firstBad = FIELD_ORDER.find((f) =>
       fieldError(f, values, { signedIn: Boolean(signedIn) }),
     );
@@ -460,7 +616,6 @@ export function Checkout999({
     try {
       outcome = await runCheckout({ ...values, honeypot }, await getDeps(), {
         report: (phase) => setStage({ kind: "working", phase }),
-        existingAccount: existing,
         signedIn: Boolean(signedIn),
         adminTestPrice,
       });
@@ -469,26 +624,18 @@ export function Checkout999({
     }
     switch (outcome.kind) {
       case "paid":
+        done(outcome.firstName, outcome.organizationId);
+        return;
       case "already":
-        done(outcome.firstName);
+        done(outcome.firstName, null);
         return;
       case "field":
         setStage({ kind: "form" });
         setServerError({ [outcome.field]: outcome.error });
         setShake((n) => n + 1);
         return;
-      case "needs_password":
-        setExisting(true);
-        setStage({ kind: "form" });
-        setValues((v) => ({ ...v, password: "" }));
-        setServerError({ password: outcome.message });
-        setTimeout(
-          () =>
-            panel.current
-              ?.querySelector<HTMLInputElement>(`#${CSS.escape(`${uid}-password`)}`)
-              ?.focus(),
-          30,
-        );
+      case "existing":
+        setStage({ kind: "existing", sentTo: outcome.sentTo });
         return;
       case "failed":
         setStage({ kind: "failed", message: outcome.message });
@@ -499,19 +646,14 @@ export function Checkout999({
     }
   }
 
-  const working = stage.kind === "working";
-  const strength = passwordStrength(values.password);
-  const fields = FIELD_ORDER.filter((f) => !(signedIn && (f === "email" || f === "password")));
+  const fields = FIELD_ORDER.filter((f) => f === "phone" || revealed).filter(
+    (f) => !(signedIn && f === "email"),
+  );
 
   const input = (f: CheckoutField) => {
     const id = `${uid}-${f}`;
     const err = shownError(f);
     const ok = Boolean(touched[f]) && !errors[f] && !serverError[f];
-    const describedBy = err
-      ? `${id}-err`
-      : f === "password" || f === "phone"
-        ? `${id}-hint`
-        : undefined;
     const common = {
       id,
       name: f,
@@ -520,8 +662,8 @@ export function Checkout999({
       onBlur: blur(f),
       disabled: working,
       "aria-invalid": err ? true : undefined,
-      "aria-describedby": describedBy,
-      className: inputClass(Boolean(err), ok),
+      "aria-describedby": err ? `${id}-err` : f === "phone" ? `${id}-hint` : undefined,
+      className: inputClass(Boolean(err), ok || (f === "phone" && revealed)),
     } as const;
     if (f === "phone") {
       return (
@@ -537,33 +679,12 @@ export function Checkout999({
             placeholder="98123 45670"
             className={cn(common.className, "pl-[4.5rem] tracking-wide")}
           />
-          {ok ? (
+          {revealed ? (
             <Check
               className="absolute right-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#10b981]"
               aria-hidden="true"
             />
           ) : null}
-        </div>
-      );
-    }
-    if (f === "password") {
-      return (
-        <div className="relative">
-          <input
-            {...common}
-            type={showPw ? "text" : "password"}
-            autoComplete={existing ? "current-password" : "new-password"}
-            placeholder={existing ? "Your AiDwar password" : "At least 8 characters"}
-            className={cn(common.className, "pr-14")}
-          />
-          <button
-            type="button"
-            onClick={() => setShowPw((s) => !s)}
-            aria-label={showPw ? "Hide password" : "Show password"}
-            className="absolute right-2 top-1/2 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-xl text-[#04100b]/55 hover:bg-[#f1f5f2]"
-          >
-            {showPw ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-          </button>
         </div>
       );
     }
@@ -573,16 +694,10 @@ export function Checkout999({
           {...common}
           type={f === "email" ? "email" : "text"}
           inputMode={f === "email" ? "email" : "text"}
-          autoComplete={f === "name" ? "name" : f === "business_name" ? "organization" : "email"}
+          autoComplete={f === "name" ? "name" : "email"}
           autoCapitalize={f === "email" ? "none" : "words"}
           spellCheck={false}
-          placeholder={
-            f === "name"
-              ? "Asha Rao"
-              : f === "business_name"
-                ? "As customers know it"
-                : "you@business.com"
-          }
+          placeholder={f === "name" ? "Asha Rao" : "you@business.com"}
         />
         {ok ? (
           <Check
@@ -593,6 +708,8 @@ export function Checkout999({
       </div>
     );
   };
+
+  const price = adminTestPrice === 1 ? 1 : 999;
 
   return (
     <AnimatePresence>
@@ -605,7 +722,7 @@ export function Checkout999({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            onClick={() => (working ? undefined : onClose())}
+            onClick={requestClose}
             aria-hidden="true"
           />
           <motion.div
@@ -619,8 +736,20 @@ export function Checkout999({
             animate={{ y: 0, x: 0 }}
             exit={{ y: "100%" }}
             transition={{ type: "spring", damping: 32, stiffness: 380, mass: 0.8 }}
+            drag={working || paid ? false : "y"}
+            dragConstraints={{ top: 0, bottom: 0 }}
+            dragElastic={{ top: 0, bottom: 0.6 }}
+            onDragEnd={(_e, info) => {
+              if (info.offset.y > 120 || info.velocity.y > 700) requestClose();
+            }}
           >
-            {stage.kind === "success" ? <Success firstName={stage.firstName} /> : null}
+            {paid ? (
+              <Success
+                firstName={stage.firstName}
+                organizationId={stage.organizationId}
+                email={values.email}
+              />
+            ) : null}
 
             {/* header: no nav, only ✕ */}
             <div className="flex items-center gap-2 px-5 pb-2 pt-3 sm:pt-5">
@@ -635,7 +764,7 @@ export function Checkout999({
               <button
                 type="button"
                 data-close
-                onClick={onClose}
+                onClick={requestClose}
                 disabled={working}
                 aria-label="Close checkout"
                 className="ml-auto mt-1 grid h-11 w-11 place-items-center rounded-full text-[#04100b]/70 transition-colors hover:bg-[#04100b]/5 disabled:opacity-40"
@@ -653,6 +782,7 @@ export function Checkout999({
                 refused). Excluded from revenue; Meta gets it only as a Test Events call.
               </p>
             ) : null}
+
             {/* order summary, pinned */}
             <div className="mx-4 rounded-2xl bg-[#04100b] text-white">
               <button
@@ -668,7 +798,7 @@ export function Checkout999({
                   <span className="block text-[15px] font-bold">
                     {ORDER.title} · {ORDER.line}
                   </span>
-                  <span className="block text-[13px] text-white/60">{ORDER.total}</span>
+                  <span className="block text-[13px] text-white/60">Total today ₹{price}</span>
                 </span>
                 <ChevronDown
                   className={cn(
@@ -696,159 +826,230 @@ export function Checkout999({
                   ))}
                   <li className="flex justify-between border-t border-white/10 pt-2 font-semibold text-white">
                     <span>Total today</span>
-                    <span>₹999</span>
+                    <span>₹{price}</span>
                   </li>
                 </ul>
               ) : null}
             </div>
 
-            <form
-              className="flex min-h-0 flex-1 flex-col"
-              noValidate
-              onSubmit={(e) => {
-                e.preventDefault();
-                void pay();
-              }}
-            >
-              <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-4 [overscroll-behavior:contain]">
-                {signedIn ? (
-                  <p className="mb-4 rounded-2xl bg-white px-4 py-3 text-[14px] text-[#04100b]/70">
-                    Signed in as <span className="font-semibold text-[#04100b]">{signedIn}</span>
-                  </p>
-                ) : null}
-
-                <div key={shake} className={cn("space-y-4", shake > 0 && "p9-shake")}>
-                  {fields.map((f) => (
-                    <Field
-                      key={f}
-                      id={`${uid}-${f}`}
-                      label={f === "password" && existing ? "Your AiDwar password" : LABELS[f]}
-                      error={shownError(f)}
-                      hint={
-                        f === "password" && !existing ? (
-                          <span className="flex items-center gap-2">
-                            <span className="flex gap-1" aria-hidden="true">
-                              {[1, 2, 3].map((n) => (
-                                <i
-                                  key={n}
-                                  className={cn(
-                                    "h-1.5 w-7 rounded-full transition-colors",
-                                    strength.score >= n
-                                      ? strength.score === 1
-                                        ? "bg-[#f59e0b]"
-                                        : "bg-[#10b981]"
-                                      : "bg-[#04100b]/10",
-                                  )}
-                                />
-                              ))}
-                            </span>
-                            {strength.label}
-                          </span>
-                        ) : f === "phone" ? (
-                          "Your invoice and setup help come here."
-                        ) : undefined
-                      }
-                    >
-                      {input(f)}
-                    </Field>
-                  ))}
-                </div>
-                {/* A hidden field no person fills (bots do). */}
-                <div
-                  aria-hidden="true"
-                  className="absolute -left-[9999px] top-0 h-px w-px overflow-hidden"
-                >
-                  <label>
-                    Company website
-                    <input
-                      tabIndex={-1}
-                      autoComplete="off"
-                      name="company_website_confirm"
-                      value={honeypot}
-                      onChange={(e) => setHoneypot(e.target.value)}
-                    />
-                  </label>
-                </div>
-              </div>
-
-              {/* trust + pay, always in reach */}
-              <div className="border-t border-[#04100b]/10 bg-white/80 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur">
-                {stage.kind === "failed" || notice ? (
-                  <div
-                    role="alert"
-                    data-testid="checkout-alert"
-                    className="mb-3 flex gap-2.5 rounded-2xl border border-[#fdba74] bg-[#fff7ed] px-3.5 py-3 text-[14px] font-medium leading-snug text-[#9a3412]"
-                  >
-                    <span
-                      aria-hidden="true"
-                      className="mt-0.5 grid h-5 w-5 flex-none place-items-center rounded-full bg-[#ea580c] text-[12px] font-extrabold text-white"
-                    >
-                      !
-                    </span>
-                    <span>
-                      {stage.kind === "failed" ? stage.message : notice}
-                      {stage.kind === "failed" ? (
-                        <span className="mt-0.5 block text-[12.5px] font-normal text-[#9a3412]/80">
-                          Your account is saved and nothing was charged. Everything you typed is
-                          still here.
-                        </span>
-                      ) : null}
-                    </span>
-                  </div>
-                ) : null}
-                <div className="mb-3 flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 text-[12px] font-medium text-[#04100b]/60">
-                  <span className="inline-flex items-center gap-1">
-                    <Lock className="h-3.5 w-3.5 text-[#10b981]" aria-hidden="true" /> Secured by
-                    Cashfree
-                  </span>
-                  <span className="inline-flex gap-1" aria-label="UPI, cards and netbanking">
-                    {["UPI", "Cards", "Netbanking"].map((m) => (
-                      <span
-                        key={m}
-                        className="rounded-md border border-[#04100b]/12 bg-white px-1.5 py-0.5 text-[11px] font-bold text-[#04100b]/75"
-                      >
-                        {m}
-                      </span>
-                    ))}
-                  </span>
-                  <span className="inline-flex items-center gap-1">
-                    <ShieldCheck className="h-3.5 w-3.5 text-[#10b981]" aria-hidden="true" /> 7-day
-                    money-back
-                  </span>
-                  <span>Cancel anytime</span>
-                </div>
+            {stage.kind === "exit" ? (
+              /* Batch 81: one gentle save screen (once per session). */
+              <div
+                className="flex flex-1 flex-col items-center justify-center px-6 text-center"
+                data-testid="exit-intent"
+              >
+                <span className="grid h-16 w-16 place-items-center rounded-full bg-[#e7f8f0] text-[#047857]">
+                  <ShieldCheck className="h-8 w-8" aria-hidden="true" />
+                </span>
+                <h3 className="mt-5 text-[1.6rem] font-extrabold tracking-[-0.03em] text-[#04100b]">
+                  {EXIT.title}
+                </h3>
+                <p className="mt-2 text-[16px] text-[#04100b]/70">{EXIT.body}</p>
                 <button
-                  type="submit"
-                  disabled={working}
-                  aria-busy={working || undefined}
-                  className="p9-cta w-full text-[17px] disabled:cursor-progress disabled:opacity-90"
-                  data-testid="pay-999"
+                  type="button"
+                  onClick={() => setStage({ kind: "form" })}
+                  className="p9-cta mt-7 w-full max-w-xs text-[17px]"
+                  data-testid="exit-continue"
                 >
-                  {working ? (
-                    <span className="inline-flex items-center gap-2.5">
-                      <span
-                        className="h-4 w-4 animate-spin rounded-full border-2 border-[#022c1b]/30 border-t-[#022c1b]"
-                        aria-hidden="true"
-                      />
-                      {PHASE_TEXT[stage.phase]}
-                    </span>
-                  ) : stage.kind === "failed" ? (
-                    `Try again · Pay ₹${adminTestPrice === 1 ? 1 : 999} →`
-                  ) : adminTestPrice === 1 ? (
-                    "Pay ₹1 → (admin test)"
-                  ) : (
-                    ORDER.pay
-                  )}
+                  {EXIT.continue}
                 </button>
-                <p className="mt-2 text-center text-[11.5px] leading-snug text-[#04100b]/50">
-                  By paying you agree to AiDwar's Terms and Privacy Policy (aidwar.in/terms). Meta
-                  bills your messages directly.
-                </p>
-                <p className="sr-only" aria-live="polite">
-                  {working ? PHASE_TEXT[stage.phase] : ""}
-                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStage({ kind: "form" });
+                    onClose({ typed: true, paid: false });
+                  }}
+                  className="mt-3 min-h-11 px-4 text-[15px] font-semibold text-[#04100b]/60"
+                  data-testid="exit-close"
+                >
+                  {EXIT.close}
+                </button>
               </div>
-            </form>
+            ) : stage.kind === "existing" ? (
+              /* Batch 81: the email or number already has an account. */
+              <div
+                className="flex flex-1 flex-col items-center justify-center px-6 text-center"
+                data-testid="welcome-back"
+              >
+                <span className="grid h-16 w-16 place-items-center rounded-full bg-[#e7f8f0] text-[#047857]">
+                  <Mail className="h-8 w-8" aria-hidden="true" />
+                </span>
+                <h3 className="mt-5 text-[1.6rem] font-extrabold tracking-[-0.03em] text-[#04100b]">
+                  Welcome back{values.name ? `, ${values.name.split(" ")[0]}` : ""}!
+                </h3>
+                <p className="mt-2 text-[16px] leading-relaxed text-[#04100b]/70">
+                  {stage.sentTo
+                    ? `You already have an AiDwar account. We've emailed a one-time log-in link to ${stage.sentTo} — open it on this phone and you'll land right back here to pay.`
+                    : "You already have an AiDwar account. Log in with your email and password to continue."}
+                </p>
+                <p className="mt-2 text-[13.5px] text-[#04100b]/55">Your details are saved.</p>
+                <button
+                  type="button"
+                  onClick={() => void pay()}
+                  className="p9-cta mt-7 w-full max-w-xs text-[16px]"
+                >
+                  Resend the link
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setValues((v) => ({ ...v, email: "" }));
+                    setStage({ kind: "form" });
+                  }}
+                  className="mt-3 min-h-11 px-4 text-[15px] font-semibold text-[#04100b]/60"
+                >
+                  Use a different email
+                </button>
+              </div>
+            ) : (
+              <form
+                className="flex min-h-0 flex-1 flex-col"
+                noValidate
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void pay();
+                }}
+              >
+                <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-4 [overscroll-behavior:contain]">
+                  {resumed && signedIn ? (
+                    <p className="mb-4 rounded-2xl bg-[#e7f8f0] px-4 py-3 text-[14px] font-medium text-[#065f46]">
+                      Welcome back — you're signed in. Tap Pay to finish.
+                    </p>
+                  ) : signedIn ? (
+                    <p className="mb-4 rounded-2xl bg-white px-4 py-3 text-[14px] text-[#04100b]/70">
+                      Signed in as <span className="font-semibold text-[#04100b]">{signedIn}</span>
+                    </p>
+                  ) : null}
+
+                  <div key={shake} className={cn("space-y-4", shake > 0 && "p9-shake")}>
+                    <AnimatePresence initial={false}>
+                      {fields.map((f) => (
+                        <motion.div
+                          key={f}
+                          initial={f === "phone" ? false : { opacity: 0, y: 14, height: 0 }}
+                          animate={{ opacity: 1, y: 0, height: "auto" }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={{ type: "spring", damping: 28, stiffness: 320 }}
+                        >
+                          <Field
+                            id={`${uid}-${f}`}
+                            label={LABELS[f]}
+                            error={shownError(f)}
+                            hint={
+                              f === "phone"
+                                ? revealed
+                                  ? "Your invoice and setup help come here."
+                                  : "Start with your WhatsApp number — that's where Aiden works."
+                                : f === "email"
+                                  ? "For your invoice and log-in. No password needed now."
+                                  : undefined
+                            }
+                          >
+                            {input(f)}
+                          </Field>
+                        </motion.div>
+                      ))}
+                    </AnimatePresence>
+                  </div>
+                  {/* A hidden field no person fills (bots do). */}
+                  <div
+                    aria-hidden="true"
+                    className="absolute -left-[9999px] top-0 h-px w-px overflow-hidden"
+                  >
+                    <label>
+                      Company website
+                      <input
+                        tabIndex={-1}
+                        autoComplete="off"
+                        name="company_website_confirm"
+                        value={honeypot}
+                        onChange={(e) => setHoneypot(e.target.value)}
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                {/* trust + pay, always in reach */}
+                <div className="border-t border-[#04100b]/10 bg-white/80 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur">
+                  {stage.kind === "failed" || notice ? (
+                    <div
+                      role="alert"
+                      data-testid="checkout-alert"
+                      className="mb-3 flex gap-2.5 rounded-2xl border border-[#fdba74] bg-[#fff7ed] px-3.5 py-3 text-[14px] font-medium leading-snug text-[#9a3412]"
+                    >
+                      <span
+                        aria-hidden="true"
+                        className="mt-0.5 grid h-5 w-5 flex-none place-items-center rounded-full bg-[#ea580c] text-[12px] font-extrabold text-white"
+                      >
+                        !
+                      </span>
+                      <span>
+                        {stage.kind === "failed" ? stage.message : notice}
+                        {stage.kind === "failed" ? (
+                          <span className="mt-0.5 block text-[12.5px] font-normal text-[#9a3412]/80">
+                            Your account is saved and nothing was charged. Everything you typed is
+                            still here.
+                          </span>
+                        ) : null}
+                      </span>
+                    </div>
+                  ) : null}
+                  <div className="mb-3 flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 text-[12px] font-medium text-[#04100b]/60">
+                    <span className="inline-flex items-center gap-1">
+                      <Lock className="h-3.5 w-3.5 text-[#10b981]" aria-hidden="true" /> Secured by
+                      Cashfree
+                    </span>
+                    <span className="inline-flex gap-1" aria-label="UPI, cards and netbanking">
+                      {["UPI", "Cards", "Netbanking"].map((m) => (
+                        <span
+                          key={m}
+                          className="rounded-md border border-[#04100b]/12 bg-white px-1.5 py-0.5 text-[11px] font-bold text-[#04100b]/75"
+                        >
+                          {m}
+                        </span>
+                      ))}
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <ShieldCheck className="h-3.5 w-3.5 text-[#10b981]" aria-hidden="true" />{" "}
+                      7-day money-back
+                    </span>
+                    <span>Cancel anytime</span>
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={working}
+                    aria-busy={working || undefined}
+                    className="p9-cta w-full text-[17px] disabled:cursor-progress disabled:opacity-90"
+                    data-testid="pay-999"
+                  >
+                    {working ? (
+                      <span className="inline-flex items-center gap-2.5">
+                        <span
+                          className="h-4 w-4 animate-spin rounded-full border-2 border-[#022c1b]/30 border-t-[#022c1b]"
+                          aria-hidden="true"
+                        />
+                        {PHASE_TEXT[stage.phase]}
+                      </span>
+                    ) : !revealed ? (
+                      "Continue →"
+                    ) : stage.kind === "failed" ? (
+                      `Try again · Pay ₹${price} →`
+                    ) : adminTestPrice === 1 ? (
+                      "Pay ₹1 → (admin test)"
+                    ) : (
+                      ORDER.pay
+                    )}
+                  </button>
+                  <p className="mt-2 text-center text-[11.5px] leading-snug text-[#04100b]/50">
+                    By paying you agree to AiDwar's Terms and Privacy Policy (aidwar.in/terms). Meta
+                    bills your messages directly.
+                  </p>
+                  <p className="sr-only" aria-live="polite">
+                    {working ? PHASE_TEXT[stage.phase] : ""}
+                  </p>
+                </div>
+              </form>
+            )}
           </motion.div>
         </div>
       ) : null}

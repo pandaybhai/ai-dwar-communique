@@ -1,4 +1,4 @@
-import { forwardRef } from "react";
+import { forwardRef, useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import {
   BadgeIndianRupee,
@@ -9,7 +9,7 @@ import {
   Sparkles,
   type LucideIcon,
 } from "lucide-react";
-import { GET_TILES, HERO, PER_MONTH, STEPS, STICKY } from "@/lib/page-999";
+import { ANCHOR, GET_TILES, HERO, PER_MONTH, PRICE_BLOCK, STEPS, STICKY } from "@/lib/page-999";
 import { MagneticCta, Reveal, useInView, usePlaying } from "@/components/p999/p999-motion";
 import { cn } from "@/lib/utils";
 
@@ -193,7 +193,7 @@ export function LiveIn10() {
         id="p9-steps"
         kicker="Live in 10 minutes"
         title="Three steps. No developer."
-        sub="Most businesses are answering customers with Aiden the same evening."
+        sub="Connect, teach Aiden, go live — no developer, no setup fee."
       />
       <ol
         ref={ref}
@@ -274,7 +274,7 @@ export function Proof() {
             Live on AiDwar · Hyderabad
           </p>
           <p className="mt-3 text-[4.25rem] font-extrabold leading-none tracking-[-0.05em] text-white sm:text-[5.5rem]">
-            1,900+
+            1,909
           </p>
           <p className="mt-2 text-[18px] font-semibold text-white/85">
             customers reached in one Diwali campaign
@@ -473,38 +473,149 @@ export function Footer() {
   );
 }
 
-/* -------------------------------------------------------- sticky bar --- */
+/* ---------------------------------------------------- price + anchor --- */
 
-export function StickyBar({
-  on,
+/**
+ * Batch 81: the price anchor near the top — what the same job costs another
+ * way (generic: a person's salary, "tools" in general), then us.
+ */
+export function AnchorRow() {
+  return (
+    <ul
+      className="p9-fade mx-auto mt-7 grid max-w-md gap-2 text-left lg:mx-0"
+      style={{ ["--d" as string]: "0.65s" }}
+      aria-label="What the same job costs"
+      data-testid="anchor-row"
+    >
+      {ANCHOR.map((a) => (
+        <li
+          key={a.label}
+          className={cn(
+            "flex items-center justify-between gap-3 rounded-xl px-3.5 py-2.5 text-[14px]",
+            a.us
+              ? "bg-[var(--mint)] font-extrabold text-[#022c1b]"
+              : "border border-white/10 bg-white/[0.04] text-white/70",
+          )}
+        >
+          <span>{a.label}</span>
+          <span
+            className={a.us ? "" : "font-semibold text-white/85 line-through decoration-white/30"}
+          >
+            {a.value}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** Batch 81: the compact price + CTA block repeated down the page. */
+export function PriceBlock({
+  where,
+  dark = false,
   onStart,
   onWarm,
 }: {
-  on: boolean;
+  where: string;
+  dark?: boolean;
   onStart: () => void;
   onWarm: () => void;
 }) {
   return (
+    <section
+      className={cn("px-4 sm:px-6", dark ? "p9-dark pb-16" : "p9-paper pb-16")}
+      aria-label="AiDwar Basic price"
+      data-testid={`price-block-${where}`}
+    >
+      <Reveal
+        className={cn(
+          "mx-auto flex max-w-3xl flex-col items-center gap-4 rounded-[1.5rem] px-6 py-6 text-center sm:flex-row sm:justify-between sm:text-left",
+          dark ? "border border-white/10 bg-white/[0.05]" : "bg-[var(--ink)] text-white",
+        )}
+      >
+        <div>
+          <p className="text-[1.5rem] font-extrabold tracking-[-0.03em] text-white">
+            {PRICE_BLOCK.title}
+          </p>
+          <p className="mt-1 text-[14px] text-white/70">{PRICE_BLOCK.line}</p>
+        </div>
+        <button
+          type="button"
+          onClick={onStart}
+          onPointerEnter={onWarm}
+          onTouchStart={onWarm}
+          className="p9-cta w-full flex-none px-6 sm:w-auto"
+        >
+          {PRICE_BLOCK.cta}
+        </button>
+      </Reveal>
+    </section>
+  );
+}
+
+/* -------------------------------------------------------- sticky bar --- */
+
+/**
+ * Batch 81: the growth bar — ₹999/month and one real proof line that changes
+ * every 4 s on the left, a big button on the right; thumb-height (56px+) and
+ * clear of the phone's home bar. After the checkout was closed unpaid with
+ * something typed, the button says "Finish setup — ₹999 →" and reopens it
+ * with their details kept.
+ */
+export function StickyBar({
+  on,
+  finishSetup = false,
+  onStart,
+  onWarm,
+}: {
+  on: boolean;
+  finishSetup?: boolean;
+  onStart: () => void;
+  onWarm: () => void;
+}) {
+  const [i, setI] = useState(0);
+  useEffect(() => {
+    if (!on) return;
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    const t = window.setInterval(
+      () => setI((n) => (n + 1) % STICKY.proofs.length),
+      STICKY.rotateMs,
+    );
+    return () => window.clearInterval(t);
+  }, [on]);
+  return (
     <div
-      className="p9-sticky fixed inset-x-0 bottom-0 z-40 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 sm:px-6"
+      className="p9-sticky fixed inset-x-0 bottom-0 z-40 px-3 pb-[max(0.6rem,env(safe-area-inset-bottom))] pt-2 sm:px-6"
       data-on={on ? "true" : "false"}
       data-testid="sticky-bar"
       aria-hidden={on ? undefined : true}
     >
-      <div className="mx-auto flex max-w-xl items-center justify-between gap-3 rounded-full border border-white/10 bg-[#04100b]/90 py-2 pl-5 pr-2 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)] backdrop-blur-xl">
-        <p className="text-[15px] font-extrabold text-white">
-          {STICKY.price}
-          <span className="hidden font-medium text-white/55 sm:inline"> · zero markup</span>
-        </p>
+      <div className="mx-auto flex max-w-2xl items-center justify-between gap-3 rounded-[1.4rem] border border-white/10 bg-[#04100b]/95 py-2 pl-4 pr-2 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)] backdrop-blur-xl">
+        <div className="min-w-0">
+          <p
+            className={`whitespace-nowrap font-extrabold leading-tight text-white ${finishSetup ? "text-[15px]" : "text-[17px]"}`}
+          >
+            {STICKY.price}
+          </p>
+          <p
+            className="relative h-[18px] overflow-hidden text-[12.5px] font-medium text-[var(--mint)]"
+            aria-live="off"
+          >
+            <span key={i} className="p9-proof block truncate">
+              ✓ {STICKY.proofs[i]}
+            </span>
+          </p>
+        </div>
         <button
           type="button"
           tabIndex={on ? 0 : -1}
           onClick={onStart}
           onPointerEnter={onWarm}
           onTouchStart={onWarm}
-          className="p9-cta min-h-11 px-5 text-[15px]"
+          className={`p9-cta min-h-14 flex-none whitespace-nowrap ${finishSetup ? "px-4 text-[15px]" : "px-5 text-[16px]"}`}
+          data-testid="sticky-cta"
         >
-          {STICKY.cta}
+          {finishSetup ? STICKY.finish : STICKY.cta}
         </button>
       </div>
     </div>

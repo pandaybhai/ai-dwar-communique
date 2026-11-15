@@ -299,190 +299,9 @@ describe("the Basic plan", () => {
 
 /* ============================================================ checkout === */
 
-const GOOD: CheckoutValues = {
-  phone: "98123 45670",
-  name: "Asha Rao",
-  business_name: "Asha Jewellers",
-  email: "asha@example.com",
-  password: "Diwali-2026!",
-};
-
-function fakeDeps(over: Partial<CheckoutDeps> = {}) {
-  const calls: string[] = [];
-  const state = { session: null as null | { userId: string; token: string } };
-  const deps: CheckoutDeps = {
-    saveLead: async (body) => {
-      calls.push(`lead:${String(body["phone"])}`);
-      return { ok: true };
-    },
-    session: async () => state.session,
-    signUp: async (input) => {
-      calls.push(`signUp:${input.email}:${input.fullName}`);
-      state.session = { userId: OWNER, token: "tok" };
-      return { userId: OWNER, token: "tok", error: null };
-    },
-    signIn: async () => {
-      calls.push("signIn");
-      return { userId: null, token: null, error: "Invalid login credentials" };
-    },
-    startPay: async (_t, body) => {
-      calls.push(`pay${body["organization_id"] ? ":org" : ""}`);
-      return {
-        status: 200,
-        body: {
-          ok: true,
-          payment_id: "pay-1",
-          checkout: { payment_session_id: "s", mode: "sandbox" },
-          meta: {
-            event: "AddPaymentInfo",
-            event_id: "AddPaymentInfo.pay-1",
-            params: { value: 999 },
-          },
-        },
-      };
-    },
-    createWorkspace: async () => {
-      calls.push("workspace");
-      return { orgId: ORG };
-    },
-    openGateway: async () => {
-      calls.push("gateway");
-      return { error: null };
-    },
-    confirm: async () => {
-      calls.push("confirm");
-      return "paid";
-    },
-    onRegistered: () => calls.push("registered"),
-    onAddPaymentInfo: (m) => calls.push(`api:${m.event_id}`),
-    wait: async () => undefined,
-    ...over,
-  };
-  return { deps, calls, state };
-}
-
-describe("the one-screen checkout", () => {
-  it("end to end: lead once → the existing sign-up → pay → Cashfree's popup → confirmed paid", async () => {
-    const { deps, calls } = fakeDeps();
-    const out = await runCheckout(GOOD, deps);
-    expect(out).toEqual({ kind: "paid", paymentId: "pay-1", firstName: "Asha" });
-    expect(calls).toEqual([
-      "lead:98123 45670",
-      "signUp:asha@example.com:Asha Rao",
-      "registered",
-      "pay",
-      "api:AddPaymentInfo.pay-1",
-      "gateway",
-      "confirm",
-    ]);
-  });
-
-  it("uses the existing email + password sign-up (the same auth.signUp call /signup makes); no sign-up fork", () => {
-    const sheet = readFileSync("src/components/p999/checkout-999.tsx", "utf8");
-    const signup = readFileSync("src/routes/signup.tsx", "utf8");
-    for (const src of [sheet, signup]) {
-      expect(src).toContain("aidwar.auth.signUp({");
-      expect(src).toContain("emailRedirectTo: `${window.location.origin}/login`,");
-    }
-    expect(sheet).toContain(
-      "data: fullName ? { phone: e164, full_name: fullName } : { phone: e164 },",
-    );
-    expect(signup).toContain("data: fullName ? { phone, full_name: fullName } : { phone },");
-    expect(sheet).not.toMatch(/admin\.createUser|\/auth\/v1\/admin/);
-  });
-
-  it("an email that already has an account: signs in with the typed password, or asks for it inline (no page change)", async () => {
-    const taken = { userId: null, token: null, error: "User already registered" };
-    const a = fakeDeps({
-      signUp: async () => taken,
-      signIn: async () => ({ userId: OWNER, token: "tok", error: null }),
-    });
-    expect((await runCheckout(GOOD, a.deps)).kind).toBe("paid");
-
-    const b = fakeDeps({ signUp: async () => taken });
-    const out = await runCheckout(GOOD, b.deps);
-    expect(out).toMatchObject({ kind: "needs_password" });
-    expect(b.calls).not.toContain("pay");
-    // The sheet then asks only for that account's password and continues.
-    const c = fakeDeps({ signIn: async () => ({ userId: OWNER, token: "tok", error: null }) });
-    expect((await runCheckout(GOOD, c.deps, { existingAccount: true })).kind).toBe("paid");
-    expect(c.calls.some((x) => x.startsWith("signUp"))).toBe(false);
-  });
-
-  it("a failed payment keeps the account (no plan) and everything typed; Try again doesn't sign up twice", async () => {
-    const f = fakeDeps({ confirm: async () => "failed" });
-    const values = { ...GOOD };
-    const out = await runCheckout(values, f.deps);
-    expect(out).toEqual({ kind: "failed", message: PAY_FAILED, paymentId: "pay-1" });
-    expect(values).toEqual(GOOD);
-    expect(PAY_FAILED).toBe("Payment didn't go through — try UPI again or another method.");
-    // The retry: the session is there, so straight to a new payment.
-    f.deps.confirm = async () => "paid";
-    expect((await runCheckout(values, f.deps)).kind).toBe("paid");
-    expect(f.calls.filter((x) => x.startsWith("signUp"))).toHaveLength(1);
-  });
-
-  it("no workspace yet: made with the onboarding's own create path, then paid", async () => {
-    let first = true;
-    const { deps, calls } = fakeDeps({
-      startPay: async (_t, body) => {
-        calls.push(`pay${body["organization_id"] ? ":org" : ""}`);
-        if (first) {
-          first = false;
-          return { status: 409, body: { code: "needs_workspace", error: "No workspace yet." } };
-        }
-        return {
-          status: 200,
-          body: {
-            ok: true,
-            payment_id: "pay-2",
-            checkout: { payment_session_id: "s", mode: "sandbox" },
-          },
-        };
-      },
-    });
-    expect((await runCheckout(GOOD, deps)).kind).toBe("paid");
-    expect(calls).toContain("workspace");
-    expect(calls).toContain("pay:org");
-    const sheet = readFileSync("src/components/p999/checkout-999.tsx", "utf8");
-    expect(sheet).toContain('aidwar.rpc("create_organization", { org_name: orgName })');
-    expect(sheet).toContain("{ name, url: null, about: null, brand: null, noWebsite: true },");
-  });
-
-  it("bad fields stop before anything is sent; the honeypot ends quietly", async () => {
-    const a = fakeDeps();
-    expect(await runCheckout({ ...GOOD, phone: "12345" }, a.deps)).toMatchObject({
-      kind: "field",
-      field: "phone",
-    });
-    expect(a.calls).toEqual([]);
-    const b = fakeDeps();
-    expect((await runCheckout({ ...GOOD, honeypot: "http://spam" }, b.deps)).kind).toBe("failed");
-    expect(b.calls).toEqual([]);
-  });
-
-  it("the sheet: one screen, no nav/footer/outbound links, ✕ closes, typed data kept (password in memory only)", () => {
-    const sheet = readFileSync("src/components/p999/checkout-999.tsx", "utf8");
-    expect(sheet).not.toMatch(/<a\s|<Link\b|href=/);
-    expect(sheet).toContain('aria-label="Close checkout"');
-    expect(sheet).toContain(
-      "window.sessionStorage.setItem(SAVED_KEY, JSON.stringify(savedSubset(values)));",
-    );
-    expect(sheet).not.toMatch(/history\.(pushState|replaceState)|popstate|beforeunload/);
-    expect(sheet).toContain('redirectTarget: "_modal"');
-    // The keyboards and autofill each field needs.
-    for (const s of [
-      'inputMode="numeric"',
-      'autoComplete="tel-national"',
-      'f === "name" ? "name"',
-      '"organization"',
-      'type={f === "email" ? "email" : "text"}',
-      '"new-password"',
-    ]) {
-      expect(sheet).toContain(s);
-    }
-  });
-});
+// Batch 81: the checkout became phone-first with no password (the account is
+// made on the server); its tests live in batch81-999.test.tsx.
+const GOOD = { phone: "98123 45670", name: "Asha Rao", email: "asha@example.com" };
 
 /* =============================================================== lead === */
 
@@ -814,18 +633,20 @@ describe("the /999 page", () => {
     expect(base).not.toContain("client_rate_for");
   });
 
-  it("sticky bar: after the hero button scrolls away; hidden while checkout or the final button is on screen", () => {
+  // Batch 81: the growth bar — shows from 30% scrolled or once the hero's
+  // button has gone, hidden only while the checkout is open.
+  it("sticky bar: from 30% scrolled or once the hero button has gone; hidden only while checkout is open", () => {
     expect(
-      stickyVisible({ heroCtaVisible: true, finalCtaVisible: false, checkoutOpen: false }),
+      stickyVisible({ scrolledFraction: 0.1, heroCtaVisible: true, checkoutOpen: false }),
     ).toBe(false);
     expect(
-      stickyVisible({ heroCtaVisible: false, finalCtaVisible: false, checkoutOpen: false }),
+      stickyVisible({ scrolledFraction: 0.1, heroCtaVisible: false, checkoutOpen: false }),
     ).toBe(true);
     expect(
-      stickyVisible({ heroCtaVisible: false, finalCtaVisible: false, checkoutOpen: true }),
-    ).toBe(false);
+      stickyVisible({ scrolledFraction: 0.3, heroCtaVisible: true, checkoutOpen: false }),
+    ).toBe(true);
     expect(
-      stickyVisible({ heroCtaVisible: false, finalCtaVisible: true, checkoutOpen: false }),
+      stickyVisible({ scrolledFraction: 0.9, heroCtaVisible: false, checkoutOpen: true }),
     ).toBe(false);
   });
 
@@ -882,7 +703,8 @@ describe("the /999 page", () => {
     expect(text).toMatch(/Your\s+AI\s+salesperson\s+on\s+WhatsApp\./);
     expect(text).toContain("Pay Meta directly — we add");
     expect(text).toContain("7-day money-back · Live in 10 minutes · Cancel anytime");
-    expect(text).toContain("Start for ₹999");
+    // Batch 81: "Get AiDwar for ₹999 →".
+    expect(text).toContain("Get AiDwar for ₹999");
     for (const banned of [
       /GST/,
       /1,178/,
@@ -904,7 +726,8 @@ describe("the /999 page", () => {
     ]);
     for (const q of questions) expect(text).toContain(q.replace(/'/g, "'"));
     // The only real figure is ZOORI's, already public on /start; the screen is the real inbox.
-    expect(text).toContain("1,900+");
+    // Batch 81: the verified count (1,909 recipients, Diwali campaign).
+    expect(text).toContain("1,909");
     expect(html).toContain('src="/999-inbox-aiden.webp"');
     // Checkout code stays out of the first paint (lazy chunks).
     const page = readFileSync("src/components/p999/page-999.tsx", "utf8");
