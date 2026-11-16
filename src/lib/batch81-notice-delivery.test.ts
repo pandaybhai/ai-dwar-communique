@@ -408,6 +408,29 @@ describe("Admin's red 'Not delivered' badge", () => {
     expect(after.has(ORG)).toBe(false);
   });
 
+  it("decided by Meta's status time, not by when the row was written (statuses arrive out of order)", async () => {
+    const at = (h: number) => new Date(Date.parse(AT) + h * 3_600_000).toISOString();
+    const db = world({
+      activity_log: [
+        // written first, but it's the newer outcome: delivered at +2h
+        {
+          organization_id: ORG,
+          action: "notice_delivered",
+          details: { at: at(2) },
+          created_at: at(5),
+        },
+        // a retry wrote the older failure (+1h) later
+        {
+          organization_id: ORG,
+          action: "notice_undelivered",
+          details: { at: at(1), kind: "invoice", error: "x" },
+          created_at: at(6),
+        },
+      ],
+    });
+    expect((await undeliveredBadges(db.supabase as never, Date.parse(at(7)))).has(ORG)).toBe(false);
+  });
+
   it("Customers and Billing both show it on the workspace's row", () => {
     const customers = readFileSync("src/routes/admin/customers.tsx", "utf8");
     const billing = readFileSync("src/routes/admin/billing.tsx", "utf8");

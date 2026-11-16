@@ -334,11 +334,21 @@ export async function undeliveredBadges(
       .gte("created_at", new Date(now - BADGE_WITHIN_MS).toISOString())
       .order("created_at", { ascending: false })
       .limit(2000);
+    // The latest outcome decides, by Meta's own status time (details.at):
+    // statuses can be processed out of order (retries, catch-up), so the
+    // time a row was written isn't when it happened.
+    const timeOf = (r: Record<string, unknown>) => {
+      const at = Date.parse(String(((r["details"] ?? {}) as Record<string, unknown>)["at"] ?? ""));
+      return Number.isFinite(at) ? at : Date.parse(String(r["created_at"] ?? "")) || 0;
+    };
+    const rows = ((data ?? []) as Array<Record<string, unknown>>)
+      .slice()
+      .sort((a, b) => timeOf(b) - timeOf(a));
     const decided = new Set<string>();
-    for (const r of (data ?? []) as Array<Record<string, unknown>>) {
+    for (const r of rows) {
       const org = String(r["organization_id"] ?? "");
       if (!org || decided.has(org)) continue;
-      decided.add(org); // newest first: the latest outcome decides
+      decided.add(org);
       if (r["action"] !== "notice_undelivered") continue;
       const d = (r["details"] ?? {}) as Record<string, unknown>;
       out.set(org, {
