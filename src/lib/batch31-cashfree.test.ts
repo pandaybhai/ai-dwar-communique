@@ -21,12 +21,16 @@ const h = vi.hoisted(() => ({
   issueInvoice: vi.fn(),
   markPaid: vi.fn(),
   creditNote: vi.fn(),
+  /** Batch 80b: stands in for plan activation (not what those tests are about). */
+  activate: null as null | ((...a: unknown[]) => Promise<boolean>),
 }));
 vi.mock("@/lib/whatsapp-webhook.server", () => ({ getServiceClient: () => h.db!.supabase }));
 vi.mock("@/lib/permissions.server", () => ({
   hasPermission: async (_s: unknown, _o: string, _u: string, key: string) => h.perms.has(key),
 }));
-vi.mock("@/lib/invoices.server", () => ({
+vi.mock("@/lib/invoices.server", async (importOriginal) => ({
+  // Batch 80b: the real gross reader (the Meta Purchase reads it).
+  paymentGross: (await importOriginal<typeof import("./invoices.server")>()).paymentGross,
   loadSupplier: async () => ({ sac_messaging: "998599", sac_platform: "998314" }),
   buildInvoice: h.buildInvoice,
   issueInvoice: h.issueInvoice,
@@ -42,6 +46,14 @@ vi.mock("@/lib/dunning.server", () => ({
   restoreAfterPayment: async () => {},
   lockWorkspace: async () => {},
 }));
+vi.mock("@/lib/plan-purchase.server", async (importOriginal) => {
+  const real = await importOriginal<typeof import("./plan-purchase.server")>();
+  return {
+    ...real,
+    activatePlanFromPayment: (...a: Parameters<typeof real.activatePlanFromPayment>) =>
+      h.activate ? h.activate(...a) : real.activatePlanFromPayment(...a),
+  };
+});
 vi.mock("@/lib/razorpay.server", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./razorpay.server")>()),
   razorpayKeys: async () => h.rzpKeys,
@@ -392,6 +404,7 @@ beforeEach(() => {
     pdf_path: null,
   }));
   resetConfirmThrottle();
+  h.activate = null;
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
 afterEach(() => {
@@ -1349,5 +1362,114 @@ describe("Batch 55: not GST-registered, every gateway charges the base price exa
     expect(out).toEqual({ error: expect.stringContaining("couldn't start this payment") });
     expect(cf.calls).toHaveLength(0);
     expect(db.rows("payments")).toHaveLength(0);
+  });
+});
+
+// ------------------------------------------- Batch 80b: /999 Purchase once
+
+describe("Batch 80b: a /999 payment's Purchase reaches Meta once, whichever path settles it", () => {
+  const PLATFORM = "00000000-0000-4000-8000-00000000aaaa";
+  const payment999 = (o: Row = {}): Row => ({
+    id: PAY,
+    organization_id: ORG,
+    provider: "cashfree",
+    purpose: "plan_fee",
+    status: "pending",
+    amount: 999,
+    currency: "INR",
+    credit_pack_id: null,
+    coupon_id: null,
+    created_at: new Date().toISOString(),
+    raw: {
+      kind: "plan_purchase",
+      plan_key: "basic",
+      plan_version_id: "pv-basic",
+      cycle: "monthly",
+      gst_rate: 0,
+      gst_amount: 0,
+      gross_amount: 999,
+      source: "landing_999",
+      cashfree: { env: "sandbox", order_id: PAY, payment_session_id: `session_${PAY}` },
+    },
+    ...o,
+  });
+
+  /** The world, a fake Cashfree, and Meta's Graph as a stub that records each server event. */
+  function setup() {
+    vi.stubEnv("META_CAPI_TOKEN", "TEST-not-a-real-token");
+    vi.stubEnv("PLATFORM_ORG_ID", PLATFORM);
+    vi.stubEnv("META_CAPI_TEST_CODE", "");
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const db = world({
+      payments: [payment999()],
+      platform_settings: [{ id: true, gst_registered: false }],
+      activity_log: [],
+      meta_capi_log: [],
+    });
+    Object.assign(db.supabase as object, {
+      auth: {
+        admin: {
+          getUserById: async (id: string) => ({
+            data: { user: { id, email: "asha@zoori.test", created_at: "2026-11-15T00:00:00Z" } },
+          }),
+        },
+      },
+    });
+    h.activate = async () => true;
+    const cf = fakeCashfree();
+    const cashfree = globalThis.fetch;
+    const graph: Row[] = [];
+    vi.stubGlobal("fetch", async (input: string | URL, init: RequestInit = {}) => {
+      if (String(input).includes("graph.facebook.com")) {
+        graph.push(JSON.parse(String(init.body ?? "{}")) as Row);
+        return new Response(JSON.stringify({ events_received: 1, fbtrace_id: "T1" }));
+      }
+      return cashfree(input, init);
+    });
+    const purchases = () =>
+      graph.flatMap((b) => (b["data"] as Row[]).filter((e) => e["event_name"] === "Purchase"));
+    return { db, cf, purchases };
+  }
+  const paid = (cf: ReturnType<typeof fakeCashfree>) => {
+    cf.state.orders.set(PAY, { order_id: PAY, order_status: "PAID", order_amount: 999 });
+    cf.state.payments.set(PAY, [successPayment(999)]);
+  };
+
+  it("return-confirm first, then the webhook (and the return page again): one Purchase, 'Purchase.' + payment id, 999 INR", async () => {
+    const { db, cf, purchases } = setup();
+    paid(cf);
+    expect(await confirmCashfreePayment(db.supabase, PAY)).toEqual({ status: "paid" });
+    expect((await deliver(successWebhook(PAY, 999))).status).toBe(200);
+    resetConfirmThrottle();
+    expect(await confirmCashfreePayment(db.supabase, PAY)).toEqual({ status: "paid" });
+    await vi.waitFor(() => expect(purchases()).toHaveLength(1));
+    expect(purchases()[0]).toMatchObject({
+      event_id: `Purchase.${PAY}`,
+      action_source: "system_generated",
+      custom_data: { value: 999, currency: "INR", content_name: "basic" },
+    });
+    expect(paymentRow(db)["status"]).toBe("paid");
+  });
+
+  it("webhook first (twice), then the return-confirm: still one Purchase", async () => {
+    const { db, cf, purchases } = setup();
+    paid(cf);
+    expect((await deliver(successWebhook(PAY, 999))).status).toBe(200);
+    expect((await deliver(successWebhook(PAY, 999))).status).toBe(200);
+    expect(await confirmCashfreePayment(db.supabase, PAY)).toEqual({ status: "paid" });
+    await vi.waitFor(() => expect(purchases()).toHaveLength(1));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(purchases()).toHaveLength(1);
+  });
+
+  it("a failed order (like Vinay's 15:31 test): failed, and no Purchase from the webhook or the return page", async () => {
+    const { db, cf, purchases } = setup();
+    expect((await deliver(failedWebhook(PAY))).status).toBe(200);
+    cf.state.orders.set(PAY, { order_id: PAY, order_status: "ACTIVE", order_amount: 999 });
+    const back = await confirmCashfreePayment(db.supabase, PAY);
+    expect(back.status).not.toBe("paid");
+    expect(paymentRow(db)["status"]).toBe("failed");
+    await new Promise((r) => setTimeout(r, 20));
+    expect(purchases()).toHaveLength(0);
   });
 });

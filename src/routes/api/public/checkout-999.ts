@@ -38,7 +38,6 @@ export const Route = createFileRoute("/api/public/checkout-999")({
             ip,
             referrer: request.headers.get("referer"),
             cookieLeadId: await c.leadFromCookie(request).catch(() => null),
-            request,
           });
           if (!saved.ok) {
             return Response.json(

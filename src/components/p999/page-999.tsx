@@ -33,9 +33,6 @@ import {
  * Privacy · Terms · Refunds · ©.
  */
 
-/** Batch 80b: one checkout id per tab (InitiateCheckout's event id). */
-const CHECKOUT_ID_KEY = "aidwar.999.checkout_id";
-
 const loadDemo = () => import("@/components/p999/demo-999");
 const loadCalc = () => import("@/components/p999/calculator-999");
 const loadCheckout = () => import("@/components/p999/checkout-999");
@@ -154,37 +151,12 @@ export function Page999({
     }
   }, [returningPaymentId]);
 
-  // Batch 80b: this visit's id (ViewContent + external_id) and this tab's
-  // checkout id (InitiateCheckout), so the pixel and the server send one id.
-  const visitId = useRef<string | null>(null);
-  useEffect(() => {
-    void import("@/lib/meta-pixel")
-      .then((m) => {
-        visitId.current ??= m.newMetaKey();
-        m.trackView999(visitId.current);
-      })
-      .catch(() => undefined);
-  }, []);
-
   const start = useCallback(() => {
     warmCheckout();
     setMounted(true);
     setOpen(true);
     void import("@/lib/meta-pixel")
-      .then((m) => {
-        visitId.current ??= m.newMetaKey();
-        let checkoutId: string | null = null;
-        try {
-          checkoutId = window.sessionStorage.getItem(CHECKOUT_ID_KEY);
-          if (!checkoutId) {
-            checkoutId = m.newMetaKey();
-            window.sessionStorage.setItem(CHECKOUT_ID_KEY, checkoutId);
-          }
-        } catch {
-          checkoutId ??= m.newMetaKey();
-        }
-        m.trackInitiateCheckout999(visitId.current, checkoutId);
-      })
+      .then((m) => m.trackInitiateCheckout999())
       .catch(() => undefined);
   }, []);
   // Batch 81: closed with something typed and not paid → "Finish setup — ₹999 →".
