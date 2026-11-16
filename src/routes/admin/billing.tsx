@@ -21,6 +21,7 @@ import {
 import { EmptyState, ErrorState, PageHeader } from "@/components/empty-state";
 import { TableSkeleton } from "@/components/data-pagination";
 import { TopupsDrawer, type TopupTask } from "@/components/admin/topups-drawer";
+import { NotDeliveredBadge } from "@/components/admin/not-delivered-badge";
 import { AiRunsDialog } from "@/components/admin/ai-runs-dialog";
 import { InvoicesTab } from "@/components/admin/invoices-tab";
 import { GstTab } from "@/components/admin/gst-tab";
@@ -86,6 +87,8 @@ type Row = {
   funding_model: string | null;
   /** Batch 80: "/999" when the plan was bought on the ₹999 page. */
   paid_via?: string | null;
+  /** Batch 81: AiDwar's last invoice / receipt / welcome message didn't reach them. */
+  undelivered?: import("@/lib/notice-delivery").UndeliveredBadge | null;
   billing_on: boolean;
   available: number;
   held: number;
@@ -690,6 +693,7 @@ function AdminBilling() {
                           >
                             {row.name}
                           </Link>
+                          <NotDeliveredBadge badge={row.undelivered} />
                           <p className="text-xs text-muted-foreground">
                             {row.last_activity
                               ? `Active ${new Date(row.last_activity).toLocaleDateString("en-IN")}`

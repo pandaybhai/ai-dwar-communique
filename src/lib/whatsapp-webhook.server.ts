@@ -28,6 +28,7 @@ import {
 import type { AutomationRow } from "@/lib/automations";
 import { emitEvent } from "@/lib/events.server";
 import { parseCampaignCallbackData } from "@/lib/campaign-callback";
+import { customerNoticeKind } from "@/lib/notice-delivery";
 import { CODE_RE as ONBOARDING_CODE_RE } from "@/lib/teach-guard";
 
 /** Service-role client for the AiDwar (Mumbai) backend. Server-only. */
@@ -2733,6 +2734,28 @@ export async function processWebhookPayload(
                     conversationId: row.conversation_id ?? null,
                     type: row.type ?? null,
                     templateName: row.template_name ?? null,
+                    status: nextStatus,
+                    errors: errs,
+                    at,
+                  }),
+                ),
+              );
+            }
+
+            // Batch 81: one of AiDwar's own messages to a customer (invoice,
+            // receipt, welcome/setup) — a failure is written onto its invoice
+            // or notice and the team is told once; a delivery clears Admin's
+            // badge. Off the reply path, never retried with the event.
+            if (
+              (nextStatus === "failed" || nextStatus === "delivered" || nextStatus === "read") &&
+              customerNoticeKind(existing)
+            ) {
+              const row = existing;
+              later(
+                import("@/lib/notice-delivery.server").then(({ noteNoticeStatus }) =>
+                  noteNoticeStatus(supabase, {
+                    organizationId: orgId,
+                    row: { ...row, metadata: row.metadata ?? null },
                     status: nextStatus,
                     errors: errs,
                     at,

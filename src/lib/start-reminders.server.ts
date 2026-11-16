@@ -260,6 +260,12 @@ export async function runStartReminders(
         campaignId: null,
         category: "utility",
         buttonParams: { 0: await continueToken(lead.id, now) },
+        // Batch 81: a "failed" status tells the team (notice-delivery.server.ts).
+        messageMetadata: (await import("@/lib/notice-delivery")).noticeTag({
+          kind: "signup",
+          organization_id: null,
+          lead_id: lead.id,
+        }),
       },
     );
     if (outcome.messageId && !outcome.error) {

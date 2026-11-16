@@ -672,6 +672,10 @@ export const FEATURES: readonly FeatureManifest[] = [
       "test_email_sent",
       // Batch 76: the new-lead alert numbers.
       "lead_alert_numbers_changed",
+      // Batch 81: AiDwar's own invoice / receipt / welcome message didn't
+      // reach the customer (Admin's "Not delivered" badge), or a later one did.
+      "notice_undelivered",
+      "notice_delivered",
 
     ],
     settings_path: "/app/settings",

@@ -278,6 +278,8 @@ export async function sendServiceDocument(
     documentUrl: string;
     fileName: string;
     caption: string;
+    /** Batch 81: stored on the message row (a customer notice's tag). */
+    metadata?: Record<string, unknown>;
   },
 ): Promise<ServiceTextResult> {
   if (!args.accessToken) return { ok: false, messageId: null, error: "no_credentials" };
@@ -301,6 +303,7 @@ export async function sendServiceDocument(
     body: args.caption,
     media_url: args.documentUrl,
     media_mime: "application/pdf",
+    ...(args.metadata ? { metadata: args.metadata } : {}),
   });
 }
 

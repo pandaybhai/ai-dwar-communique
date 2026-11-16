@@ -232,7 +232,7 @@ type Channel = {
 };
 
 /** AiDwar's chat with this number, when its 24-hour window is open (free text allowed). */
-async function openWindowChannel(
+export async function openWindowChannel(
   supabase: SupabaseClient,
   number: string,
   now: number,
