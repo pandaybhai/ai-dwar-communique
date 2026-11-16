@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { money } from "@/lib/billing";
 import { normalizePhone } from "@/lib/phone";
 import { BILLING_TEMPLATES, type BillingTemplateSpec } from "@/lib/platform-notice-templates";
+import { noticeKindForBillingKind, noticeTag } from "@/lib/notice-delivery";
 
 /**
  * Delivery for queued billing notices.
@@ -890,6 +891,18 @@ export async function drainBillingNotifications(
         if (task) Object.assign(payload, task as Record<string, unknown>);
       }
       const params = paramsFor(kind, orgName, payload);
+      // Batch 81: a customer's notice carries its tag, so a later "failed"
+      // status is written onto it and the team is told (notice-delivery).
+      const tag =
+        row["audience"] === "client"
+          ? noticeTag({
+              kind: noticeKindForBillingKind(kind),
+              organization_id: (row["organization_id"] as string | null) ?? null,
+              notification_id: String(row["id"]),
+              invoice_id: (payload["invoice_id"] as string | null | undefined) ?? null,
+              invoice_number: (payload["invoice_number"] as string | null | undefined) ?? null,
+            })
+          : null;
 
       // Inside the 24-hour window a plain message is friendlier and cheaper.
       // Numbers are stored with and without the leading +, so match both.
@@ -935,6 +948,7 @@ export async function drainBillingNotifications(
               documentUrl: url,
               fileName: `${number.replace(/\//g, "-")}.pdf`,
               caption: `Your invoice ${number} for ${money(Number(payload["amount"] ?? 0))} — thank you.`,
+              ...(tag ? { metadata: tag } : {}),
             });
             if (docResult.ok) {
               await mark(row, "sent");
@@ -960,6 +974,7 @@ export async function drainBillingNotifications(
           conversationId,
           to,
           body,
+          ...(tag ? { metadata: tag } : {}),
         });
         if (result.ok) {
           await mark(row, "sent");
@@ -1018,6 +1033,29 @@ export async function drainBillingNotifications(
       );
 
       if (res.ok) {
+        // Batch 81: the template went straight to Graph with no messages row,
+        // so its delivery status had nowhere to land. A customer's notice now
+        // gets its row (Meta's id + the tag), like every other platform send.
+        if (tag) {
+          const answer = (await res.json().catch(() => ({}))) as {
+            messages?: Array<{ id?: string }>;
+          };
+          const metaId = answer.messages?.[0]?.id ?? null;
+          if (metaId) {
+            const nowIso = new Date().toISOString();
+            await supabase.from("messages").insert({
+              organization_id: platformOrgId,
+              conversation_id: conversationId,
+              meta_message_id: metaId,
+              direction: "outbound",
+              type: "template",
+              template_name: template.name,
+              status: "pending",
+              status_updated_at: nowIso,
+              metadata: { ...tag, to, template_params: params },
+            });
+          }
+        }
         await mark(row, "sent");
         counts.sent += 1;
       } else {

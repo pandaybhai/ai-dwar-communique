@@ -14,7 +14,13 @@ import { Toaster } from "@/components/ui/sonner";
 import { MetaPixelRuntime } from "@/components/meta-pixel-runtime";
 
 import appCss from "../styles.css?url";
+
+/** Batch 81: the site font, loaded without blocking first paint. */
+const FONT_CSS =
+  "https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap";
+const FONT_LOADER = `(function(){var l=document.createElement('link');l.rel='stylesheet';l.href=${JSON.stringify(FONT_CSS)};document.head.appendChild(l);})();`;
 import { APP_THEME_SCRIPT } from "../lib/theme";
+import { LEAN_CSS_ROUTES, leanCssLoader } from "../lib/lean-css";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 
 function NotFoundComponent() {
@@ -79,67 +85,74 @@ function ErrorComponent({ error, reset }: ErrorComponentProps) {
 }
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
-  head: () => ({
-    meta: [
-      { charSet: "utf-8" },
-      { name: "viewport", content: "width=device-width, initial-scale=1" },
-      {
-        name: "google-site-verification",
-        content: "oCAYfgIMKBXHiHET8iRUm7YujXPeIBFIAw3hJhKAHD0",
-      },
+  head: ({ matches }) => {
+    // Batch 81: /999 paints from its own inlined CSS; the app sheet still
+    // loads, just not in front of the first paint.
+    const lean = matches.some((m) => LEAN_CSS_ROUTES.has(m.routeId));
+    return {
+      meta: [
+        { charSet: "utf-8" },
+        { name: "viewport", content: "width=device-width, initial-scale=1" },
+        {
+          name: "google-site-verification",
+          content: "oCAYfgIMKBXHiHET8iRUm7YujXPeIBFIAw3hJhKAHD0",
+        },
 
-      { title: "AiDwar — AI WhatsApp Marketing Platform for Growing Businesses" },
-      {
-        name: "description",
-        content:
-          "AiDwar is the AI-powered WhatsApp marketing platform that automates campaigns, replies, and analytics on the official WhatsApp Business API.",
-      },
-      { name: "author", content: "Meezoy Ventures Private Limited" },
-      { property: "og:title", content: "AiDwar — AI WhatsApp Marketing Platform for Growing Businesses" },
-      {
-        property: "og:description",
-        content:
-          "AiDwar is the AI-powered WhatsApp marketing platform that automates campaigns, replies, and analytics on the official WhatsApp Business API.",
-      },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary_large_image" },
-      { property: "og:image", content: "https://aidwar.in/og-image.jpg" },
-      { name: "twitter:image", content: "https://aidwar.in/og-image.jpg" },
-    ],
-    links: [
-      {
-        rel: "stylesheet",
-        href: appCss,
-      },
-      { rel: "icon", href: "/favicon.png", type: "image/png" },
-      { rel: "preconnect", href: "https://fonts.googleapis.com" },
-      { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
-      {
-        rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap",
-      },
-    ],
-    scripts: [
-      // The app's tokens and light/dark choice before first paint (/app only).
-      { children: APP_THEME_SCRIPT },
-      {
-        type: "application/ld+json",
-        children: JSON.stringify({
-          "@context": "https://schema.org",
-          "@type": "Organization",
-          name: "AiDwar",
-          legalName: "Meezoy Ventures Private Limited",
-          url: "https://aidwar.in/",
-          email: "support@aidwar.in",
-          address: {
-            "@type": "PostalAddress",
-            addressLocality: "Hyderabad",
-            addressCountry: "IN",
-          },
-        }),
-      },
-    ],
-  }),
+        { title: "AiDwar — AI WhatsApp Marketing Platform for Growing Businesses" },
+        {
+          name: "description",
+          content:
+            "AiDwar is the AI-powered WhatsApp marketing platform that automates campaigns, replies, and analytics on the official WhatsApp Business API.",
+        },
+        { name: "author", content: "Meezoy Ventures Private Limited" },
+        {
+          property: "og:title",
+          content: "AiDwar — AI WhatsApp Marketing Platform for Growing Businesses",
+        },
+        {
+          property: "og:description",
+          content:
+            "AiDwar is the AI-powered WhatsApp marketing platform that automates campaigns, replies, and analytics on the official WhatsApp Business API.",
+        },
+        { property: "og:type", content: "website" },
+        { name: "twitter:card", content: "summary_large_image" },
+        { property: "og:image", content: "https://aidwar.in/og-image.jpg" },
+        { name: "twitter:image", content: "https://aidwar.in/og-image.jpg" },
+      ],
+      links: [
+        lean ? { rel: "preload", as: "style", href: appCss } : { rel: "stylesheet", href: appCss },
+        { rel: "icon", href: "/favicon.png", type: "image/png" },
+        { rel: "preconnect", href: "https://fonts.googleapis.com" },
+        { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
+        // Batch 81: the font stylesheet no longer blocks first paint — preloaded
+        // here, attached by the script below (text shows at once in the
+        // fallback, then swaps: display=swap).
+        { rel: "preload", as: "style", href: FONT_CSS },
+      ],
+      scripts: [
+        { children: FONT_LOADER },
+        ...(lean ? [{ children: leanCssLoader(appCss) }] : []),
+        // The app's tokens and light/dark choice before first paint (/app only).
+        { children: APP_THEME_SCRIPT },
+        {
+          type: "application/ld+json",
+          children: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "Organization",
+            name: "AiDwar",
+            legalName: "Meezoy Ventures Private Limited",
+            url: "https://aidwar.in/",
+            email: "support@aidwar.in",
+            address: {
+              "@type": "PostalAddress",
+              addressLocality: "Hyderabad",
+              addressCountry: "IN",
+            },
+          }),
+        },
+      ],
+    };
+  },
 
   shellComponent: RootShell,
   component: RootComponent,

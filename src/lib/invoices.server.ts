@@ -619,7 +619,18 @@ export async function deliverInvoice(
         variableOrder: [1, 2, 3],
         components: (template["components"] as import("@/lib/templates").TemplateComponent[] | null) ?? null,
       },
-      { campaignId: null, category: "utility", headerMediaUrl: url },
+      {
+        campaignId: null,
+        category: "utility",
+        headerMediaUrl: url,
+        // Batch 81: a later "failed" status finds this invoice by its tag.
+        messageMetadata: (await import("@/lib/notice-delivery")).noticeTag({
+          kind: "invoice",
+          organization_id: orgId,
+          invoice_id: invoiceId,
+          invoice_number: invoiceNumber,
+        }),
+      },
     );
     if (outcome.error) return await queueFallback(outcome.error);
 

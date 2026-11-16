@@ -404,6 +404,19 @@ export function pageChanged(pathname: string): void {
   if (pixelZone(pathname) !== "public" || !pixelAllowed(pathname)) return;
   track("PageView", randomEventId("PageView"));
   const name = viewContentName(pathname);
+  if (name && is999(pathname)) {
+    // Batch 81: /999's server copy already went (view999Shown); the pixel
+    // fires the same id once the visitor has accepted, now or later.
+    track(
+      "ViewContent",
+      view999?.id ?? randomEventId("ViewContent"),
+      { content_name: name },
+      {
+        once: true,
+      },
+    );
+    return;
+  }
   if (name) {
     const id = randomEventId("ViewContent");
     if (track("ViewContent", id, { content_name: name }))
@@ -411,15 +424,48 @@ export function pageChanged(pathname: string): void {
   }
 }
 
+const is999 = (pathname: string) => (pathname.replace(/\/+$/, "") || "/") === "/999";
+
+/** Batch 81: the current /999 page view (its ViewContent id, shared by server and pixel). */
+let view999: { id: string } | null = null;
+
 /**
- * Batch 80: the /999 checkout sheet opened — InitiateCheckout (value 999),
- * the pixel only after Accept, the server copy with the same id under the
- * same rule as a page view.
+ * Batch 81 (Vinay's standing rule): on /999 the server copy goes to Meta for
+ * every visitor — Accept, Decline or no choice yet — like Lead,
+ * AddPaymentInfo and Purchase; the browser pixel only ever with consent.
+ * Same event id on both, so Meta counts one. Never awaited by the page.
+ */
+function serverCopy999(body: Record<string, unknown>): void {
+  try {
+    if (debugMode()) return;
+    void fetch("/api/public/meta-event", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ...body, landing: "999", url: window.location.href.split("#")[0] }),
+      keepalive: true,
+    }).catch(() => undefined);
+  } catch {
+    // measurement never breaks the page
+  }
+}
+
+/** Batch 81: /999 was shown (one id per page view): its server copy, whatever the cookie choice. */
+export function view999Shown(pathname: string): void {
+  if (pixelZone(pathname) !== "public" || !is999(pathname)) return;
+  const id = randomEventId("ViewContent");
+  view999 = { id };
+  serverCopy999({ event: "ViewContent", event_id: id, content_name: "999_page" });
+}
+
+/**
+ * Batch 80/81: the /999 checkout sheet opened — InitiateCheckout (value 999).
+ * The server copy goes for every visitor; the pixel, with the same id, only
+ * after Accept.
  */
 export function trackInitiateCheckout999(): void {
   const id = randomEventId("InitiateCheckout");
-  if (track("InitiateCheckout", id, { content_name: "basic", value: 999, currency: "INR" }))
-    relayToServer({ event: "InitiateCheckout", event_id: id });
+  track("InitiateCheckout", id, { content_name: "basic", value: 999, currency: "INR" });
+  serverCopy999({ event: "InitiateCheckout", event_id: id });
 }
 
 /**

@@ -9,6 +9,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { noticeTag } from "@/lib/notice-delivery";
 import type { JourneyStep } from "@/lib/onboarding-journey";
 import {
   CODE_TEMPLATE_NAME,
@@ -198,7 +199,16 @@ async function sendLinkNudge(
   platformOrgId: string,
   sender: unknown,
   template: ApprovedTemplate,
-  args: { contactId: string | null; phone: string; firstName: string; orgName: string; step: JourneyStep },
+  args: {
+    contactId: string | null;
+    phone: string;
+    firstName: string;
+    orgName: string;
+    step: JourneyStep;
+    /** Batch 81: whose session it is (the message's customer-notice tag). */
+    organizationId?: string | null;
+    sessionId?: string | null;
+  },
 ): Promise<boolean> {
   const { sendCampaignTemplate } = await import("@/lib/campaigns.server");
   const outcome = await sendCampaignTemplate(
@@ -216,7 +226,16 @@ async function sendLinkNudge(
       variableOrder: [1, 2, 3],
       components: (template.components ?? null) as import("@/lib/templates").TemplateComponent[] | null,
     },
-    { campaignId: null, category: "utility", buttonParams: { 0: args.step } },
+    {
+      campaignId: null,
+      category: "utility",
+      buttonParams: { 0: args.step },
+      messageMetadata: noticeTag({
+        kind: "welcome",
+        organization_id: args.organizationId ?? null,
+        session_id: args.sessionId ?? null,
+      }),
+    },
   );
   if (outcome.messageId && !outcome.error) return true;
   console.error("[onboarding-link-nudge] send failed", args.phone.slice(-4), outcome.error);
@@ -359,6 +378,8 @@ async function runResumePass(
         firstName,
         orgName: ((org as { name?: string } | null)?.name ?? "").trim() || "your business",
         step: step ?? "business",
+        organizationId: session.organization_id,
+        sessionId: session.id,
       });
       if (sent) nudged += 1;
       continue;
@@ -380,7 +401,15 @@ async function runResumePass(
         variableOrder: [1, 2],
         components: (template.components ?? null) as import("@/lib/templates").TemplateComponent[] | null,
       },
-      { campaignId: null, category: "utility" },
+      {
+        campaignId: null,
+        category: "utility",
+        messageMetadata: noticeTag({
+          kind: "welcome",
+          organization_id: session.organization_id,
+          session_id: session.id,
+        }),
+      },
     );
 
     if (outcome.messageId && !outcome.error) nudged += 1;
@@ -505,6 +534,8 @@ async function runCodePass(
           firstName,
           orgName: orgName || "your business",
           step,
+          organizationId: session.organization_id,
+          sessionId: session.id,
         })
       )
         nudged += 1;
@@ -527,7 +558,15 @@ async function runCodePass(
         variableOrder: [1, 2, 3],
         components: (template.components ?? null) as import("@/lib/templates").TemplateComponent[] | null,
       },
-      { campaignId: null, category: "utility" },
+      {
+        campaignId: null,
+        category: "utility",
+        messageMetadata: noticeTag({
+          kind: "welcome",
+          organization_id: session.organization_id,
+          session_id: session.id,
+        }),
+      },
     );
 
     if (outcome.messageId && !outcome.error) nudged += 1;

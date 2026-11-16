@@ -237,6 +237,8 @@ export const P999_CSS = `
   .p9-check-mark { stroke-dasharray: 1; stroke-dashoffset: 1; animation: p9-draw-in 0.45s var(--ease) 0.55s forwards; }
   @keyframes p9-draw-in { to { stroke-dashoffset: 0; } }
   .p9-shake { animation: p9-shake 0.42s ease-in-out; }
+  .p9-proof { animation: p9-proof 0.45s var(--ease) both; }
+  @keyframes p9-proof { from { opacity: 0; transform: translate3d(0, 100%, 0); } to { opacity: 1; transform: none; } }
   @keyframes p9-shake { 0%,100% { transform: none; } 20%,60% { transform: translateX(-6px); } 40%,80% { transform: translateX(6px); } }
 }
 `;

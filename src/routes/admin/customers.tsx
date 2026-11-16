@@ -7,6 +7,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EmptyState, ErrorState, PageHeader } from "@/components/empty-state";
 import { NoResults, TableSkeleton } from "@/components/data-pagination";
 import { OrgBillingSheet } from "@/components/admin/org-billing-sheet";
+import { NotDeliveredBadge } from "@/components/admin/not-delivered-badge";
 import { callApi } from "@/lib/whatsapp-client";
 import { money } from "@/lib/billing";
 import { cn } from "@/lib/utils";
@@ -169,6 +170,7 @@ function AdminCustomers() {
                   <tr key={r.organization_id} className="transition-colors hover:bg-muted/30">
                     <td className="px-4 py-3">
                       <div className="font-medium text-foreground">{r.name}</div>
+                      <NotDeliveredBadge badge={r.undelivered} />
                       {r.open_questions > 0 ? (
                         <div className="text-xs text-amber-700">
                           {r.open_questions} unanswered question{r.open_questions === 1 ? "" : "s"}

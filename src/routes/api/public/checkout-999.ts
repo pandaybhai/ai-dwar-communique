@@ -56,6 +56,23 @@ export const Route = createFileRoute("/api/public/checkout-999")({
           return Response.json({ ok: true, lead: true }, { headers });
         }
 
+        // Batch 81: the account, with no password typed (createOrRecallAccount).
+        if (action === "account") {
+          const out = await c.createOrRecallAccount(supabase, {
+            leadId: await c.leadFromCookie(request).catch(() => null),
+            phone: String(body["phone"] ?? ""),
+            name: String(body["name"] ?? ""),
+            email: String(body["email"] ?? ""),
+          });
+          if (!out.ok) {
+            return Response.json(
+              { error: out.error, ...(out.field ? { field: out.field } : {}) },
+              { status: out.status },
+            );
+          }
+          return Response.json(out);
+        }
+
         if (action === "pay") {
           const { requireSignedIn, isResponse } = await import("@/lib/whatsapp-api.server");
           const auth = await requireSignedIn(request);

@@ -58,8 +58,10 @@ export function checkCheckoutFields(
   if (!typed.ok) return { ok: false, field: "phone", error: typed.error };
   const name = str(body["name"], 100);
   if (name.length < 2) return { ok: false, field: "name", error: "Please enter your name." };
+  // Batch 81: the business name is asked after payment (setup); when given now
+  // it must still read as a name.
   const businessName = str(body["business_name"], 150);
-  if (businessName.length < 2) {
+  if (businessName && businessName.length < 2) {
     return { ok: false, field: "business_name", error: "Please enter your business name." };
   }
   return { ok: true, lead: { name, businessName, phone: typed.phone } };
@@ -113,7 +115,7 @@ export async function saveCheckoutLead(
   if (existing) {
     await supabase
       .from("demo_leads")
-      .update({ name, business_name: businessName, phone })
+      .update({ name, ...(businessName ? { business_name: businessName } : {}), phone })
       .eq("id", existing.id);
     return { ok: true, id: existing.id, duplicate: true };
   }
@@ -147,7 +149,7 @@ export async function saveCheckoutLead(
       enquiry_band: null,
       primary_need: null,
       name,
-      business_name: businessName,
+      business_name: businessName || null,
       phone,
       website: null,
       consent: true,
@@ -212,6 +214,8 @@ export type StartPayResult =
   | {
       ok: true;
       payment_id: string;
+      /** Batch 81: the workspace paid for (the success screen names it). */
+      organization_id: string;
       checkout: { payment_session_id: string; mode: "sandbox" | "production" } | null;
       url: string;
       meta: import("@/lib/meta-events").BrowserMetaEvent | null;
@@ -353,6 +357,7 @@ export async function startCheckoutPayment(
   return {
     ok: true,
     payment_id: started.payment_id,
+    organization_id: organizationId,
     checkout: started.checkout ?? null,
     url: started.url,
     meta,
@@ -360,11 +365,123 @@ export async function startCheckoutPayment(
 }
 
 /** "Checkout abandoned": reached Pay, not paid, 30 minutes on. Pure. */
-export const ABANDONED_AFTER_MS = 30 * 60_000;
+export const ABANDONED_AFTER_MS = 10 * 60_000;
 export function checkoutAbandoned(
   lead: { source: string; checkout_at?: string | null; paid_at?: string | null },
   now: number = Date.now(),
 ): boolean {
   if (lead.source !== LANDING_999_SOURCE || !lead.checkout_at || lead.paid_at) return false;
   return Date.parse(lead.checkout_at) <= now - ABANDONED_AFTER_MS;
+}
+
+/* ---------------------------------------------- Batch 81: no password --- */
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+/** "asha@gmail.com" → "as•••@gmail.com" — enough to recognise, never the whole address. */
+export function maskEmail(email: string): string {
+  const [user = "", domain = ""] = email.split("@");
+  return `${user.slice(0, 2)}${"•".repeat(Math.max(3, Math.min(6, user.length - 2)))}@${domain}`;
+}
+
+/** A strong random password nobody sees (the buyer sets their own later, or signs in by link). */
+export function randomPassword(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(24));
+  let s = "";
+  for (const b of bytes) s += String.fromCharCode(b);
+  return `${btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")}aA1!`;
+}
+
+export type AccountResult =
+  | { ok: true; status: "created"; token_hash: string; user_id: string }
+  | { ok: true; status: "existing"; sent_to: string | null }
+  | { ok: false; status: number; error: string; field?: "email" | "phone" | "name" };
+
+/**
+ * Batch 81: the account behind a /999 checkout, with no password typed.
+ *
+ *  - New email and number: the account is made with the existing auth admin
+ *    API (a random strong password, the same full_name + phone metadata
+ *    /signup sends, so handle_new_user fills the profile the same way), and a
+ *    one-time magic-link token (generateLink — no email is sent) goes back to
+ *    this browser, which turns it into its session (verifyOtp). Email +
+ *    password log-in keeps working: the buyer sets a password after paying.
+ *  - The email, or the number, already has an account: never a dead end and
+ *    never signed in for them — a one-time log-in link is emailed to that
+ *    account (signInWithOtp, no new user) and the answer shows only a masked
+ *    address. The link brings them back to /999 with their details kept.
+ *
+ * Only for a browser that saved its /999 lead (the lead cookie) with this
+ * same number: no account is made without the lead's own checks (rate
+ * limit, honeypot, number rules).
+ */
+export async function createOrRecallAccount(
+  supabase: SupabaseClient,
+  input: { leadId: string | null; phone: string; name: string; email: string },
+): Promise<AccountResult> {
+  if (!input.leadId) {
+    return { ok: false, status: 409, error: "Please start again from the checkout." };
+  }
+  const typed = checkRealNumber(input.phone);
+  if (!typed.ok) return { ok: false, status: 400, error: typed.error, field: "phone" };
+  const name = str(input.name, 100);
+  if (name.length < 2) return { ok: false, status: 400, error: "Enter your name", field: "name" };
+  const email = input.email.trim().toLowerCase().slice(0, 200);
+  if (!EMAIL_RE.test(email)) {
+    return { ok: false, status: 400, error: "Enter a valid email", field: "email" };
+  }
+  const { data: lead } = await supabase
+    .from("demo_leads")
+    .select("id, phone, source")
+    .eq("id", input.leadId)
+    .maybeSingle();
+  const l = lead as { phone?: string; source?: string } | null;
+  if (!l || l.source !== LANDING_999_SOURCE || l.phone !== typed.phone) {
+    return { ok: false, status: 409, error: "Please start again from the checkout." };
+  }
+
+  const { APP_PUBLIC_URL } = await import("@/lib/app-url");
+  const auth = (supabase as unknown as { auth: SupabaseClient["auth"] }).auth;
+  const recall = async (accountEmail: string): Promise<AccountResult> => {
+    const { error } = await auth.signInWithOtp({
+      email: accountEmail,
+      options: { shouldCreateUser: false, emailRedirectTo: `${APP_PUBLIC_URL}/999?resume=1` },
+    });
+    if (error) {
+      console.log(
+        JSON.stringify({ scope: "checkout_999", stage: "recall_failed", error: error.message }),
+      );
+    }
+    return { ok: true, status: "existing", sent_to: error ? null : maskEmail(accountEmail) };
+  };
+
+  // This number already belongs to an account: that account's email gets the link.
+  const { data: byPhone } = await supabase
+    .from("profiles")
+    .select("email")
+    .eq("phone", typed.phone)
+    .limit(1);
+  const phoneEmail = ((byPhone ?? []) as Array<{ email?: string | null }>)[0]?.email ?? null;
+  if (phoneEmail) return recall(phoneEmail);
+
+  const made = await auth.admin.createUser({
+    email,
+    password: randomPassword(),
+    email_confirm: true,
+    user_metadata: { full_name: name, phone: typed.phone, signup_source: "landing_999" },
+  });
+  if (made.error || !made.data.user) {
+    const message = made.error?.message ?? "";
+    if (/already (been )?registered|already exists|email_exists/i.test(message)) {
+      return recall(email);
+    }
+    return { ok: false, status: 500, error: "We couldn't create your account. Please try again." };
+  }
+  const link = await auth.admin.generateLink({ type: "magiclink", email });
+  const tokenHash = (link.data?.properties as { hashed_token?: string } | undefined)?.hashed_token;
+  if (link.error || !tokenHash) {
+    // The account exists; the emailed link signs them in instead.
+    return recall(email);
+  }
+  return { ok: true, status: "created", token_hash: tokenHash, user_id: made.data.user.id };
 }

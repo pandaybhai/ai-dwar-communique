@@ -1,19 +1,21 @@
-import { allErrors, firstName, isExistingAccountError, type CheckoutValues } from "@/lib/page-999";
+import { allErrors, firstName, type CheckoutValues } from "@/lib/page-999";
 import type { BrowserMetaEvent } from "@/lib/meta-events";
 
 /**
- * Batch 80: what happens when Pay is tapped in the /999 checkout sheet, in
+ * Batch 80/81: what happens when Pay is tapped in the /999 checkout sheet, in
  * order, with every outside call passed in (so the whole run is tested with
  * fakes and the sheet stays one screen):
  *
  *  1. the lead is saved once (source landing_999; the server's cookie
  *     remembers it);
- *  2. the account: the existing email + password sign-up (the same
- *     auth.signUp call /signup makes); an email that already has an account
- *     signs in with the typed password, else the sheet asks for it inline;
- *     a visitor already signed in skips both;
+ *  2. the account — Batch 81, no password typed: the server makes it (auth
+ *     admin API, a random strong password) and hands back a one-time token
+ *     this browser turns into its session; an email or number that already
+ *     has an account gets a one-time log-in link by email instead ("Welcome
+ *     back"), never a dead end; a visitor already signed in skips this;
  *  3. the Basic plan's payment for their own workspace — made first, with the
- *     onboarding's own create path, when they have none;
+ *     onboarding's own create path, under a provisional name (the business
+ *     name is asked after payment, on the success screen);
  *  4. Cashfree's popup over the page; then our server confirms the order
  *     with Cashfree (GET order → settlePayment) before saying "paid".
  *
@@ -33,30 +35,29 @@ export const PHASE_TEXT: Record<Phase, string> = {
 };
 
 export type CheckoutOutcome =
-  | { kind: "paid"; paymentId: string; firstName: string }
+  | { kind: "paid"; paymentId: string; organizationId: string | null; firstName: string }
   | { kind: "already"; firstName: string }
   | { kind: "field"; field: keyof CheckoutValues; error: string }
-  | { kind: "needs_password"; message: string }
+  | { kind: "existing"; sentTo: string | null }
   | { kind: "failed"; message: string; paymentId: string | null }
   | { kind: "error"; message: string };
 
 export type GatewaySession = { payment_session_id: string; mode: "sandbox" | "production" };
+
+export type AccountAnswer =
+  | { status: "created"; token_hash: string; user_id: string }
+  | { status: "existing"; sent_to: string | null }
+  | { status: "error"; error: string; field?: string };
 
 export type CheckoutDeps = {
   saveLead: (
     body: Record<string, unknown>,
   ) => Promise<{ ok: boolean; error?: string | undefined; field?: string | undefined }>;
   session: () => Promise<{ userId: string; token: string } | null>;
-  signUp: (input: {
-    email: string;
-    password: string;
-    phone: string;
-    fullName: string;
-  }) => Promise<{ userId: string | null; token: string | null; error: string | null }>;
-  signIn: (input: {
-    email: string;
-    password: string;
-  }) => Promise<{ userId: string | null; token: string | null; error: string | null }>;
+  /** Batch 81: the server makes the account (or emails an existing one a log-in link). */
+  account: (input: { phone: string; name: string; email: string }) => Promise<AccountAnswer>;
+  /** Batch 81: the one-time token → this browser's session. */
+  signInWithToken: (tokenHash: string) => Promise<{ userId: string; token: string } | null>;
   startPay: (
     token: string,
     body: Record<string, unknown>,
@@ -67,6 +68,7 @@ export type CheckoutDeps = {
       error?: string;
       code?: string;
       payment_id?: string;
+      organization_id?: string;
       checkout?: GatewaySession | null;
       meta?: BrowserMetaEvent | null;
     };
@@ -83,13 +85,17 @@ export const PAY_FAILED = "Payment didn't go through — try UPI again or anothe
 const CONFIRM_TRIES = 6;
 const CONFIRM_GAP_MS = 1500;
 
+/** Batch 81: the workspace's name until the buyer names it after paying. */
+export function provisionalWorkspaceName(name: string): string {
+  const first = firstName(name);
+  return (first ? `${first}'s business` : "My business").slice(0, 80);
+}
+
 export async function runCheckout(
   values: CheckoutValues & { honeypot?: string },
   deps: CheckoutDeps,
   opts: {
     report?: (phase: Phase) => void;
-    /** The sheet already knows this email has an account: sign in, don't sign up. */
-    existingAccount?: boolean;
     signedIn?: boolean;
     /** Batch 80b: /999?admin_test_price=1 — sent with Pay; the server checks Super Admin. */
     adminTestPrice?: 1 | null;
@@ -107,12 +113,7 @@ export async function runCheckout(
 
   // 1. the lead
   report("saving");
-  const lead = await deps.saveLead({
-    phone: values.phone,
-    name: values.name,
-    business_name: values.business_name,
-    action: "lead",
-  });
+  const lead = await deps.saveLead({ phone: values.phone, name: values.name, action: "lead" });
   if (!lead.ok) {
     const field = lead.field as keyof CheckoutValues | undefined;
     if (field && field in values)
@@ -120,50 +121,26 @@ export async function runCheckout(
     return { kind: "error", message: lead.error ?? "We couldn't save that. Please try again." };
   }
 
-  // 2. the account
+  // 2. the account (no password)
   let auth = await deps.session();
   if (!auth) {
     report("account");
-    const email = values.email.trim();
-    const tryIn = async () => {
-      const signed = await deps.signIn({ email, password: values.password });
-      return signed.userId && signed.token ? { userId: signed.userId, token: signed.token } : null;
-    };
-    if (opts.existingAccount) {
-      auth = await tryIn();
-      if (!auth) {
-        return {
-          kind: "needs_password",
-          message: "That password doesn't match this email's AiDwar account. Try again.",
-        };
-      }
-    } else {
-      const made = await deps.signUp({
-        email,
-        password: values.password,
-        phone: values.phone,
-        fullName: values.name.trim().replace(/\s+/g, " "),
-      });
-      if (made.error) {
-        if (!isExistingAccountError(made.error)) return { kind: "error", message: made.error };
-        // The email already has an account: their typed password may be it.
-        auth = await tryIn();
-        if (!auth) {
-          return {
-            kind: "needs_password",
-            message: "This email already has an AiDwar account — enter its password to continue.",
-          };
-        }
-      } else if (made.userId && made.token) {
-        deps.onRegistered?.(made.userId, values.phone);
-        auth = { userId: made.userId, token: made.token };
-      } else {
-        return {
-          kind: "error",
-          message: "Check your email to confirm your account, then come back here to pay.",
-        };
-      }
+    const answer = await deps.account({
+      phone: values.phone,
+      name: values.name.trim().replace(/\s+/g, " "),
+      email: values.email.trim(),
+    });
+    if (answer.status === "existing") return { kind: "existing", sentTo: answer.sent_to };
+    if (answer.status === "error") {
+      const field = answer.field as keyof CheckoutValues | undefined;
+      if (field && field in values) return { kind: "field", field, error: answer.error };
+      return { kind: "error", message: answer.error };
     }
+    auth = await deps.signInWithToken(answer.token_hash);
+    if (!auth) {
+      return { kind: "error", message: "We couldn't sign you in. Please try again." };
+    }
+    deps.onRegistered?.(auth.userId, values.phone);
   }
 
   // 3. the payment (the workspace first, when there is none)
@@ -172,7 +149,7 @@ export async function runCheckout(
   let started = await deps.startPay(auth.token, { phone: values.phone, ...admin, action: "pay" });
   if (started.status === 409 && started.body.code === "needs_workspace") {
     report("workspace");
-    const made = await deps.createWorkspace(values.business_name.trim().replace(/\s+/g, " "));
+    const made = await deps.createWorkspace(provisionalWorkspaceName(values.name));
     if ("error" in made) return { kind: "error", message: made.error };
     report("opening");
     started = await deps.startPay(auth.token, {
@@ -207,6 +184,13 @@ export async function runCheckout(
     await wait(CONFIRM_GAP_MS);
     status = await deps.confirm(paymentId);
   }
-  if (status === "paid") return { kind: "paid", paymentId, firstName: firstName(values.name) };
+  if (status === "paid") {
+    return {
+      kind: "paid",
+      paymentId,
+      organizationId: started.body.organization_id ?? null,
+      firstName: firstName(values.name),
+    };
+  }
   return { kind: "failed", message: PAY_FAILED, paymentId };
 }

@@ -20,6 +20,8 @@ export type CustomerRow = {
   last_inbound_at: string | null;
   open_questions: number;
   queues: Array<"stuck" | "trial_ending" | "asked_human" | "locked">;
+  /** Batch 81: AiDwar's last invoice / receipt / welcome message didn't reach them. */
+  undelivered: import("@/lib/notice-delivery").UndeliveredBadge | null;
 };
 
 const DAY_MS = 864e5;
@@ -85,6 +87,8 @@ export async function listCustomers(supabase: SupabaseClient): Promise<CustomerR
   }
 
   const now = Date.now();
+  const { undeliveredBadges } = await import("@/lib/notice-delivery.server");
+  const undelivered = await undeliveredBadges(supabase, now);
   return ((orgs ?? []) as Record<string, unknown>[]).map((org) => {
     const id = String(org["id"]);
     const session = sessionByOrg.get(id) ?? null;
@@ -133,6 +137,7 @@ export async function listCustomers(supabase: SupabaseClient): Promise<CustomerR
         inboundByOrg.get(id) ?? ((session?.["last_inbound_at"] as string | null) ?? null),
       open_questions: openQuestions,
       queues,
+      undelivered: undelivered.get(id) ?? null,
     };
   });
 }

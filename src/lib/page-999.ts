@@ -21,11 +21,39 @@ export const HERO = {
   kicker: "AiDwar Basic",
   headline: "Your AI salesperson on WhatsApp.",
   sub: "₹999/month. Pay Meta directly — we add zero markup on messages.",
-  cta: "Start for ₹999 →",
+  /** Batch 81: the price is the hero. */
+  price: "₹999",
+  priceUnit: "/month",
+  priceLine: "Everything included · No setup fee · Zero markup on Meta messages",
+  cta: "Get AiDwar for ₹999 →",
   small: "7-day money-back · Live in 10 minutes · Cancel anytime",
 } as const;
 
-export const STICKY = { price: PER_MONTH, cta: "Start now →" } as const;
+/**
+ * Batch 81: the price anchor near the top — what the same job costs another
+ * way. Generic, no names: a person's salary and "tools" in general.
+ */
+export const ANCHOR = [
+  { label: "A WhatsApp sales staff", value: "₹12,000+/month", us: false },
+  { label: "Typical WhatsApp tools", value: "₹2,500+ plus markup", us: false },
+  { label: "AiDwar", value: "₹999, zero markup", us: true },
+] as const;
+
+/** Batch 81: the compact price + CTA block repeated down the page. */
+export const PRICE_BLOCK = {
+  title: "₹999/month — everything included",
+  line: "No setup fee · Zero markup on Meta messages · 7-day money-back",
+  cta: "Get AiDwar for ₹999 →",
+} as const;
+
+/** Batch 81: the growth sticky bar — price, one real proof line every 4 s, the button. */
+export const STICKY = {
+  price: PER_MONTH,
+  cta: "Get started →",
+  finish: "Finish setup — ₹999 →",
+  proofs: ["7-day money-back", "Live in 10 minutes", "Zero markup on messages", "Cancel anytime"],
+  rotateMs: 4000,
+} as const;
 
 /* ------------------------------------------------------------ live demo --- */
 
@@ -306,15 +334,16 @@ const FAQ_BASE = [
 /* --------------------------------------------------------- sticky bar --- */
 
 /**
- * The bar shows once the hero's button has scrolled away, and hides while
- * the checkout is open or the final call-to-action is on screen. Pure.
+ * Batch 81: the bar shows once 30% of the page is scrolled or the hero's
+ * button has left the screen, and hides only while the checkout is open. Pure.
  */
 export function stickyVisible(s: {
+  scrolledFraction: number;
   heroCtaVisible: boolean;
-  finalCtaVisible: boolean;
   checkoutOpen: boolean;
 }): boolean {
-  return !s.heroCtaVisible && !s.finalCtaVisible && !s.checkoutOpen;
+  if (s.checkoutOpen) return false;
+  return s.scrolledFraction >= 0.3 || !s.heroCtaVisible;
 }
 
 /* ------------------------------------------------------------ checkout --- */
@@ -326,27 +355,21 @@ export const ORDER = {
   pay: "Pay ₹999 →",
 } as const;
 
-export type CheckoutField = "phone" | "name" | "business_name" | "email" | "password";
-export const FIELD_ORDER: readonly CheckoutField[] = [
-  "phone",
-  "name",
-  "business_name",
-  "email",
-  "password",
-];
+/**
+ * Batch 81: phone first — the WhatsApp number is the only field at first;
+ * name and email slide in once it is valid. No password (the account is made
+ * for them; they set one after paying) and the business name comes after
+ * payment, on the setup screen.
+ */
+export type CheckoutField = "phone" | "name" | "email";
+export const FIELD_ORDER: readonly CheckoutField[] = ["phone", "name", "email"];
 
 export type CheckoutValues = Record<CheckoutField, string>;
-export const EMPTY_VALUES: CheckoutValues = {
-  phone: "",
-  name: "",
-  business_name: "",
-  email: "",
-  password: "",
-};
+export const EMPTY_VALUES: CheckoutValues = { phone: "", name: "", email: "" };
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
-/** One field's problem, or null. `signedIn` skips email and password. Pure. */
+/** One field's problem, or null. `signedIn` skips the email (the account is theirs already). Pure. */
 export function fieldError(
   field: CheckoutField,
   values: CheckoutValues,
@@ -361,14 +384,9 @@ export function fieldError(
     }
     case "name":
       return v.replace(/\s+/g, " ").length >= 2 ? null : "Enter your name";
-    case "business_name":
-      return v.replace(/\s+/g, " ").length >= 2 ? null : "Enter your business name";
     case "email":
       if (opts.signedIn) return null;
       return EMAIL.test(v) ? null : "Enter a valid email";
-    case "password":
-      if (opts.signedIn) return null;
-      return values.password.length >= 8 ? null : "Use at least 8 characters";
   }
 }
 
@@ -383,6 +401,25 @@ export function allErrors(
   }
   return out;
 }
+
+/** Batch 81: the rest of the form slides in once the number is a valid WhatsApp number. Pure. */
+export function revealRest(values: CheckoutValues): boolean {
+  return fieldError("phone", values) === null;
+}
+
+/** Batch 81: anything typed (the exit-intent save screen only shows then). Pure. */
+export function hasTyped(values: CheckoutValues): boolean {
+  return FIELD_ORDER.some((f) => values[f].trim().length > 0);
+}
+
+/** Batch 81: the exit-intent "Your setup is saved" screen, once per session. */
+export const EXIT_SEEN_KEY = "aidwar.999.exit_seen";
+export const EXIT = {
+  title: "Your setup is saved.",
+  body: "₹999 with a 7-day money-back — no risk.",
+  continue: "Continue to pay",
+  close: "Close",
+} as const;
 
 /** "Weak" / "Okay" / "Strong" for the password hint. Pure. */
 export function passwordStrength(pw: string): { score: 0 | 1 | 2 | 3; label: string } {
@@ -409,10 +446,13 @@ export function isExistingAccountError(message: string | null | undefined): bool
   );
 }
 
-/** What the sheet keeps if it is closed and reopened (session only — never the password). */
+/**
+ * What the sheet keeps if it is closed and reopened, or the buyer comes back
+ * from an emailed log-in link (number, name, email — never a password; there
+ * is none). Kept 2 hours in this browser.
+ */
 export const SAVED_KEY = "aidwar.999.checkout";
-export function savedSubset(values: CheckoutValues): Omit<CheckoutValues, "password"> {
-  const { password: _password, ...rest } = values;
-  void _password;
-  return rest;
+export const SAVED_TTL_MS = 2 * 3600_000;
+export function savedSubset(values: CheckoutValues): CheckoutValues {
+  return { phone: values.phone, name: values.name, email: values.email };
 }

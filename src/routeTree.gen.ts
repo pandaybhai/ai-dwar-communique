@@ -27,6 +27,7 @@ import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as RefundPolicyRouteImport } from './routes/refund-policy'
 import { Route as RefundsRouteImport } from './routes/refunds'
+import { Route as SetPasswordRouteImport } from './routes/set-password'
 import { Route as ShippingRouteImport } from './routes/shipping'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
@@ -307,6 +308,11 @@ const RefundPolicyRoute = RefundPolicyRouteImport.update({
 const RefundsRoute = RefundsRouteImport.update({
   id: '/refunds',
   path: '/refunds',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SetPasswordRoute = SetPasswordRouteImport.update({
+  id: '/set-password',
+  path: '/set-password',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ShippingRoute = ShippingRouteImport.update({
@@ -1329,6 +1335,7 @@ export interface FileRoutesByFullPath {
   '/privacy': typeof PrivacyRoute
   '/refund-policy': typeof RefundPolicyRoute
   '/refunds': typeof RefundsRoute
+  '/set-password': typeof SetPasswordRoute
   '/shipping': typeof ShippingRoute
   '/signup': typeof SignupRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
@@ -1537,6 +1544,7 @@ export interface FileRoutesByTo {
   '/privacy': typeof PrivacyRoute
   '/refund-policy': typeof RefundPolicyRoute
   '/refunds': typeof RefundsRoute
+  '/set-password': typeof SetPasswordRoute
   '/shipping': typeof ShippingRoute
   '/signup': typeof SignupRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
@@ -1749,6 +1757,7 @@ export interface FileRoutesById {
   '/privacy': typeof PrivacyRoute
   '/refund-policy': typeof RefundPolicyRoute
   '/refunds': typeof RefundsRoute
+  '/set-password': typeof SetPasswordRoute
   '/shipping': typeof ShippingRoute
   '/signup': typeof SignupRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
@@ -1962,6 +1971,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/refund-policy'
     | '/refunds'
+    | '/set-password'
     | '/shipping'
     | '/signup'
     | '/sitemap.xml'
@@ -2170,6 +2180,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/refund-policy'
     | '/refunds'
+    | '/set-password'
     | '/shipping'
     | '/signup'
     | '/sitemap.xml'
@@ -2381,6 +2392,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/refund-policy'
     | '/refunds'
+    | '/set-password'
     | '/shipping'
     | '/signup'
     | '/sitemap.xml'
@@ -2593,6 +2605,7 @@ export interface RootRouteChildren {
   PrivacyRoute: typeof PrivacyRoute
   RefundPolicyRoute: typeof RefundPolicyRoute
   RefundsRoute: typeof RefundsRoute
+  SetPasswordRoute: typeof SetPasswordRoute
   ShippingRoute: typeof ShippingRoute
   SignupRoute: typeof SignupRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
@@ -2856,6 +2869,13 @@ declare module '@tanstack/react-router' {
       path: '/refunds'
       fullPath: '/refunds'
       preLoaderRoute: typeof RefundsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/set-password': {
+      id: '/set-password'
+      path: '/set-password'
+      fullPath: '/set-password'
+      preLoaderRoute: typeof SetPasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/shipping': {
@@ -4414,6 +4434,7 @@ const rootRouteChildren: RootRouteChildren = {
   PrivacyRoute: PrivacyRoute,
   RefundPolicyRoute: RefundPolicyRoute,
   RefundsRoute: RefundsRoute,
+  SetPasswordRoute: SetPasswordRoute,
   ShippingRoute: ShippingRoute,
   SignupRoute: SignupRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,

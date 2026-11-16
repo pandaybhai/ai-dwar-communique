@@ -1,0 +1,28 @@
+/*
+ * Batch 81: /999's first-paint CSS. Tailwind builds this from the /999 page's
+ * own files only (a few KB), and the route inlines it in a <style>, so the
+ * page paints without waiting for the app stylesheet (styles.css, ~260 KB),
+ * which still loads — without blocking — for everything else (the root's
+ * lean-CSS loader). The base rules mirror styles.css's for the marketing
+ * site's light :root (font, border colour, body colours), so nothing moves
+ * when the full sheet arrives. batch81-999.test.tsx checks the two agree.
+ */
+@import "tailwindcss" source(none);
+@source "./components/p999";
+@source "./routes/999.tsx";
+
+@layer base {
+  * {
+    border-color: oklch(0.918 0.01 255);
+  }
+
+  html {
+    font-family: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background-color: oklch(1 0 0);
+    color: oklch(0.18 0.02 255);
+  }
+}

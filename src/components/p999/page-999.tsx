@@ -2,6 +2,8 @@ import { Suspense, lazy, useCallback, useEffect, useRef, useState, type RefObjec
 import { HERO, faq, stickyVisible } from "@/lib/page-999";
 import { P999_CSS } from "@/components/p999/p999-css";
 import { cn } from "@/lib/utils";
+import { ensureAppCss } from "@/lib/lean-css";
+import appCss from "../../styles.css?url";
 import { MagneticCta, Reveal, useParallax, usePlaying } from "@/components/p999/p999-motion";
 import {
   Faq,
@@ -10,6 +12,8 @@ import {
   Guarantee,
   LiveIn10,
   MetaNote,
+  AnchorRow,
+  PriceBlock,
   Proof,
   SectionHead,
   StickyBar,
@@ -106,21 +110,27 @@ export function Page999({
   aidenLink,
   returningPaymentId,
   adminTestPrice = null,
+  resume = false,
 }: {
   rates: { marketing: number; utility: number; effective_from: string | null };
   aidenLink: string | null;
   returningPaymentId: string | null;
   /** Batch 80b: /999?admin_test_price=1 — the server decides whether it's allowed. */
   adminTestPrice?: 1 | null;
+  /** Batch 81: /999?resume=1 — back from the emailed log-in link. */
+  resume?: boolean;
 }) {
   const heroCta = useRef<HTMLDivElement | null>(null);
   const finalCta = useRef<HTMLDivElement | null>(null);
   const heroVisible = useVisible(heroCta);
-  const finalVisible = useVisible(finalCta);
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const { ref: heroRef, play } = usePlaying<HTMLElement>();
   const phoneCol = useParallax<HTMLDivElement>(0.05);
+
+  // Batch 81: this page paints from its own CSS; the app sheet is attached
+  // by the root's loader, or here after a client-side navigation in.
+  useEffect(() => ensureAppCss(appCss), []);
 
   // Idle: fetch the checkout so it opens at once.
   useEffect(() => {
@@ -149,7 +159,38 @@ export function Page999({
       .then((m) => m.trackInitiateCheckout999())
       .catch(() => undefined);
   }, []);
-  const close = useCallback(() => setOpen(false), []);
+  // Batch 81: closed with something typed and not paid → "Finish setup — ₹999 →".
+  const [unfinished, setUnfinished] = useState(false);
+  const close = useCallback((state?: { typed: boolean; paid: boolean }) => {
+    setOpen(false);
+    if (state && state.typed && !state.paid) setUnfinished(true);
+  }, []);
+
+  // Batch 81: back from the emailed log-in link (?resume=1) — straight into the checkout.
+  useEffect(() => {
+    if (resume) start();
+    // once, on arrival
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Batch 81: how far down the page (the bar shows from 30%).
+  const [scrolled, setScrolled] = useState(0);
+  useEffect(() => {
+    let raf = 0;
+    const read = () => {
+      raf = 0;
+      const max = document.documentElement.scrollHeight - window.innerHeight;
+      setScrolled(max > 0 ? window.scrollY / max : 0);
+    };
+    const onScroll = () => {
+      if (!raf) raf = requestAnimationFrame(read);
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, []);
 
   return (
     <div className="p9 min-h-screen overflow-x-clip bg-[var(--ink)] antialiased">
@@ -191,17 +232,26 @@ export function Page999({
               <div className="mt-5">
                 <Headline />
               </div>
-              <p
-                className="p9-fade mx-auto mt-5 max-w-xl text-[18px] leading-relaxed text-white/75 sm:text-[20px] lg:mx-0"
-                style={{ ["--d" as string]: "0.45s" }}
+              {/* Batch 81: the price is the hero. */}
+              <div
+                className="p9-fade mx-auto mt-6 max-w-md lg:mx-0"
+                style={{ ["--d" as string]: "0.35s" }}
+                data-testid="hero-price"
               >
-                <strong className="font-extrabold text-white">₹999/month.</strong> Pay Meta directly
-                — we add <span className="text-[var(--mint)]">zero markup</span> on messages.
-              </p>
+                <p className="flex items-baseline justify-center gap-1.5 lg:justify-start">
+                  <span className="text-[4.25rem] font-extrabold leading-none tracking-[-0.05em] text-white sm:text-[5.25rem]">
+                    {HERO.price}
+                  </span>
+                  <span className="text-[1.35rem] font-bold text-white/70">{HERO.priceUnit}</span>
+                </p>
+                <p className="mt-2 text-[15px] font-medium leading-snug text-white/75">
+                  {HERO.priceLine}
+                </p>
+              </div>
               <div
                 ref={heroCta}
-                className="p9-fade mt-8 flex flex-col items-center gap-3 lg:items-start"
-                style={{ ["--d" as string]: "0.6s" }}
+                className="p9-fade mt-7 flex flex-col items-center gap-3 lg:items-start"
+                style={{ ["--d" as string]: "0.5s" }}
               >
                 <MagneticCta
                   onClick={start}
@@ -210,13 +260,14 @@ export function Page999({
                   className="w-full max-w-sm text-[18px] min-h-[3.75rem]"
                   data-testid="hero-cta"
                 >
-                  Start for ₹999{" "}
+                  Get AiDwar for ₹999{" "}
                   <span className="p9-arrow" aria-hidden="true">
                     →
                   </span>
                 </MagneticCta>
                 <p className="text-[13.5px] font-medium text-white/60">{HERO.small}</p>
               </div>
+              <AnchorRow />
             </div>
 
             <div
@@ -232,6 +283,8 @@ export function Page999({
       </header>
 
       <main>
+        {/* Batch 81: price + CTA after the demo, the calculator and "What you get". */}
+        <PriceBlock where="demo" dark onStart={start} onWarm={warmCheckout} />
         <section
           className="p9-paper px-4 pb-20 pt-20 sm:px-6 sm:pb-28 sm:pt-28"
           aria-labelledby="p9-calc"
@@ -250,7 +303,9 @@ export function Page999({
             </Suspense>
           </Reveal>
         </section>
+        <PriceBlock where="calculator" onStart={start} onWarm={warmCheckout} />
         <WhatYouGet />
+        <PriceBlock where="get" onStart={start} onWarm={warmCheckout} />
         <LiveIn10 />
         <Proof />
         <MetaNote />
@@ -262,10 +317,11 @@ export function Page999({
 
       <StickyBar
         on={stickyVisible({
+          scrolledFraction: scrolled,
           heroCtaVisible: heroVisible,
-          finalCtaVisible: finalVisible,
           checkoutOpen: open,
         })}
+        finishSetup={unfinished}
         onStart={start}
         onWarm={warmCheckout}
       />
@@ -277,6 +333,7 @@ export function Page999({
             onClose={close}
             returningPaymentId={returningPaymentId}
             adminTestPrice={adminTestPrice}
+            resumed={resume}
           />
         </Suspense>
       ) : null}

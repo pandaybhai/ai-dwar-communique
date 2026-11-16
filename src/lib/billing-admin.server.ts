@@ -53,6 +53,8 @@ export type AdminOverviewRow = {
   pending_topups: number;
   last_activity: string | null;
   ai: import("@/lib/billing-ai-economics.server").OrgAiEconomics;
+  /** Batch 81: AiDwar's last invoice / receipt / welcome message didn't reach them. */
+  undelivered: import("@/lib/notice-delivery").UndeliveredBadge | null;
 };
 
 export type PlatformTotals = {
@@ -139,6 +141,8 @@ export async function adminOverview(
     metaCostBy.set(key, (metaCostBy.get(key) ?? 0) + Math.abs(Number(m["amount"] ?? 0)));
   }
 
+  const { undeliveredBadges } = await import("@/lib/notice-delivery.server");
+  const undelivered = await undeliveredBadges(supabase);
   const rows = await Promise.all(
     base.rows.map(async (row) => {
       const id = row.organization_id;
@@ -213,6 +217,7 @@ export async function adminOverview(
         pending_topups: row.pending_topups,
         last_activity: (activity.data as { created_at?: string } | null)?.created_at ?? null,
         ai: aiByOrg.get(id) ?? emptyAiEconomics(),
+        undelivered: undelivered.get(id) ?? null,
       } satisfies AdminOverviewRow;
     }),
   );

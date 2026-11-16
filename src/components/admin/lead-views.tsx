@@ -96,7 +96,7 @@ export function CheckoutBadge({ lead }: { lead: LeadRow }) {
         className="ml-2 rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-800"
         data-testid="abandoned-badge"
       >
-        /999 · Checkout abandoned
+        /999 · Reached payment, didn't pay
       </span>
     );
   }
@@ -223,7 +223,7 @@ export function LeadSummary({ lead }: { lead: LeadRow }) {
               lead.paid_at
                 ? `Paid ✓ ${leadTime(lead.paid_at)}`
                 : lead.checkout_at
-                  ? `${isCheckoutAbandoned(lead) ? "Abandoned — call them" : "At payment"} (${leadTime(lead.checkout_at)})`
+                  ? `${isCheckoutAbandoned(lead) ? "Reached payment, didn't pay — call them" : "At payment"} (${leadTime(lead.checkout_at)})`
                   : "Didn't reach payment"
             }
           />
