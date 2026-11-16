@@ -49,11 +49,22 @@ export const Route = createFileRoute("/api/public/meta-event")({
           }
         };
 
-        // Batch 80: the /999 checkout sheet opened — InitiateCheckout, under the
-        // same rule as a page view (consent, our own page, the pixel's id).
+        // Batch 81 (Vinay's rule): /999's ViewContent and InitiateCheckout go
+        // to Meta from the server for every visitor (`landing: "999"`, only
+        // from /999), whatever the cookie choice — the browser pixel stays
+        // Accept-only and carries the same id. Every other page's ViewContent
+        // keeps the consent rule below.
+        const landing999 = body["landing"] === "999";
+
+        // Batch 80: the /999 checkout sheet opened — InitiateCheckout (our own
+        // page, the pixel's id).
         if (event === "InitiateCheckout") {
           const id = body["event_id"];
-          if (body["consent"] !== true || !meta.isEventId(id) || !id.startsWith(`${event}.`))
+          if (
+            (body["consent"] !== true && !landing999) ||
+            !meta.isEventId(id) ||
+            !id.startsWith(`${event}.`)
+          )
             return ok();
           const url = ownUrl(body["url"]);
           if (!url || new URL(url).pathname.replace(/\/+$/, "") !== "/999") return ok();
@@ -69,7 +80,18 @@ export const Route = createFileRoute("/api/public/meta-event")({
 
         if (event === "ViewContent" || event === "Contact") {
           const id = body["event_id"];
-          if (body["consent"] !== true || !meta.isEventId(id) || !id.startsWith(`${event}.`))
+          const is999View =
+            event === "ViewContent" &&
+            landing999 &&
+            (() => {
+              const u = ownUrl(body["url"]);
+              return Boolean(u && new URL(u).pathname.replace(/\/+$/, "") === "/999");
+            })();
+          if (
+            (body["consent"] !== true && !is999View) ||
+            !meta.isEventId(id) ||
+            !id.startsWith(`${event}.`)
+          )
             return ok();
           const url = ownUrl(body["url"]);
           if (!url) return ok();

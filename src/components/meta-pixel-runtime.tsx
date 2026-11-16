@@ -11,6 +11,7 @@ import {
   readConsent,
   rememberFbclid,
   rememberMetaTest,
+  view999Shown,
   scheduleBanner,
   signupWasSubmitted,
   writeConsent,
@@ -54,6 +55,12 @@ export function MetaPixelRuntime() {
     if (!waiting) return;
     return scheduleBanner(window, () => setDue(true));
   }, [waiting]);
+
+  // Batch 81: /999's ViewContent server copy, once per page view, whatever
+  // the cookie choice (declared first, so the pixel below reuses its id).
+  useEffect(() => {
+    view999Shown(pathname);
+  }, [pathname]);
 
   useEffect(() => {
     if (consent === "accepted" && zone === "public") pageChanged(pathname);

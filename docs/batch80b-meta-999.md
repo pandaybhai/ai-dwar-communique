@@ -18,8 +18,8 @@ Batch 80b doesn't change how any event is sent; it adds Test Events mode,
 | Event | When | Browser pixel | Server copy | `event_id` (same on both) | Sent once |
 |---|---|---|---|---|---|
 | PageView | page shown | after Accept | none | random | — |
-| ViewContent | /999 shown (`pageChanged`, `content_name: "999_page"`) | after Accept | `relayToServer` → `/api/public/meta-event` → `queueMetaEvent` (website, with the visitor's request: IP, user agent, `_fbp` / `_fbc`) | `ViewContent.<random>` per page view | per page view |
-| InitiateCheckout | checkout sheet opened (`trackInitiateCheckout999`, 999 INR) | after Accept | same relay as ViewContent | `InitiateCheckout.<random>` per open | per open |
+| ViewContent | /999 shown (`view999Shown`, `content_name: "999_page"`) | after Accept | always (Batch 81): `/api/public/meta-event` → `queueMetaEvent` (website, with the visitor's request: IP, user agent, `_fbp` / `_fbc`) | `ViewContent.<random>` per page view | per page view |
+| InitiateCheckout | checkout sheet opened (`trackInitiateCheckout999`, 999 INR) | after Accept | always (Batch 81), same relay as ViewContent | `InitiateCheckout.<random>` per open | per open |
 | CompleteRegistration | account created in the checkout (`trackRegistration(…, "landing_999")`) | after Accept | `/api/public/meta-event`: account created within the last 15 min | `CompleteRegistration.<user id>` | yes (`once`) |
 | Lead | — | never for /999 | never for /999 (`source === "landing_999"` returns before the Lead) | — | — |
 | AddPaymentInfo | Pay tapped, payment row created (`startCheckoutPayment`) | after Accept (`fireFromServer` with the server's id) | always: the buyer accepted the terms on Pay; website, with the Pay request | `AddPaymentInfo.<payment id>` | yes (`once`) |
@@ -27,13 +27,14 @@ Batch 80b doesn't change how any event is sent; it adds Test Events mode,
 
 ### What about consent?
 
-The server copies of **ViewContent and InitiateCheckout are relayed only after Accept**: `relayToServer` returns early unless `pixelAllowed()`, and the relay endpoint requires `consent: true`. A visitor who hasn't pressed Accept sends neither event from either side.
+**Batch 81 changes this (Vinay's standing rule): on /999 every server copy goes to Meta for every visitor; the browser pixel only after Accept.**
+- **ViewContent:** the pixel runtime starts each /999 view with its own id (`view999Shown`) and sends the server copy straight away, whether the visitor accepted, declined or hasn't chosen.
+- **InitiateCheckout:** opening the checkout sends its server copy the same way (`trackInitiateCheckout999`).
+- **Dedup:** the pixel fires the same ids once the visitor has accepted, now or later on the same view, so Meta counts one.
+- **The relay** (`/api/public/meta-event`) accepts these two only with `landing: "999"` from a /999 address. Every other page's ViewContent still needs consent.
+- **Logging:** each server copy is logged in `meta_capi_log`.
 
-Vinay's 15:31 UTC test showed browser events too, so Accept was pressed, which matches this.
-
-**AddPaymentInfo and Purchase are server-side regardless of the cookie choice.**
-
-Per your instruction, this is reported here and not changed.
+AddPaymentInfo and Purchase were already server-side regardless of the cookie choice.
 
 ## Purchase: once per paid payment, whichever path settles it
 
