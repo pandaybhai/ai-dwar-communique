@@ -64,7 +64,46 @@ export type MetaServerEvent = {
   fbc?: string | null;
   /** Batch 77: the _fbp cookie stored from the lead's own visit (used when no request has one). */
   fbp?: string | null;
+  /**
+   * Batch 80b: Meta's Test Events code for this event (stored with a payment
+   * for its Purchase). Else the browser's own `aidwar_meta_test` cookie, else
+   * META_CAPI_TEST_CODE as before.
+   */
+  testCode?: string | null;
 };
+
+/** Batch 80b: the browser cookie that turns on Meta's Test Events for that browser only. */
+export const META_TEST_COOKIE = "aidwar_meta_test";
+const TEST_CODE_RE = /^[A-Za-z0-9_-]{4,40}$/;
+
+/** A Test Events code that is safe to send (letters, digits, - and _), else null. */
+export function cleanTestCode(value: unknown): string | null {
+  return typeof value === "string" && TEST_CODE_RE.test(value) ? value : null;
+}
+
+/** The Test Events code the request's browser carries (?meta_test= stored as a cookie), or null. */
+export function testCodeFromRequest(request: Request | null | undefined): string | null {
+  if (!request) return null;
+  for (const part of (request.headers.get("cookie") ?? "").split(";")) {
+    const [k, ...v] = part.trim().split("=");
+    if (k === META_TEST_COOKIE) return cleanTestCode(decodeURIComponent(v.join("=")));
+  }
+  return null;
+}
+
+/**
+ * Batch 80b: one row per server event in public.meta_capi_log (sent, failed
+ * or skipped and why; Graph's status, events_received and fbtrace_id). Never
+ * user data. A missing table (20261440 not applied) or a failed write is
+ * ignored — the log never changes a send.
+ */
+async function logCapi(supabase: SupabaseClient, row: Record<string, unknown>): Promise<void> {
+  try {
+    await supabase.from("meta_capi_log").insert(row);
+  } catch {
+    // the log is a courtesy
+  }
+}
 
 let tokenMissingLogged = false;
 
@@ -297,29 +336,45 @@ export async function sendMetaEvent(
   env: Record<string, string | undefined> = process.env,
 ): Promise<SendOutcome> {
   try {
+    const actionSource = ev.actionSource ?? "website";
+    const request = actionSource === "website" ? (ev.request ?? (await currentRequest())) : null;
+    const testCode =
+      cleanTestCode(ev.testCode) ?? testCodeFromRequest(request) ?? capiTestCode(env);
+    const skip = async (outcome: Exclude<SendOutcome, "sent" | "failed">) => {
+      await logCapi(supabase, {
+        event_name: ev.event,
+        event_id: ev.eventId,
+        outcome: "skipped",
+        reason: outcome,
+        test_event_code: testCode,
+        action_source: actionSource,
+      });
+      return outcome;
+    };
+
     const token = capiToken(env);
     if (!token) {
       if (!tokenMissingLogged) {
         tokenMissingLogged = true;
         console.log(JSON.stringify({ scope: "meta_capi", stage: "token_missing" }));
       }
-      return "token_missing";
+      return skip("token_missing");
     }
 
     // Who the event is about: the user, else the workspace's first owner.
     let userId = ev.userId ?? null;
     if (!userId && ev.organizationId) userId = await ownerOf(supabase, ev.organizationId);
     const person = userId ? await loadPerson(supabase, userId) : null;
-    if (person?.optedOut) return "opted_out";
+    if (person?.optedOut) return skip("opted_out");
     // A workspace or account event needs its person (matching + opt-out); a
     // visitor's page event (ViewContent, Contact, Lead) has none.
-    if ((ev.organizationId || ev.userId) && !person) return "no_person";
+    if ((ev.organizationId || ev.userId) && !person) return skip("no_person");
 
     const platform = await platformOrg(supabase);
-    if (ev.once && (await alreadySent(supabase, platform, ev.eventId))) return "already_sent";
+    if (ev.once && (await alreadySent(supabase, platform, ev.eventId))) {
+      return skip("already_sent");
+    }
 
-    const actionSource = ev.actionSource ?? "website";
-    const request = actionSource === "website" ? (ev.request ?? (await currentRequest())) : null;
     const body = await capiBody({
       event: ev.event,
       eventId: ev.eventId,
@@ -331,11 +386,12 @@ export async function sendMetaEvent(
       params: safeParams(ev.params ?? {}),
       person,
       facts: requestFacts(request),
-      testCode: capiTestCode(env),
+      testCode,
       lead: person ? null : (ev.lead ?? null),
       fbc: ev.fbc ?? null,
       fbp: ev.fbp ?? null,
     });
+    const sourceUrl = (body["data"] as Array<Record<string, unknown>>)[0]?.["event_source_url"];
 
     const { GRAPH_VERSION } = await import("@/lib/whatsapp-api.server");
     const { outsideFetch } = await import("@/lib/outside-call.server");
@@ -351,10 +407,24 @@ export async function sendMetaEvent(
       { timeoutMs: META_CAPI_TIMEOUT_MS },
     );
     const custom = (CUSTOM_EVENTS as readonly string[]).includes(ev.event);
+    const answer = (await res.json().catch(() => ({}))) as {
+      error?: { code?: number; error_subcode?: number; message?: string; fbtrace_id?: string };
+      events_received?: number;
+      fbtrace_id?: string;
+    };
+    await logCapi(supabase, {
+      event_name: ev.event,
+      event_id: ev.eventId,
+      outcome: res.ok ? "sent" : "failed",
+      http_status: res.status,
+      events_received: typeof answer.events_received === "number" ? answer.events_received : null,
+      fbtrace_id: answer.fbtrace_id ?? answer.error?.fbtrace_id ?? null,
+      error: res.ok ? null : String(answer.error?.message ?? `HTTP ${res.status}`).slice(0, 300),
+      test_event_code: testCode,
+      action_source: actionSource,
+      source_url: typeof sourceUrl === "string" ? sourceUrl.slice(0, 300) : null,
+    });
     if (!res.ok) {
-      const answer = (await res.json().catch(() => ({}))) as {
-        error?: { code?: number; error_subcode?: number };
-      };
       const code = answer.error?.code ?? res.status;
       console.log(
         JSON.stringify({ scope: "meta_capi", stage: "send_failed", event: ev.event, code }),
@@ -379,6 +449,12 @@ export async function sendMetaEvent(
     console.log(
       JSON.stringify({ scope: "meta_capi", stage: "send_threw", event: ev.event, reason }),
     );
+    await logCapi(supabase, {
+      event_name: ev.event,
+      event_id: ev.eventId,
+      outcome: "failed",
+      error: (error instanceof Error ? `${error.name}: ${error.message}` : "error").slice(0, 300),
+    });
     try {
       await record(supabase, await platformOrg(supabase), "meta_event_failed", {
         event: ev.event,
@@ -561,12 +637,27 @@ export async function metaPaymentSettled(
   try {
     const c = await paymentConversion(supabase, paymentId);
     if (!c) return;
+    // Batch 80b: a /999 payment's Purchase is sent exactly as before; it only
+    // carries the Test Events code its buyer's browser had at Pay, and an
+    // admin's ₹1 live test goes only as a Test Events call (else not at all).
+    const test = await paymentTestFacts(supabase, paymentId);
+    if (test.adminTest && !test.testCode) {
+      await logCapi(supabase, {
+        event_name: c.event,
+        event_id: c.eventId,
+        outcome: "skipped",
+        reason: "admin_test_without_test_code",
+        action_source: "system_generated",
+      });
+      return;
+    }
     await queueMetaEvent(supabase, {
       event: c.event,
       eventId: c.eventId,
       params: c.params,
       organizationId: c.organizationId,
       actionSource: "system_generated",
+      testCode: test.testCode,
       once: true,
     });
   } catch {
@@ -681,4 +772,27 @@ export async function metaCheckoutStarted(
   } catch {
     return null;
   }
+}
+
+/**
+ * Batch 80b: a payment's Test Events code (raw.meta_test_code, from the
+ * buyer's ?meta_test cookie at Pay) and whether it is an admin's ₹1 test.
+ */
+async function paymentTestFacts(
+  supabase: SupabaseClient,
+  paymentId: string,
+): Promise<{ testCode: string | null; adminTest: boolean }> {
+  const { data } = await supabase.from("payments").select("raw").eq("id", paymentId).maybeSingle();
+  const raw = ((data as Record<string, unknown> | null)?.["raw"] ?? {}) as Record<string, unknown>;
+  return { testCode: cleanTestCode(raw["meta_test_code"]), adminTest: raw["admin_test"] === true };
+}
+
+/** Batch 80b: an admin's ₹1 live test (raw.admin_test) — never sent to the pixel. */
+export async function isAdminTestPayment(
+  supabase: SupabaseClient,
+  paymentId: string,
+): Promise<boolean> {
+  const { data } = await supabase.from("payments").select("raw").eq("id", paymentId).maybeSingle();
+  const raw = ((data as Record<string, unknown> | null)?.["raw"] ?? {}) as Record<string, unknown>;
+  return raw["admin_test"] === true;
 }

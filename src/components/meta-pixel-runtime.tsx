@@ -10,6 +10,7 @@ import {
   pageChanged,
   readConsent,
   rememberFbclid,
+  rememberMetaTest,
   scheduleBanner,
   signupWasSubmitted,
   writeConsent,
@@ -38,6 +39,8 @@ export function MetaPixelRuntime() {
   useEffect(() => {
     // Batch 72: an ad click's fbclid, kept for the server's Lead (fbc) only.
     rememberFbclid();
+    // Batch 80b: ?meta_test=<code> → Meta Test Events for this browser (2 h).
+    rememberMetaTest();
     setConsent(readConsent());
     setSignupDone(signupWasSubmitted());
     const onSignup = () => setSignupDone(true);

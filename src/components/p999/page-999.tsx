@@ -105,10 +105,13 @@ export function Page999({
   rates,
   aidenLink,
   returningPaymentId,
+  adminTestPrice = null,
 }: {
   rates: { marketing: number; utility: number; effective_from: string | null };
   aidenLink: string | null;
   returningPaymentId: string | null;
+  /** Batch 80b: /999?admin_test_price=1 — the server decides whether it's allowed. */
+  adminTestPrice?: 1 | null;
 }) {
   const heroCta = useRef<HTMLDivElement | null>(null);
   const finalCta = useRef<HTMLDivElement | null>(null);
@@ -269,7 +272,12 @@ export function Page999({
 
       {mounted ? (
         <Suspense fallback={null}>
-          <Checkout999 open={open} onClose={close} returningPaymentId={returningPaymentId} />
+          <Checkout999
+            open={open}
+            onClose={close}
+            returningPaymentId={returningPaymentId}
+            adminTestPrice={adminTestPrice}
+          />
         </Suspense>
       ) : null}
     </div>

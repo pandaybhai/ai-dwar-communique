@@ -422,6 +422,22 @@ export function trackInitiateCheckout999(): void {
     relayToServer({ event: "InitiateCheckout", event_id: id });
 }
 
+/**
+ * Batch 80b: ?meta_test=<code> on any page turns on Meta's Test Events for
+ * this browser only, for 2 hours: a cookie the server reads on each of this
+ * browser's requests (test_event_code). Nothing else changes.
+ */
+export const META_TEST_COOKIE = "aidwar_meta_test";
+export function rememberMetaTest(): void {
+  try {
+    const code = new URLSearchParams(window.location.search).get("meta_test");
+    if (!code || !/^[A-Za-z0-9_-]{4,40}$/.test(code)) return;
+    document.cookie = `${META_TEST_COOKIE}=${encodeURIComponent(code)}; Max-Age=7200; Path=/; SameSite=Lax; Secure`;
+  } catch {
+    // no cookie, no test mode
+  }
+}
+
 /** A click on our email / phone / WhatsApp link on a public page: Contact. */
 export function contactClicked(href: string | null | undefined, pathname: string): void {
   if (pixelZone(pathname) !== "public" || !isContactHref(href)) return;

@@ -91,6 +91,8 @@ export async function runCheckout(
     /** The sheet already knows this email has an account: sign in, don't sign up. */
     existingAccount?: boolean;
     signedIn?: boolean;
+    /** Batch 80b: /999?admin_test_price=1 — sent with Pay; the server checks Super Admin. */
+    adminTestPrice?: 1 | null;
   } = {},
 ): Promise<CheckoutOutcome> {
   const report = opts.report ?? (() => undefined);
@@ -166,7 +168,8 @@ export async function runCheckout(
 
   // 3. the payment (the workspace first, when there is none)
   report("opening");
-  let started = await deps.startPay(auth.token, { phone: values.phone, action: "pay" });
+  const admin = opts.adminTestPrice === 1 ? { admin_test_price: 1 } : {};
+  let started = await deps.startPay(auth.token, { phone: values.phone, ...admin, action: "pay" });
   if (started.status === 409 && started.body.code === "needs_workspace") {
     report("workspace");
     const made = await deps.createWorkspace(values.business_name.trim().replace(/\s+/g, " "));
@@ -175,6 +178,7 @@ export async function runCheckout(
     started = await deps.startPay(auth.token, {
       phone: values.phone,
       organization_id: made.orgId,
+      ...admin,
       action: "pay",
     });
   }

@@ -79,6 +79,7 @@ export const Route = createFileRoute("/api/public/checkout-999")({
             phone: checked.lead.phone,
             organizationId: orgId,
             request,
+            ...("admin_test_price" in body ? { adminTestPrice: body["admin_test_price"] } : {}),
           });
           if (!started.ok) {
             return Response.json(

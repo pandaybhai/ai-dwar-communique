@@ -231,8 +231,24 @@ export async function startCheckoutPayment(
     phone: string;
     organizationId?: string | null;
     request?: Request;
+    /**
+     * Batch 80b: /999?admin_test_price=1 — a Super Admin's ₹1 live test.
+     * Checked here, on the server, against is_super_admin: anyone else is
+     * refused (never silently charged ₹999 instead).
+     */
+    adminTestPrice?: unknown;
   },
 ): Promise<StartPayResult> {
+  let adminTest = false;
+  if (input.adminTestPrice !== undefined && input.adminTestPrice !== null) {
+    const { isSuperAdmin } = await import("@/lib/whatsapp-api.server");
+    if (input.adminTestPrice !== 1 || !(await isSuperAdmin(supabase, input.userId))) {
+      return { ok: false, status: 403, error: "The ₹1 test price is for AiDwar admins only." };
+    }
+    adminTest = true;
+  }
+  const { testCodeFromRequest } = await import("@/lib/meta-capi.server");
+  const metaTestCode = testCodeFromRequest(input.request ?? null);
   let organizationId = input.organizationId ?? null;
   if (organizationId) {
     const { data } = await supabase
@@ -284,7 +300,12 @@ export async function startCheckoutPayment(
     userId: input.userId,
     planKey: BASIC_PLAN_KEY,
     billingWhatsapp: input.phone,
-    landing: { source: LANDING_999_SOURCE, returnPath: "/999" },
+    landing: {
+      source: LANDING_999_SOURCE,
+      returnPath: "/999",
+      ...(adminTest ? { adminTestPrice: 1 as const } : {}),
+      metaTestCode,
+    },
   });
   if ("error" in started) return { ok: false, status: 400, error: started.error };
 
@@ -307,7 +328,11 @@ export async function startCheckoutPayment(
   try {
     const { metaEventId, safeParams } = await import("@/lib/meta-events");
     const eventId = metaEventId("AddPaymentInfo", started.payment_id);
-    const params = safeParams({ value: 999, currency: "INR", content_name: "basic" });
+    const params = safeParams({
+      value: adminTest ? 1 : 999,
+      currency: "INR",
+      content_name: "basic",
+    });
     const { queueMetaEvent } = await import("@/lib/meta-capi.server");
     await queueMetaEvent(supabase, {
       event: "AddPaymentInfo",
@@ -316,6 +341,8 @@ export async function startCheckoutPayment(
       userId: input.userId,
       sourceUrl: input.request?.headers.get("referer") ?? null,
       ...(input.request ? { request: input.request } : {}),
+      // Batch 80b: ?meta_test=<code> → Meta Test Events (this browser only).
+      testCode: metaTestCode,
       once: true,
     });
     meta = { event: "AddPaymentInfo", event_id: eventId, params };

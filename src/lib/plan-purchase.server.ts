@@ -245,7 +245,17 @@ export async function startPlanPurchase(
      * gateway follows the plan's own features, the payment row carries
      * raw.source and Cashfree brings a redirected buyer back to returnPath.
      */
-    landing?: { source: "landing_999"; returnPath: string };
+    landing?: {
+      source: "landing_999";
+      returnPath: string;
+      /**
+       * Batch 80b: a Super Admin's ₹1 live test (checked by the caller,
+       * startCheckoutPayment, against is_super_admin). Only 1 is accepted.
+       */
+      adminTestPrice?: 1;
+      /** Batch 80b: the buyer's Meta Test Events code, kept for the Purchase. */
+      metaTestCode?: string | null;
+    };
   },
 ): Promise<
   | {
@@ -330,7 +340,9 @@ export async function startPlanPurchase(
   });
   if ("error" in account) return account;
 
-  const base = round2(plan.price_monthly);
+  // Batch 80b: an admin's ₹1 live test charges ₹1, nothing else.
+  const adminTest = input.landing?.adminTestPrice === 1;
+  const base = adminTest ? 1 : round2(plan.price_monthly);
   // Batch 55: GST only while the platform is GST-registered.
   const { priceNow } = await import("@/lib/gst-mode.server");
   const priced = await priceNow(supabase, base);
@@ -366,6 +378,8 @@ export async function startPlanPurchase(
     gst_amount: gst,
     gross_amount: total,
     ...(input.landing ? { source: input.landing.source } : {}),
+    ...(adminTest ? { admin_test: true } : {}),
+    ...(input.landing?.metaTestCode ? { meta_test_code: input.landing.metaTestCode } : {}),
   };
 
   const { data: payment, error: payErr } = await supabase
@@ -403,7 +417,7 @@ export async function startPlanPurchase(
       gross: total,
       currency: "INR",
       customer,
-      note: `AiDwar ${plan.name} plan, first month${inclGst}`,
+      note: `${adminTest ? "ADMIN TEST — " : ""}AiDwar ${plan.name} plan, first month${inclGst}`,
       returnUrl: input.landing
         ? `${APP_PUBLIC_URL}${input.landing.returnPath}?payment=${payment.id}`
         : `${APP_PUBLIC_URL}/app/billing?payment=${payment.id}`,

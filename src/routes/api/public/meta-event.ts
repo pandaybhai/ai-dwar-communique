@@ -167,6 +167,8 @@ export const Route = createFileRoute("/api/public/meta-event")({
           const paymentId = String(body["payment_id"] ?? "");
           if (!UUID.test(paymentId)) return ok({ meta: null });
           const c = await capi.paymentConversion(supabase, paymentId);
+          // Batch 80b: an admin's ₹1 live test never reaches the pixel.
+          if (c && (await capi.isAdminTestPayment(supabase, paymentId))) return ok({ meta: null });
           return ok({
             meta: c ? { event: c.event, event_id: c.eventId, params: c.params } : null,
           });

@@ -17,7 +17,7 @@
 -- query_to_xml only when to_regclass('cron.job') finds it, so the query
 -- still runs where pg_cron is absent (every cron job is then listed).
 --
--- Expected objects: table 98, column 1166, view 2, function 125, index 176, trigger 72, cron_job 14.
+-- Expected objects: table 99, column 1179, view 2, function 126, index 178, trigger 72, cron_job 14.
 WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, introduced_in_file) AS (
   VALUES
     ('table', 'aidwar_private', 'mcp_db_proof', NULL, NULL, NULL, '20261300_batch56_mcp_hardening.sql'),
@@ -86,6 +86,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('table', 'public', 'message_rates', NULL, NULL, NULL, '20260831_message_cost_receipts.sql'),
     ('table', 'public', 'message_templates', NULL, NULL, NULL, '20260813_message_templates.sql'),
     ('table', 'public', 'messages', NULL, NULL, NULL, '20260813_phase2_whatsapp_data_plane.sql'),
+    ('table', 'public', 'meta_capi_log', NULL, NULL, NULL, '20261440_batch80b.sql'),
     ('table', 'public', 'opt_out_keywords', NULL, NULL, NULL, '20260815_optout_and_health.sql'),
     ('table', 'public', 'order_items', NULL, NULL, NULL, '20260821_shopify_integration.sql'),
     ('table', 'public', 'orders', NULL, NULL, NULL, '20260821_shopify_integration.sql'),
@@ -914,6 +915,19 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('column', 'public', 'messages', 'status_updated_at', NULL, 'timestamp with time zone', '20260813_phase2_whatsapp_data_plane.sql'),
     ('column', 'public', 'messages', 'template_name', NULL, 'text', '20260813_phase2_whatsapp_data_plane.sql'),
     ('column', 'public', 'messages', 'type', NULL, 'text', '20260813_phase2_whatsapp_data_plane.sql'),
+    ('column', 'public', 'meta_capi_log', 'action_source', NULL, 'text', '20261440_batch80b.sql'),
+    ('column', 'public', 'meta_capi_log', 'created_at', NULL, 'timestamp with time zone', '20261440_batch80b.sql'),
+    ('column', 'public', 'meta_capi_log', 'error', NULL, 'text', '20261440_batch80b.sql'),
+    ('column', 'public', 'meta_capi_log', 'event_id', NULL, 'text', '20261440_batch80b.sql'),
+    ('column', 'public', 'meta_capi_log', 'event_name', NULL, 'text', '20261440_batch80b.sql'),
+    ('column', 'public', 'meta_capi_log', 'events_received', NULL, 'integer', '20261440_batch80b.sql'),
+    ('column', 'public', 'meta_capi_log', 'fbtrace_id', NULL, 'text', '20261440_batch80b.sql'),
+    ('column', 'public', 'meta_capi_log', 'http_status', NULL, 'integer', '20261440_batch80b.sql'),
+    ('column', 'public', 'meta_capi_log', 'id', NULL, 'uuid', '20261440_batch80b.sql'),
+    ('column', 'public', 'meta_capi_log', 'outcome', NULL, 'text', '20261440_batch80b.sql'),
+    ('column', 'public', 'meta_capi_log', 'reason', NULL, 'text', '20261440_batch80b.sql'),
+    ('column', 'public', 'meta_capi_log', 'source_url', NULL, 'text', '20261440_batch80b.sql'),
+    ('column', 'public', 'meta_capi_log', 'test_event_code', NULL, 'text', '20261440_batch80b.sql'),
     ('column', 'public', 'onboarding_sessions', 'last_gap_note_at', NULL, 'timestamp with time zone', '20260918_silent_gaps.sql'),
     ('column', 'public', 'onboarding_sessions', 'last_nudge_at', NULL, 'timestamp with time zone', '20260918_onboarding_last_nudge_at.sql'),
     ('column', 'public', 'onboarding_sessions', 'pending_asked_at', NULL, 'timestamp with time zone', '20260908_teaching_guards.sql'),
@@ -1364,6 +1378,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('function', 'public', 'mcp_workspace_apps', NULL, ARRAY['uuid', 'uuid'], 'public.mcp_workspace_apps(uuid, uuid)', '20261270_batch53_aiden_workspace.sql'),
     ('function', 'public', 'message_rate_for', NULL, ARRAY['text', 'text', 'timestamp with time zone'], 'public.message_rate_for(text, text, timestamp with time zone)', '20260831_message_cost_receipts.sql'),
     ('function', 'public', 'meta_balance_estimate', NULL, ARRAY['uuid'], 'public.meta_balance_estimate(uuid)', '20261054_live_only_functions.sql'),
+    ('function', 'public', 'meta_capi_log_purge', NULL, '{}'::text[], 'public.meta_capi_log_purge()', '20261440_batch80b.sql'),
     ('function', 'public', 'next_invoice_number', NULL, ARRAY['text', 'date'], 'public.next_invoice_number(text, date)', '20261054_live_only_functions.sql'),
     ('function', 'public', 'orders_attribute_trigger', NULL, '{}'::text[], 'public.orders_attribute_trigger()', '20260828_revenue_attribution.sql'),
     ('function', 'public', 'org_flag_enabled', NULL, ARRAY['uuid', 'text'], 'public.org_flag_enabled(uuid, text)', '20260907_org_flag_enabled_plan_aware.sql'),
@@ -1535,6 +1550,8 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('index', 'public', 'messages_outbound_created_idx', NULL, NULL, 'on public.messages', '20260828_revenue_attribution.sql'),
     ('index', 'public', 'messages_outbound_failed_recent_idx', NULL, NULL, 'on public.messages', '20260924_send_health_scope_diff.sql'),
     ('index', 'public', 'messages_template_sends_idx', NULL, NULL, 'on public.messages', '20261350_batch63.sql'),
+    ('index', 'public', 'meta_capi_log_created_idx', NULL, NULL, 'on public.meta_capi_log', '20261440_batch80b.sql'),
+    ('index', 'public', 'meta_capi_log_event_idx', NULL, NULL, 'on public.meta_capi_log', '20261440_batch80b.sql'),
     ('index', 'public', 'opt_out_keywords_unique', NULL, NULL, 'unique on public.opt_out_keywords', '20260815_optout_and_health.sql'),
     ('index', 'public', 'order_items_order_idx', NULL, NULL, 'on public.order_items', '20260821_shopify_integration.sql'),
     ('index', 'public', 'orders_integration_external_unique_idx', NULL, NULL, 'unique on public.orders', '20260821_shopify_integration.sql'),
@@ -1671,7 +1688,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('cron_job', 'cron', 'aidwar-plan-billing', NULL, NULL, 'schedule 30 3 * * *', '20260923_plan_billing_cron.sql'),
     ('cron_job', 'cron', 'aidwar-reprice-sweep', NULL, NULL, 'schedule */10 * * * *', '20261053_cron_jobs.sql'),
     ('cron_job', 'cron', 'aidwar-reprocess-events', NULL, NULL, 'schedule */5 * * * *', '20261053_cron_jobs.sql'),
-    ('cron_job', 'cron', 'aidwar-retention-purge', NULL, NULL, 'schedule 0 2 * * *', '20261420_batch78.sql'),
+    ('cron_job', 'cron', 'aidwar-retention-purge', NULL, NULL, 'schedule 0 2 * * *', '20261440_batch80b.sql'),
     ('cron_job', 'cron', 'aidwar-shopify-sync', NULL, NULL, 'schedule * * * * *', '20261053_cron_jobs.sql')
 ),
 cron_jobs AS (
