@@ -65,21 +65,11 @@ export type MetaServerEvent = {
   /** Batch 77: the _fbp cookie stored from the lead's own visit (used when no request has one). */
   fbp?: string | null;
   /**
-   * Batch 80b: an anonymous visitor's own id for this visit (the /999 page),
-   * hashed into external_id when there is no person or lead.
-   */
-  externalId?: string | null;
-  /**
    * Batch 80b: Meta's Test Events code for this event (stored with a payment
    * for its Purchase). Else the browser's own `aidwar_meta_test` cookie, else
    * META_CAPI_TEST_CODE as before.
    */
   testCode?: string | null;
-  /**
-   * Batch 80b: false = never read the current request (a webhook's request is
-   * Cashfree's, not the buyer's): ip, user agent and cookies are left out.
-   */
-  useCurrentRequest?: boolean;
 };
 
 /** Batch 80b: the browser cookie that turns on Meta's Test Events for that browser only. */
@@ -261,7 +251,6 @@ export async function capiBody(input: {
   lead?: MetaServerEvent["lead"];
   fbc?: string | null;
   fbp?: string | null;
-  externalId?: string | null;
 }): Promise<Record<string, unknown>> {
   const userData: Record<string, unknown> = {
     ...(input.person
@@ -277,9 +266,7 @@ export async function capiBody(input: {
             fullName: input.lead.name,
             userId: input.lead.leadId,
           })
-        : input.externalId
-          ? await hashedUserData({ userId: input.externalId })
-          : {}),
+        : {}),
     ...input.facts,
   };
   // The _fbc cookie when the visitor has one (cookie consent), else the one
@@ -350,10 +337,7 @@ export async function sendMetaEvent(
 ): Promise<SendOutcome> {
   try {
     const actionSource = ev.actionSource ?? "website";
-    const request =
-      actionSource === "website"
-        ? (ev.request ?? (ev.useCurrentRequest === false ? null : await currentRequest()))
-        : null;
+    const request = actionSource === "website" ? (ev.request ?? (await currentRequest())) : null;
     const testCode =
       cleanTestCode(ev.testCode) ?? testCodeFromRequest(request) ?? capiTestCode(env);
     const skip = async (outcome: Exclude<SendOutcome, "sent" | "failed">) => {
@@ -406,7 +390,6 @@ export async function sendMetaEvent(
       lead: person ? null : (ev.lead ?? null),
       fbc: ev.fbc ?? null,
       fbp: ev.fbp ?? null,
-      externalId: ev.externalId ?? null,
     });
     const sourceUrl = (body["data"] as Array<Record<string, unknown>>)[0]?.["event_source_url"];
 
@@ -496,7 +479,7 @@ export async function queueMetaEvent(supabase: SupabaseClient, ev: MetaServerEve
       await sendMetaEvent(supabase, ev);
       return;
     }
-    const request = ev.request ?? (ev.useCurrentRequest === false ? null : await currentRequest());
+    const request = ev.request ?? (await currentRequest());
     // The person's request is captured now: after the response there may be none.
     const work = sendMetaEvent(supabase, { ...ev, request }).then(
       () => undefined,
@@ -654,34 +637,17 @@ export async function metaPaymentSettled(
   try {
     const c = await paymentConversion(supabase, paymentId);
     if (!c) return;
-    const nine = await purchase999Context(supabase, paymentId);
-    if (nine) {
-      // Batch 80b: the /999 Purchase — a website event, matched as well as we
-      // can whichever path settled it, Test Events when the buyer's browser
-      // (or an admin's ₹1 test) asked for it.
-      if (nine.adminTest && !nine.testCode) {
-        await logCapi(supabase, {
-          event_name: c.event,
-          event_id: c.eventId,
-          outcome: "skipped",
-          reason: "admin_test_without_test_code",
-          action_source: "website",
-        });
-        return;
-      }
-      const request = await buyerRequest();
-      await queueMetaEvent(supabase, {
-        event: c.event,
-        eventId: c.eventId,
-        params: c.params,
-        organizationId: c.organizationId,
-        actionSource: "website",
-        sourceUrl: nine.sourceUrl,
-        ...(request ? { request } : { useCurrentRequest: false }),
-        fbc: nine.fbc,
-        fbp: nine.fbp,
-        testCode: nine.testCode,
-        once: true,
+    // Batch 80b: a /999 payment's Purchase is sent exactly as before; it only
+    // carries the Test Events code its buyer's browser had at Pay, and an
+    // admin's ₹1 live test goes only as a Test Events call (else not at all).
+    const test = await paymentTestFacts(supabase, paymentId);
+    if (test.adminTest && !test.testCode) {
+      await logCapi(supabase, {
+        event_name: c.event,
+        event_id: c.eventId,
+        outcome: "skipped",
+        reason: "admin_test_without_test_code",
+        action_source: "system_generated",
       });
       return;
     }
@@ -691,6 +657,7 @@ export async function metaPaymentSettled(
       params: c.params,
       organizationId: c.organizationId,
       actionSource: "system_generated",
+      testCode: test.testCode,
       once: true,
     });
   } catch {
@@ -808,60 +775,16 @@ export async function metaCheckoutStarted(
 }
 
 /**
- * Batch 80b: what a /999 payment's Purchase is sent with — the buyer's lead's
- * stored fbc / _fbp (Batch 77), the Test Events code their browser carried at
- * Pay (raw.meta_test_code) and whether it was an admin's ₹1 test. Null for any
- * other payment (sent exactly as before).
+ * Batch 80b: a payment's Test Events code (raw.meta_test_code, from the
+ * buyer's ?meta_test cookie at Pay) and whether it is an admin's ₹1 test.
  */
-async function purchase999Context(
+async function paymentTestFacts(
   supabase: SupabaseClient,
   paymentId: string,
-): Promise<{
-  fbc: string | null;
-  fbp: string | null;
-  testCode: string | null;
-  adminTest: boolean;
-  sourceUrl: string;
-} | null> {
-  const { data: payment } = await supabase
-    .from("payments")
-    .select("raw")
-    .eq("id", paymentId)
-    .maybeSingle();
-  const raw = ((payment as Record<string, unknown> | null)?.["raw"] ?? {}) as Record<
-    string,
-    unknown
-  >;
-  if (raw["source"] !== "landing_999") return null;
-  const { data: lead } = await supabase
-    .from("demo_leads")
-    .select("*")
-    .eq("payment_id", paymentId)
-    .maybeSingle();
-  const l = (lead ?? {}) as Record<string, unknown>;
-  const { APP_PUBLIC_URL } = await import("@/lib/app-url");
-  return {
-    fbc: typeof l["meta_fbc"] === "string" ? (l["meta_fbc"] as string) : null,
-    fbp: typeof l["meta_fbp"] === "string" ? (l["meta_fbp"] as string) : null,
-    testCode: cleanTestCode(raw["meta_test_code"]),
-    adminTest: raw["admin_test"] === true,
-    sourceUrl: `${APP_PUBLIC_URL}/999`,
-  };
-}
-
-/**
- * The buyer's own request when the settle runs inside it (the page's
- * return-confirm, /api/public/cashfree-pay); null inside Cashfree's webhook
- * or a sweep, whose ip and user agent are not the buyer's.
- */
-async function buyerRequest(): Promise<Request | null> {
-  const request = await currentRequest();
-  if (!request) return null;
-  try {
-    return new URL(request.url).pathname === "/api/public/cashfree-pay" ? request : null;
-  } catch {
-    return null;
-  }
+): Promise<{ testCode: string | null; adminTest: boolean }> {
+  const { data } = await supabase.from("payments").select("raw").eq("id", paymentId).maybeSingle();
+  const raw = ((data as Record<string, unknown> | null)?.["raw"] ?? {}) as Record<string, unknown>;
+  return { testCode: cleanTestCode(raw["meta_test_code"]), adminTest: raw["admin_test"] === true };
 }
 
 /** Batch 80b: an admin's ₹1 live test (raw.admin_test) — never sent to the pixel. */

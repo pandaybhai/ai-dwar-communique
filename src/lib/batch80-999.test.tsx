@@ -561,9 +561,9 @@ describe("the /999 lead", () => {
     expect(lead["payment_id"]).toBe((out as { payment_id: string }).payment_id);
     const later = Date.parse(String(lead["checkout_at"])) + 31 * 60_000;
     expect(checkoutAbandoned(lead as never, later)).toBe(true);
-    expect(isCheckoutAbandoned({ ...lead, paid_at: "2026-11-13T10:00:00Z" } as never, later)).toBe(
-      false,
-    );
+    expect(
+      isCheckoutAbandoned({ ...lead, paid_at: "2026-11-13T10:00:00Z" } as never, later),
+    ).toBe(false);
     const leads = [
       { ...lead, status: "new", assigned_to: null } as unknown as LeadRow,
       {
@@ -684,10 +684,7 @@ describe("Meta events", () => {
     expect((await paymentConversion(w.supabase as never, "pgro"))?.event).toBe("Subscribe");
   });
 
-  // Batch 80b: the server copy now goes for every /999 visitor who hasn't
-  // pressed Decline (`landing: "999"`, consent "accepted" | "none"); the pixel
-  // stays Accept-only (batch80b-meta.test.ts covers the rest).
-  it("InitiateCheckout's server copy: unless Declined, and only from /999", async () => {
+  it("InitiateCheckout's server copy only with consent and only from /999", async () => {
     const w = world();
     void w;
     const { Route } = await import("@/routes/api/public/meta-event");
@@ -707,23 +704,19 @@ describe("Meta events", () => {
     await post({
       event: "InitiateCheckout",
       event_id: "InitiateCheckout.abcdef1234",
-      landing: "999",
-      consent: "declined",
       url: "https://aidwar.in/999",
     });
     await post({
       event: "InitiateCheckout",
       event_id: "InitiateCheckout.abcdef1234",
-      landing: "999",
-      consent: "none",
+      consent: true,
       url: "https://aidwar.in/start",
     });
     expect(h.events).toHaveLength(0);
     await post({
       event: "InitiateCheckout",
       event_id: "InitiateCheckout.abcdef1234",
-      landing: "999",
-      consent: "none",
+      consent: true,
       url: "https://aidwar.in/999",
     });
     expect(h.events).toEqual([

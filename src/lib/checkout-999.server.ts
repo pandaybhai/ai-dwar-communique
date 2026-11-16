@@ -76,13 +76,7 @@ export type SaveLeadResult =
 export async function saveCheckoutLead(
   supabase: SupabaseClient,
   body: Record<string, unknown>,
-  meta: {
-    ip: string | null;
-    referrer: string | null;
-    cookieLeadId: string | null;
-    /** Batch 80b: the buyer's request — its _fbc/_fbp cookies are kept on the lead for Meta. */
-    request?: Request | null;
-  },
+  meta: { ip: string | null; referrer: string | null; cookieLeadId: string | null },
 ): Promise<SaveLeadResult> {
   if (str(body["company_website_confirm"], 200)) {
     return { ok: true, id: "", duplicate: false, honeypot: true };
@@ -172,23 +166,6 @@ export async function saveCheckoutLead(
     return { ok: false, status: 500, error: "We couldn't save that just now. Please try again." };
   }
   const id = (data as { id: string }).id;
-  // Batch 80b: what this visit is matched with (fbc: the _fbc cookie, else the
-  // ad click's fbclid; the _fbp cookie when it exists) — Batch 77's columns,
-  // never the raw IP or user agent.
-  try {
-    const [{ fbcFromFbclid }, { requestFacts }, { rememberLeadMatching }] = await Promise.all([
-      import("@/lib/meta-events"),
-      import("@/lib/meta-capi.server"),
-      import("@/lib/lead-stage-events.server"),
-    ]);
-    const facts = requestFacts(meta.request ?? null);
-    await rememberLeadMatching(supabase, id, {
-      fbc: facts.fbc ?? fbcFromFbclid(body["fbclid"], body["fbclid_at"]),
-      fbp: facts.fbp ?? null,
-    });
-  } catch {
-    // matching is a courtesy; the lead is saved
-  }
   // Batch 76: the lead's contact in AiDwar's own workspace. Sends nothing.
   try {
     const { mirrorLead } = await import("@/lib/lead-mirror.server");
@@ -345,16 +322,12 @@ export async function startCheckoutPayment(
       );
   }
 
-  // The lead's stored matching (fbc from the ad click, _fbp), for Meta.
-  const lead999 = input.leadId ? await leadMatching(supabase, input.leadId) : null;
-
   // AddPaymentInfo (server always — the buyer accepted the terms on Pay; the
   // browser fires the same id only after the cookie banner's Accept).
   let meta: import("@/lib/meta-events").BrowserMetaEvent | null = null;
   try {
     const { metaEventId, safeParams } = await import("@/lib/meta-events");
-    // Batch 80b: one AddPaymentInfo per lead (a retry is the same checkout).
-    const eventId = metaEventId("AddPaymentInfo", input.leadId ?? started.payment_id);
+    const eventId = metaEventId("AddPaymentInfo", started.payment_id);
     const params = safeParams({
       value: adminTest ? 1 : 999,
       currency: "INR",
@@ -368,7 +341,7 @@ export async function startCheckoutPayment(
       userId: input.userId,
       sourceUrl: input.request?.headers.get("referer") ?? null,
       ...(input.request ? { request: input.request } : {}),
-      ...(lead999 ? { fbc: lead999.fbc, fbp: lead999.fbp } : {}),
+      // Batch 80b: ?meta_test=<code> → Meta Test Events (this browser only).
       testCode: metaTestCode,
       once: true,
     });
@@ -394,21 +367,4 @@ export function checkoutAbandoned(
 ): boolean {
   if (lead.source !== LANDING_999_SOURCE || !lead.checkout_at || lead.paid_at) return false;
   return Date.parse(lead.checkout_at) <= now - ABANDONED_AFTER_MS;
-}
-
-/** Batch 80b: the fbc / _fbp a /999 lead's visit left (Batch 77's columns), or nulls. */
-async function leadMatching(
-  supabase: SupabaseClient,
-  leadId: string,
-): Promise<{ fbc: string | null; fbp: string | null }> {
-  try {
-    const { data } = await supabase.from("demo_leads").select("*").eq("id", leadId).maybeSingle();
-    const l = (data ?? {}) as Record<string, unknown>;
-    return {
-      fbc: typeof l["meta_fbc"] === "string" ? (l["meta_fbc"] as string) : null,
-      fbp: typeof l["meta_fbp"] === "string" ? (l["meta_fbp"] as string) : null,
-    };
-  } catch {
-    return { fbc: null, fbp: null };
-  }
 }
