@@ -162,10 +162,11 @@ describe("(7) cron secret: constant-time", () => {
     let checked = 0;
     for (const f of readdirSync(dir)) {
       const src = readFileSync(new URL(f, dir), "utf8");
-      if (!src.includes("CRON_SECRET")) continue;
+      if (!src.includes("x-cron-secret")) continue;
       checked += 1;
       expect(src, f).not.toMatch(/provided !== expected|=== cronSecret|provided !== secret/);
-      expect(src, f).toMatch(/secretEquals\(/);
+      // The rotation-aware check (cron-auth.server.ts), constant-time via secretEquals.
+      expect(src, f).toMatch(/cronSecretAccepted\(/);
     }
     expect(checked).toBe(15);
   });

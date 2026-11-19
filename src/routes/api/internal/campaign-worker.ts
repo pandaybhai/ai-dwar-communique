@@ -11,11 +11,10 @@ export const Route = createFileRoute("/api/internal/campaign-worker")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const { secretEquals } = await import("@/lib/cron-auth.server");
-        const expected = process.env["CRON_SECRET"];
+        const { cronSecretAccepted } = await import("@/lib/cron-auth.server");
         const provided =
           request.headers.get("x-cron-secret") ?? request.headers.get("X-Cron-Secret");
-        if (!expected || !secretEquals(provided, expected)) {
+        if (!cronSecretAccepted(provided)) {
           return Response.json({ error: "Unauthorized" }, { status: 401 });
         }
 
