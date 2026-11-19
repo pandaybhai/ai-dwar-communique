@@ -31,8 +31,8 @@ import { normalizePhone, toWaId } from "@/lib/phone";
  */
 
 export const LEAD_TAG = "AiDwar lead";
-// Batch 80: /999 checkout leads join the mirror.
-const MIRROR_SOURCES = ["landing_start", "landing", "landing_999"] as const;
+// Batch 80 / 82: /999 and /199 checkout leads join the mirror.
+const MIRROR_SOURCES = ["landing_start", "landing", "landing_999", "landing_199"] as const;
 
 type MirrorLead = {
   id: string;

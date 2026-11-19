@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { AccessEndingBanner } from "@/components/access-ending-banner";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   Check,
@@ -503,6 +504,8 @@ export function PlanBanner() {
     );
   }
 
+  // Batch 82: a /199 paid trial's last 5 days (AccessEndingBanner reads its own period).
+  if (org.plan_status === "active") return <AccessEndingBanner organizationId={org.id} />;
   if (org.plan_version_id || org.plan_status !== "trial") return null;
   const days = org.trial_ends_at
     ? Math.max(0, Math.ceil((new Date(org.trial_ends_at).getTime() - Date.now()) / 864e5))

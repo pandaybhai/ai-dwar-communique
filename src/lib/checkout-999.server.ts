@@ -27,6 +27,36 @@ export const LANDING_999_SOURCE = "landing_999";
 export const BASIC_PLAN_KEY = "basic";
 export const CHECKOUT_CONSENT_VERSION = "2026-11-13";
 export const LEAD_999_COOKIE = "aidwar_999_lead";
+
+/**
+ * Batch 82: the page a checkout belongs to. /999 (the default everywhere, so
+ * its checkout is exactly as before) and /199 — the ₹199 paid trial: the same
+ * sheet and server steps with its own lead source, cookie and return path.
+ * The price is never a field here: startPlanPurchase decides it on the
+ * server from the source.
+ */
+export type CheckoutPage = {
+  source: "landing_999" | "landing_199";
+  path: "/999" | "/199";
+  cookie: string;
+  /** What AddPaymentInfo / InitiateCheckout say the order is worth. */
+  value: number;
+};
+export const PAGE_999: CheckoutPage = {
+  source: LANDING_999_SOURCE,
+  path: "/999",
+  cookie: LEAD_999_COOKIE,
+  value: 999,
+};
+export const LANDING_199_SOURCE = "landing_199";
+export const PAGE_199: CheckoutPage = {
+  source: LANDING_199_SOURCE,
+  path: "/199",
+  cookie: "aidwar_199_lead",
+  value: 199,
+};
+/** Batch 82: the one /199 answer when the offer was used before (no order is made). */
+export const OFFER_USED_MESSAGE = "You've already used the ₹199 offer — our team will call you";
 const COOKIE_TTL_S = 60 * 60; // the token itself lives an hour (START_LEAD_TTL_S)
 
 function str(value: unknown, max: number): string {
@@ -79,6 +109,7 @@ export async function saveCheckoutLead(
   supabase: SupabaseClient,
   body: Record<string, unknown>,
   meta: { ip: string | null; referrer: string | null; cookieLeadId: string | null },
+  page: CheckoutPage = PAGE_999,
 ): Promise<SaveLeadResult> {
   if (str(body["company_website_confirm"], 200)) {
     return { ok: true, id: "", duplicate: false, honeypot: true };
@@ -96,7 +127,7 @@ export async function saveCheckoutLead(
       .select("id, source")
       .eq("id", meta.cookieLeadId)
       .maybeSingle();
-    if ((data as { source?: string } | null)?.source === LANDING_999_SOURCE) {
+    if ((data as { source?: string } | null)?.source === page.source) {
       existing = { id: (data as { id: string }).id };
     }
   }
@@ -105,7 +136,7 @@ export async function saveCheckoutLead(
       .from("demo_leads")
       .select("id")
       .eq("phone", phone)
-      .eq("source", LANDING_999_SOURCE)
+      .eq("source", page.source)
       .gte("created_at", since)
       .order("created_at", { ascending: false })
       .limit(1)
@@ -155,11 +186,11 @@ export async function saveCheckoutLead(
       consent: true,
       consent_version: CHECKOUT_CONSENT_VERSION,
       consent_at: new Date().toISOString(),
-      landing_path: "/999",
+      landing_path: page.path,
       referrer_host: referrerHost,
       first_attribution: {},
       latest_attribution: {},
-      source: LANDING_999_SOURCE,
+      source: page.source,
       ip_hash: ipHash,
     })
     .select("id")
@@ -178,16 +209,20 @@ export async function saveCheckoutLead(
   return { ok: true, id, duplicate: false };
 }
 
-export async function leadCookie(leadId: string): Promise<string> {
+export async function leadCookie(leadId: string, page: CheckoutPage = PAGE_999): Promise<string> {
   const { startLeadToken } = await import("@/lib/start-lead-cookie.server");
-  return `${LEAD_999_COOKIE}=${await startLeadToken(leadId)}; Path=/api/public/checkout-999; HttpOnly; Secure; SameSite=Lax; Max-Age=${COOKIE_TTL_S}`;
+  const route = `/api/public/checkout-${page.path.slice(1)}`;
+  return `${page.cookie}=${await startLeadToken(leadId)}; Path=${route}; HttpOnly; Secure; SameSite=Lax; Max-Age=${COOKIE_TTL_S}`;
 }
 
-export async function leadFromCookie(request: Request): Promise<string | null> {
+export async function leadFromCookie(
+  request: Request,
+  page: CheckoutPage = PAGE_999,
+): Promise<string | null> {
   let token: string | null = null;
   for (const part of (request.headers.get("cookie") ?? "").split(";")) {
     const [k, ...v] = part.trim().split("=");
-    if (k === LEAD_999_COOKIE) token = v.join("=");
+    if (k === page.cookie) token = v.join("=");
   }
   if (!token) return null;
   const { readStartLeadToken } = await import("@/lib/start-lead-cookie.server");
@@ -220,7 +255,12 @@ export type StartPayResult =
       url: string;
       meta: import("@/lib/meta-events").BrowserMetaEvent | null;
     }
-  | { ok: false; status: number; error: string; code?: "needs_workspace" | "already_on_plan" };
+  | {
+      ok: false;
+      status: number;
+      error: string;
+      code?: "needs_workspace" | "already_on_plan" | "offer_used";
+    };
 
 /**
  * Step 2: the Basic plan's payment for the signed-in buyer's workspace. A
@@ -241,8 +281,11 @@ export async function startCheckoutPayment(
      * refused (never silently charged ₹999 instead).
      */
     adminTestPrice?: unknown;
+    /** Batch 82: /199 (the ₹199 paid trial); /999 when left out. */
+    page?: CheckoutPage;
   },
 ): Promise<StartPayResult> {
+  const page = input.page ?? PAGE_999;
   let adminTest = false;
   if (input.adminTestPrice !== undefined && input.adminTestPrice !== null) {
     const { isSuperAdmin } = await import("@/lib/whatsapp-api.server");
@@ -280,6 +323,24 @@ export async function startCheckoutPayment(
       unknown
     > | null
   )?.["key"];
+  // Batch 82: one ₹199 per workspace and per WhatsApp number — checked here,
+  // before any order exists; a used offer makes no order (no ₹999 instead).
+  let introCheck: IntroCheck | null = null;
+  // A Super Admin's ₹1 live test (verified above) is a test, not the offer.
+  if (page.source === LANDING_199_SOURCE && !adminTest) {
+    introCheck = await introCheck199(supabase, { organizationId, phone: input.phone });
+    if (introCheck !== "eligible") {
+      console.log(
+        JSON.stringify({
+          scope: "checkout_199",
+          stage: "offer_used",
+          intro_check: introCheck,
+          organization_id: organizationId,
+        }),
+      );
+      return { ok: false, status: 409, code: "offer_used", error: OFFER_USED_MESSAGE };
+    }
+  }
   if (o["plan_status"] === "active" && planKey === BASIC_PLAN_KEY) {
     return {
       ok: false,
@@ -294,7 +355,7 @@ export async function startCheckoutPayment(
       .from("demo_leads")
       .update({ linked_user_id: input.userId, organization_id: organizationId })
       .eq("id", input.leadId)
-      .eq("source", LANDING_999_SOURCE)
+      .eq("source", page.source)
       .is("linked_user_id", null);
   }
 
@@ -305,10 +366,11 @@ export async function startCheckoutPayment(
     planKey: BASIC_PLAN_KEY,
     billingWhatsapp: input.phone,
     landing: {
-      source: LANDING_999_SOURCE,
-      returnPath: "/999",
+      source: page.source,
+      returnPath: page.path,
       ...(adminTest ? { adminTestPrice: 1 as const } : {}),
       metaTestCode,
+      ...(introCheck ? { introCheck } : {}),
     },
   });
   if ("error" in started) return { ok: false, status: 400, error: started.error };
@@ -319,7 +381,7 @@ export async function startCheckoutPayment(
       .from("demo_leads")
       .update({ checkout_at: new Date().toISOString(), payment_id: started.payment_id })
       .eq("id", input.leadId)
-      .eq("source", LANDING_999_SOURCE)
+      .eq("source", page.source)
       .then(
         () => null,
         () => null,
@@ -333,7 +395,7 @@ export async function startCheckoutPayment(
     const { metaEventId, safeParams } = await import("@/lib/meta-events");
     const eventId = metaEventId("AddPaymentInfo", started.payment_id);
     const params = safeParams({
-      value: adminTest ? 1 : 999,
+      value: adminTest ? 1 : page.value,
       currency: "INR",
       content_name: "basic",
     });
@@ -370,7 +432,12 @@ export function checkoutAbandoned(
   lead: { source: string; checkout_at?: string | null; paid_at?: string | null },
   now: number = Date.now(),
 ): boolean {
-  if (lead.source !== LANDING_999_SOURCE || !lead.checkout_at || lead.paid_at) return false;
+  if (
+    (lead.source !== LANDING_999_SOURCE && lead.source !== LANDING_199_SOURCE) ||
+    !lead.checkout_at ||
+    lead.paid_at
+  )
+    return false;
   return Date.parse(lead.checkout_at) <= now - ABANDONED_AFTER_MS;
 }
 
@@ -418,6 +485,7 @@ export type AccountResult =
 export async function createOrRecallAccount(
   supabase: SupabaseClient,
   input: { leadId: string | null; phone: string; name: string; email: string },
+  page: CheckoutPage = PAGE_999,
 ): Promise<AccountResult> {
   if (!input.leadId) {
     return { ok: false, status: 409, error: "Please start again from the checkout." };
@@ -436,7 +504,7 @@ export async function createOrRecallAccount(
     .eq("id", input.leadId)
     .maybeSingle();
   const l = lead as { phone?: string; source?: string } | null;
-  if (!l || l.source !== LANDING_999_SOURCE || l.phone !== typed.phone) {
+  if (!l || l.source !== page.source || l.phone !== typed.phone) {
     return { ok: false, status: 409, error: "Please start again from the checkout." };
   }
 
@@ -445,7 +513,10 @@ export async function createOrRecallAccount(
   const recall = async (accountEmail: string): Promise<AccountResult> => {
     const { error } = await auth.signInWithOtp({
       email: accountEmail,
-      options: { shouldCreateUser: false, emailRedirectTo: `${APP_PUBLIC_URL}/999?resume=1` },
+      options: {
+        shouldCreateUser: false,
+        emailRedirectTo: `${APP_PUBLIC_URL}${page.path}?resume=1`,
+      },
     });
     if (error) {
       console.log(
@@ -468,7 +539,7 @@ export async function createOrRecallAccount(
     email,
     password: randomPassword(),
     email_confirm: true,
-    user_metadata: { full_name: name, phone: typed.phone, signup_source: "landing_999" },
+    user_metadata: { full_name: name, phone: typed.phone, signup_source: page.source },
   });
   if (made.error || !made.data.user) {
     const message = made.error?.message ?? "";
@@ -484,4 +555,85 @@ export async function createOrRecallAccount(
     return recall(email);
   }
   return { ok: true, status: "created", token_hash: tokenHash, user_id: made.data.user.id };
+}
+
+/* ------------------------------------------- Batch 82: one ₹199 offer --- */
+
+export type IntroCheck = "eligible" | "org_paid" | "phone_paid";
+
+/** "+919812345670" → both ways numbers are stored ("+91…" and "91…"). */
+function phoneVariants(phone: string): string[] {
+  const digits = phone.replace(/\D/g, "");
+  return digits ? [`+${digits}`, digits] : [];
+}
+
+/**
+ * Batch 82: may this workspace / number still have the ₹199 offer? Checked on
+ * the server at order creation (and on the lead step, by number alone).
+ *  - "org_paid": the workspace has any paid payment;
+ *  - "phone_paid": the number (Batch 78 rules → E.164, matched with or
+ *    without "+") is on a paid lead (demo_leads.paid_at, any page), or is the
+ *    owner's phone (profiles.phone) or the billing WhatsApp
+ *    (billing_accounts.billing_whatsapp) of a workspace with a paid plan fee.
+ * A failed read answers "eligible" only when nothing was found — the checks
+ * that did run still refuse.
+ */
+export async function introCheck199(
+  supabase: SupabaseClient,
+  input: { organizationId: string | null; phone: string },
+): Promise<IntroCheck> {
+  if (input.organizationId) {
+    const { data } = await supabase
+      .from("payments")
+      .select("id")
+      .eq("organization_id", input.organizationId)
+      .eq("status", "paid")
+      .limit(1);
+    if (((data ?? []) as unknown[]).length > 0) return "org_paid";
+  }
+  const typed = checkRealNumber(input.phone);
+  const variants = phoneVariants(typed.ok ? typed.phone : input.phone);
+  if (variants.length === 0) return "eligible";
+
+  const { data: leads } = await supabase
+    .from("demo_leads")
+    .select("id")
+    .in("phone", variants)
+    .not("paid_at", "is", null)
+    .limit(1);
+  if (((leads ?? []) as unknown[]).length > 0) return "phone_paid";
+
+  const orgIds = new Set<string>();
+  const { data: people } = await supabase.from("profiles").select("id").in("phone", variants);
+  const userIds = ((people ?? []) as Array<{ id: string }>).map((p) => p.id);
+  if (userIds.length > 0) {
+    const { data: owned } = await supabase
+      .from("organization_members")
+      .select("organization_id")
+      .in("user_id", userIds)
+      .eq("role", "owner");
+    for (const m of (owned ?? []) as Array<{ organization_id: string }>)
+      orgIds.add(m.organization_id);
+  }
+  const { data: accounts } = await supabase
+    .from("billing_accounts")
+    .select("id")
+    .in("billing_whatsapp", variants);
+  const accountIds = ((accounts ?? []) as Array<{ id: string }>).map((a) => a.id);
+  if (accountIds.length > 0) {
+    const { data: billed } = await supabase
+      .from("organizations")
+      .select("id")
+      .in("billing_account_id", accountIds);
+    for (const o of (billed ?? []) as Array<{ id: string }>) orgIds.add(o.id);
+  }
+  if (orgIds.size === 0) return "eligible";
+  const { data: paid } = await supabase
+    .from("payments")
+    .select("id")
+    .in("organization_id", [...orgIds])
+    .eq("purpose", "plan_fee")
+    .eq("status", "paid")
+    .limit(1);
+  return ((paid ?? []) as unknown[]).length > 0 ? "phone_paid" : "eligible";
 }

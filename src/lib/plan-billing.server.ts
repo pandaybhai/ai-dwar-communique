@@ -106,6 +106,14 @@ export async function runPlanBilling(supabase: SupabaseClient): Promise<Counts> 
       continue;
     }
 
+    // Batch 82: a /199 paid trial never renews by itself — our team calls and
+    // the buyer chooses a plan. While the latest paid plan fee is that offer,
+    // no ₹999 invoice or payment link goes out.
+    if (await onPaidTrial(supabase, organizationId)) {
+      counts.skipped += 1;
+      continue;
+    }
+
     // On auto-pay? The mandate charge and its invoice come from the webhook.
     const { data: mandate } = await supabase
       .from("subscriptions")
@@ -534,4 +542,26 @@ async function sweepTrials(supabase: SupabaseClient, now: Date, counts: Counts):
     });
     counts.trials_locked += 1;
   }
+}
+
+/**
+ * Batch 82: is the workspace's latest paid plan fee the /199 paid trial
+ * (raw.offer "paid_trial_199")? A failed read answers true: no invoice is
+ * better than an unwanted ₹999 one, and the next billing day asks again.
+ */
+export async function onPaidTrial(
+  supabase: SupabaseClient,
+  organizationId: string,
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("payments")
+    .select("raw, paid_at")
+    .eq("organization_id", organizationId)
+    .eq("purpose", "plan_fee")
+    .eq("status", "paid")
+    .order("paid_at", { ascending: false })
+    .limit(1);
+  if (error) return true;
+  const latest = ((data ?? []) as Array<{ raw?: Record<string, unknown> | null }>)[0];
+  return (latest?.raw ?? {})["offer"] === "paid_trial_199";
 }

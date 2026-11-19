@@ -22,6 +22,7 @@ import { EmptyState, ErrorState, PageHeader } from "@/components/empty-state";
 import { TableSkeleton } from "@/components/data-pagination";
 import { TopupsDrawer, type TopupTask } from "@/components/admin/topups-drawer";
 import { NotDeliveredBadge } from "@/components/admin/not-delivered-badge";
+import { RenewalsTab } from "@/components/admin/renewals-tab";
 import { AiRunsDialog } from "@/components/admin/ai-runs-dialog";
 import { InvoicesTab } from "@/components/admin/invoices-tab";
 import { GstTab } from "@/components/admin/gst-tab";
@@ -634,7 +635,12 @@ function AdminBilling() {
           <TabsTrigger value="invoices">Invoices</TabsTrigger>
           <TabsTrigger value="reconcile">Reconcile</TabsTrigger>
           <TabsTrigger value="gst">GST</TabsTrigger>
+          <TabsTrigger value="renewals">Renewals due</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="renewals" className="mt-4">
+          <RenewalsTab />
+        </TabsContent>
 
         <TabsContent value="gst" className="mt-4">
           <GstTab />

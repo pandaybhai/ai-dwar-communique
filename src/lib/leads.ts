@@ -142,6 +142,12 @@ export type LeadRow = {
 
 /** Batch 80: the ₹999 Basic page's checkout leads. */
 export const LANDING_999_LEAD_SOURCE = "landing_999";
+/** Batch 82: the ₹199 paid-trial page's checkout leads. */
+export const LANDING_199_LEAD_SOURCE = "landing_199";
+/** Batch 82: a lead from one of the paid checkout pages (/999, /199). */
+export function isCheckoutLead(source: string): boolean {
+  return source === LANDING_999_LEAD_SOURCE || source === LANDING_199_LEAD_SOURCE;
+}
 // Batch 81: 10 minutes, the same wait as the team's WhatsApp alert.
 const ABANDONED_AFTER_MS = 10 * 60_000;
 
@@ -153,7 +159,7 @@ export function isCheckoutAbandoned(
   lead: Pick<LeadRow, "source" | "checkout_at" | "paid_at">,
   now: number = Date.now(),
 ): boolean {
-  if (lead.source !== LANDING_999_LEAD_SOURCE || !lead.checkout_at || lead.paid_at) return false;
+  if (!isCheckoutLead(lead.source) || !lead.checkout_at || lead.paid_at) return false;
   return Date.parse(lead.checkout_at) <= now - ABANDONED_AFTER_MS;
 }
 
@@ -162,8 +168,9 @@ export const LEAD_SOURCE_FILTERS = [
   { value: "all", label: "Any" },
   { value: "landing_start", label: "/start" },
   { value: "landing_999", label: "/999" },
+  { value: "landing_199", label: "/199" },
   { value: "landing", label: "Demo form" },
-  { value: "abandoned", label: "/999 · reached payment, didn't pay" },
+  { value: "abandoned", label: "/999 or /199 · reached payment, didn't pay" },
 ] as const;
 export type LeadSourceFilter = (typeof LEAD_SOURCE_FILTERS)[number]["value"];
 

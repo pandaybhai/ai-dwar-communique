@@ -1473,3 +1473,122 @@ describe("Batch 80b: a /999 payment's Purchase reaches Meta once, whichever path
     expect(purchases()).toHaveLength(0);
   });
 });
+
+// -------------------------------------- Batch 82: /199 paid trial settles
+
+describe("Batch 82: a /199 payment settles as Basic for 30 days, once", () => {
+  const PLATFORM = "00000000-0000-4000-8000-00000000aaaa";
+  const payment199 = (id = PAY, o: Row = {}): Row => ({
+    id,
+    organization_id: ORG,
+    provider: "cashfree",
+    purpose: "plan_fee",
+    status: "pending",
+    amount: 199,
+    currency: "INR",
+    credit_pack_id: null,
+    coupon_id: null,
+    created_at: new Date().toISOString(),
+    raw: {
+      kind: "plan_purchase",
+      plan_key: "basic",
+      plan_name: "Basic",
+      plan_version_id: "pv-basic",
+      cycle: "monthly",
+      gst_rate: 0,
+      gst_amount: 0,
+      gross_amount: 199,
+      source: "landing_199",
+      offer: "paid_trial_199",
+      list_price: 999,
+      intro_check: "eligible",
+      cashfree: { env: "sandbox", order_id: id, payment_session_id: `session_${id}` },
+    },
+    ...o,
+  });
+
+  function setup(extra: Record<string, Row[]> = {}, periodEndsAt: string | null = null) {
+    vi.stubEnv("META_CAPI_TOKEN", "TEST-not-a-real-token");
+    vi.stubEnv("PLATFORM_ORG_ID", PLATFORM);
+    vi.stubEnv("META_CAPI_TEST_CODE", "");
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const db = world({
+      organizations: [
+        {
+          id: ORG,
+          name: "Asha Jewellers",
+          billing_account_id: "ba-1",
+          plan_status: "trial",
+          plan_version_id: null,
+          plan_period_ends_at: periodEndsAt,
+        },
+      ],
+      payments: [payment199()],
+      platform_settings: [{ id: true, gst_registered: false }],
+      activity_log: [],
+      meta_capi_log: [],
+      demo_leads: [],
+      organization_billing_settings: [],
+      ...extra,
+    });
+    Object.assign(db.supabase as object, {
+      auth: {
+        admin: {
+          getUserById: async (id: string) => ({
+            data: { user: { id, email: "asha@zoori.test", created_at: "2026-11-15T00:00:00Z" } },
+          }),
+        },
+      },
+    });
+    // The real activation (not the stand-in other tests use).
+    h.activate = null;
+    const cf = fakeCashfree();
+    const cashfree = globalThis.fetch;
+    const graph: Row[] = [];
+    vi.stubGlobal("fetch", async (input: string | URL, init: RequestInit = {}) => {
+      if (String(input).includes("graph.facebook.com")) {
+        graph.push(JSON.parse(String(init.body ?? "{}")) as Row);
+        return new Response(JSON.stringify({ events_received: 1, fbtrace_id: "T1" }));
+      }
+      return cashfree(input, init);
+    });
+    const purchases = () =>
+      graph.flatMap((b) => (b["data"] as Row[]).filter((e) => e["event_name"] === "Purchase"));
+    const org = () => db.rows("organizations").find((o) => o["id"] === ORG)!;
+    return { db, cf, purchases, org };
+  }
+  const DAY = 864e5;
+
+  it("paid webhook → Basic active, access to paid + 30 days, Purchase 199 once; a replay changes nothing", async () => {
+    const { db, purchases, org } = setup();
+    const before = Date.now();
+    expect((await deliver(successWebhook(PAY, 199))).status).toBe(200);
+    expect(paymentRow(db)).toMatchObject({ status: "paid", amount: 199 });
+    expect(org()).toMatchObject({ plan_version_id: "pv-basic", plan_status: "active" });
+    const end = Date.parse(String(org()["plan_period_ends_at"]));
+    expect(end).toBeGreaterThanOrEqual(before + 30 * DAY);
+    expect(end).toBeLessThanOrEqual(Date.now() + 30 * DAY);
+    await vi.waitFor(() => expect(purchases()).toHaveLength(1));
+    expect(purchases()[0]).toMatchObject({
+      event_id: `Purchase.${PAY}`,
+      custom_data: { value: 199, currency: "INR", content_name: "basic" },
+    });
+
+    // The same webhook again, and the return page: no second 30 days, no second Purchase.
+    const first = org()["plan_period_ends_at"];
+    expect((await deliver(successWebhook(PAY, 199))).status).toBe(200);
+    expect(org()["plan_period_ends_at"]).toBe(first);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(purchases()).toHaveLength(1);
+  });
+
+  it("a second plan payment while the period is running extends from its end, not from today", async () => {
+    const running = new Date(Date.now() + 12 * DAY).toISOString();
+    const SECOND = "77777777-7777-4777-8777-777777777777";
+    const { org } = setup({ payments: [payment199(SECOND, { amount: 199 })] }, running);
+    expect((await deliver(successWebhook(SECOND, 199))).status).toBe(200);
+    expect(org()["plan_period_ends_at"]).toBe(
+      new Date(Date.parse(running) + 30 * DAY).toISOString(),
+    );
+  });
+});

@@ -17,7 +17,7 @@
 -- query_to_xml only when to_regclass('cron.job') finds it, so the query
 -- still runs where pg_cron is absent (every cron job is then listed).
 --
--- Expected objects: table 99, column 1179, view 2, function 126, index 178, trigger 72, cron_job 14.
+-- Expected objects: table 99, column 1180, view 2, function 126, index 179, trigger 72, cron_job 14.
 WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, introduced_in_file) AS (
   VALUES
     ('table', 'aidwar_private', 'mcp_db_proof', NULL, NULL, NULL, '20261300_batch56_mcp_hardening.sql'),
@@ -1000,6 +1000,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('column', 'public', 'organizations', 'aiden_workspace_unlocked_at', NULL, 'timestamp with time zone', '20261270_batch53_aiden_workspace.sql'),
     ('column', 'public', 'organizations', 'api_cc_numbers', NULL, 'text[]', '20261330_batch61.sql'),
     ('column', 'public', 'organizations', 'default_country_code', NULL, 'text', '20261360_batch66.sql'),
+    ('column', 'public', 'organizations', 'plan_period_ends_at', NULL, 'timestamp with time zone', '20261450_batch82.sql'),
     ('column', 'public', 'pending_owner_replies', 'notify', NULL, 'text', '20260918_silent_gaps.sql'),
     ('column', 'public', 'pending_owner_replies', 'reminded_at', NULL, 'timestamp with time zone', '20260908_teaching_guards.sql'),
     ('column', 'public', 'pending_owner_replies', 'selected_at', NULL, 'timestamp with time zone', '20260908_pending_owner_reply_selection.sql'),
@@ -1558,6 +1559,7 @@ WITH expected (kind, schema_name, object_name, sub_name, arg_types, detail, intr
     ('index', 'public', 'orders_org_contact_idx', NULL, NULL, 'on public.orders', '20260821_shopify_integration.sql'),
     ('index', 'public', 'orders_org_number_idx', NULL, NULL, 'on public.orders', '20260821_shopify_integration.sql'),
     ('index', 'public', 'orders_org_placed_idx', NULL, NULL, 'on public.orders', '20260821_shopify_integration.sql'),
+    ('index', 'public', 'organizations_plan_period_ends_at_idx', NULL, NULL, 'on public.organizations', '20261450_batch82.sql'),
     ('index', 'public', 'payments_cashfree_payment_once', NULL, NULL, 'unique on public.payments', '20261100_batch31_cashfree.sql'),
     ('index', 'public', 'payments_cashfree_pending_idx', NULL, NULL, 'on public.payments', '20261100_batch31_cashfree.sql'),
     ('index', 'public', 'plan_fee_invoice_period_uidx', NULL, NULL, 'unique on public.invoices', '20261026_plan_fee_invoice_unique.sql'),

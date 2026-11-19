@@ -426,9 +426,12 @@ describe("the /999 lead", () => {
   it("the alert says 'Website /999' and the lead mirror takes /999 leads", () => {
     const alerts = readFileSync("src/lib/lead-alerts.server.ts", "utf8");
     expect(alerts).toContain('? "Website /999"');
-    expect(alerts).toContain('.in("source", ["landing_start", "landing", "landing_999"])');
+    // Batch 82: /199's checkout leads are alerted and mirrored the same way.
+    expect(alerts).toContain(
+      '.in("source", ["landing_start", "landing", "landing_999", "landing_199"])',
+    );
     expect(readFileSync("src/lib/lead-mirror.server.ts", "utf8")).toContain(
-      'const MIRROR_SOURCES = ["landing_start", "landing", "landing_999"] as const;',
+      'const MIRROR_SOURCES = ["landing_start", "landing", "landing_999", "landing_199"] as const;',
     );
   });
 });
