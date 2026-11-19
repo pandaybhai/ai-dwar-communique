@@ -745,6 +745,20 @@ async function creditOnce(
   }
 }
 
+/** Batch 82: a settled plan fee extends the workspace's access period. */
+async function planPeriodSettled(
+  supabase: SupabaseClient,
+  organizationId: string,
+  paymentId: string,
+): Promise<void> {
+  try {
+    const { extendPlanPeriod } = await import("@/lib/plan-period.server");
+    await extendPlanPeriod(supabase, { organizationId, paymentId });
+  } catch {
+    // access dates never touch money
+  }
+}
+
 /**
  * Batch 70: a settled plan fee (Subscribe) or credit pack (Purchase) to Meta's
  * Conversions API. Runs after the payment is marked paid and can never throw,
@@ -925,6 +939,10 @@ export async function settlePayment(
       await markPaidNow();
       // Batch 70: Subscribe to Meta (once per payment; never throws or blocks).
       await metaSettled(supabase, payment.id as string);
+      // Batch 82: 30 more days of access (never throws). Once per payment:
+      // settlePayment returns early for a payment already paid, and its claim
+      // keeps two deliveries out — a replayed webhook never gets here again.
+      await planPeriodSettled(supabase, organizationId, payment.id as string);
       try {
         const { invoiceForPayment } = await import("@/lib/invoices.server");
         const result = await invoiceForPayment(supabase, payment.id as string);
@@ -963,6 +981,8 @@ export async function settlePayment(
       await markPaidNow();
       // Batch 70: Subscribe to Meta (once per payment; never throws or blocks).
       await metaSettled(supabase, payment.id as string);
+      // Batch 82: 30 more days of access (once per payment, as above; never throws).
+      await planPeriodSettled(supabase, organizationId, payment.id as string);
       return { credited: false };
     }
 

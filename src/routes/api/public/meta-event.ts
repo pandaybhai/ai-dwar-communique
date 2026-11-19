@@ -54,7 +54,11 @@ export const Route = createFileRoute("/api/public/meta-event")({
         // from /999), whatever the cookie choice — the browser pixel stays
         // Accept-only and carries the same id. Every other page's ViewContent
         // keeps the consent rule below.
-        const landing999 = body["landing"] === "999";
+        // Batch 82: /199 (the ₹199 paid trial) follows the same rule, from /199.
+        const landing =
+          body["landing"] === "999" ? "/999" : body["landing"] === "199" ? "/199" : null;
+        const landing999 = landing !== null;
+        const landingValue = landing === "/199" ? 199 : 999;
 
         // Batch 80: the /999 checkout sheet opened — InitiateCheckout (our own
         // page, the pixel's id).
@@ -67,11 +71,16 @@ export const Route = createFileRoute("/api/public/meta-event")({
           )
             return ok();
           const url = ownUrl(body["url"]);
-          if (!url || new URL(url).pathname.replace(/\/+$/, "") !== "/999") return ok();
+          const page = landing ?? "/999";
+          if (!url || new URL(url).pathname.replace(/\/+$/, "") !== page) return ok();
           await capi.queueMetaEvent(supabase, {
             event,
             eventId: id,
-            params: meta.safeParams({ content_name: "basic", value: 999, currency: "INR" }),
+            params: meta.safeParams({
+              content_name: "basic",
+              value: landingValue,
+              currency: "INR",
+            }),
             sourceUrl: url,
             request,
           });
@@ -85,7 +94,7 @@ export const Route = createFileRoute("/api/public/meta-event")({
             landing999 &&
             (() => {
               const u = ownUrl(body["url"]);
-              return Boolean(u && new URL(u).pathname.replace(/\/+$/, "") === "/999");
+              return Boolean(u && new URL(u).pathname.replace(/\/+$/, "") === landing);
             })();
           if (
             (body["consent"] !== true && !is999View) ||
@@ -121,8 +130,8 @@ export const Route = createFileRoute("/api/public/meta-event")({
             fbc,
             once: true,
           });
-          // Batch 80: an account made in the /999 checkout is never a Lead.
-          if (body["source"] === "landing_999") return ok();
+          // Batch 80 / 82: an account made in the /999 or /199 checkout is never a Lead.
+          if (body["source"] === "landing_999" || body["source"] === "landing_199") return ok();
           // Batch 72: sign-ups count as a Lead too — the same id as the
           // person's /start or /demo Lead (their number), so Meta counts once.
           await capi.queueMetaEvent(supabase, {

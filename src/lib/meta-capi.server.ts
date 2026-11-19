@@ -596,7 +596,11 @@ export async function paymentConversion(
   // Batch 80: a /999 purchase is the page's Purchase — the price paid (net
   // of any GST), id "Purchase." + payment id, the same the browser fires.
   const raw = (payment["raw"] ?? {}) as Record<string, unknown>;
-  if (purpose === "plan_fee" && raw["source"] === "landing_999") {
+  // Batch 82: the /199 paid trial is a Purchase too (value = the ₹199 paid).
+  if (
+    purpose === "plan_fee" &&
+    (raw["source"] === "landing_999" || raw["source"] === "landing_199")
+  ) {
     return {
       event: "Purchase",
       eventId: metaEventId("Purchase", paymentId),

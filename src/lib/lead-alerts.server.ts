@@ -136,7 +136,9 @@ export function leadAnswers(lead: {
           ? "/demo"
           : lead.source === "landing_999"
             ? "/999"
-            : lead.source,
+            : lead.source === "landing_199"
+              ? "/199"
+              : lead.source,
   };
 }
 
@@ -160,7 +162,9 @@ export function alertSourceLabel(source: string): string {
       ? "Demo form"
       : source === "landing_999"
         ? "Website /999"
-        : source;
+        : source === "landing_199"
+          ? "Website /199"
+          : source;
 }
 
 /** {{1}} name, {{2}} number, {{3}} sells, {{4}} customers, {{5}} source — "—" when unanswered. */
@@ -203,7 +207,7 @@ export function leadSettled(
  * the ones who stopped at payment within minutes.
  */
 function checkoutNote(lead: LeadRow): string {
-  if (lead.source !== "landing_999") return "";
+  if (!isCheckoutSource(lead.source)) return "";
   if (lead.paid_at) return " · paid ✓";
   if (lead.checkout_at) return " · reached payment, didn't pay";
   return " · left before payment";
@@ -212,8 +216,13 @@ function checkoutNote(lead: LeadRow): string {
 /** Batch 81: a /999 lead is alerted once paid, or 10 minutes after it reached (or never reached) payment. */
 export const CHECKOUT_ALERT_WAIT_MS = 10 * 60 * 1000;
 
+/** Batch 82: /199 checkout leads are told and timed like /999's. */
+function isCheckoutSource(source: string): boolean {
+  return source === "landing_999" || source === "landing_199";
+}
+
 function readyToAlert(lead: LeadRow, now: number): boolean {
-  if (lead.source === "landing_999") {
+  if (isCheckoutSource(lead.source)) {
     if (lead.paid_at) return true;
     const since = Date.parse(lead.checkout_at ?? lead.created_at);
     return since <= now - CHECKOUT_ALERT_WAIT_MS;
@@ -265,7 +274,7 @@ export async function runLeadAlerts(
     // query still works before it (a named missing column would fail it).
     .select("*")
     // Batch 80: /999 checkout leads alert like /start's.
-    .in("source", ["landing_start", "landing", "landing_999"])
+    .in("source", ["landing_start", "landing", "landing_999", "landing_199"])
     .eq("is_test", false)
     .is("alerted_at", null)
     .gte("created_at", new Date(now - ALERT_WITHIN_MS).toISOString())

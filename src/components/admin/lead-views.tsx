@@ -2,7 +2,8 @@ import { cn } from "@/lib/utils";
 import {
   BUSINESS_TYPES,
   ENQUIRY_BANDS,
-  LANDING_999_LEAD_SOURCE,
+  LANDING_199_LEAD_SOURCE,
+  isCheckoutLead,
   LEAD_STATUSES,
   NO_ANSWER,
   PRIMARY_NEEDS,
@@ -79,14 +80,16 @@ export function VerifiedBadge({ verified }: { verified: boolean }) {
  * not paid after 30 minutes: call them) or still in checkout.
  */
 export function CheckoutBadge({ lead }: { lead: LeadRow }) {
-  if (lead.source !== LANDING_999_LEAD_SOURCE) return null;
+  // Batch 82: /199 checkout leads read the same way, with their own page.
+  if (!isCheckoutLead(lead.source)) return null;
+  const page = lead.source === LANDING_199_LEAD_SOURCE ? "/199" : "/999";
   if (lead.paid_at) {
     return (
       <span
         className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-800"
         data-testid="paid-999-badge"
       >
-        /999 · Paid ✓
+        {page} · Paid ✓
       </span>
     );
   }
@@ -96,13 +99,13 @@ export function CheckoutBadge({ lead }: { lead: LeadRow }) {
         className="ml-2 rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-800"
         data-testid="abandoned-badge"
       >
-        /999 · Reached payment, didn't pay
+        {page} · Reached payment, didn't pay
       </span>
     );
   }
   return (
     <span className="ml-2 rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-800">
-      From /999
+      From {page}
     </span>
   );
 }
@@ -216,9 +219,9 @@ export function LeadSummary({ lead }: { lead: LeadRow }) {
 
       <dl className="mt-5 grid grid-cols-2 gap-3 text-sm">
         <Detail label="Business name" value={lead.business_name?.trim() || NO_ANSWER} />
-        {lead.source === LANDING_999_LEAD_SOURCE ? (
+        {isCheckoutLead(lead.source) ? (
           <Detail
-            label="₹999 checkout"
+            label={lead.source === LANDING_199_LEAD_SOURCE ? "₹199 checkout" : "₹999 checkout"}
             value={
               lead.paid_at
                 ? `Paid ✓ ${leadTime(lead.paid_at)}`

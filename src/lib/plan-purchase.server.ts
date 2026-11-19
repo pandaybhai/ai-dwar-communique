@@ -2,6 +2,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { APP_PUBLIC_URL } from "@/lib/app-url";
 import { round2 } from "@/lib/billing";
 
+/** Batch 82: the /199 page's one-time paid trial — 30 days of Basic for ₹199. */
+export const OFFER_199_PRICE = 199;
+export const PAID_TRIAL_OFFER = "paid_trial_199";
+
 /**
  * Self-serve plan purchase for trial and locked workspaces, paid through the
  * workspace's gateway (Cashfree checkout with the cashfree_billing flag on,
@@ -246,7 +250,8 @@ export async function startPlanPurchase(
      * raw.source and Cashfree brings a redirected buyer back to returnPath.
      */
     landing?: {
-      source: "landing_999";
+      /** Batch 82: "landing_199" is the ₹199 paid trial (OFFER_199_PRICE, decided here). */
+      source: "landing_999" | "landing_199";
       returnPath: string;
       /**
        * Batch 80b: a Super Admin's ₹1 live test (checked by the caller,
@@ -255,6 +260,8 @@ export async function startPlanPurchase(
       adminTestPrice?: 1;
       /** Batch 80b: the buyer's Meta Test Events code, kept for the Purchase. */
       metaTestCode?: string | null;
+      /** Batch 82: the /199 offer check's answer (introCheck199), kept in raw. */
+      introCheck?: "eligible" | "org_paid" | "phone_paid";
     };
   },
 ): Promise<
@@ -342,7 +349,11 @@ export async function startPlanPurchase(
 
   // Batch 80b: an admin's ₹1 live test charges ₹1, nothing else.
   const adminTest = input.landing?.adminTestPrice === 1;
-  const base = adminTest ? 1 : round2(plan.price_monthly);
+  // Batch 82: the /199 page's paid trial is ₹199 — set here, on the server,
+  // from the page's source (never an amount from the browser). The plan's own
+  // price_monthly is untouched.
+  const paidTrial = input.landing?.source === "landing_199";
+  const base = adminTest ? 1 : paidTrial ? OFFER_199_PRICE : round2(plan.price_monthly);
   // Batch 55: GST only while the platform is GST-registered.
   const { priceNow } = await import("@/lib/gst-mode.server");
   const priced = await priceNow(supabase, base);
@@ -378,6 +389,13 @@ export async function startPlanPurchase(
     gst_amount: gst,
     gross_amount: total,
     ...(input.landing ? { source: input.landing.source } : {}),
+    ...(paidTrial
+      ? {
+          offer: PAID_TRIAL_OFFER,
+          list_price: round2(plan.price_monthly),
+          intro_check: input.landing?.introCheck ?? "eligible",
+        }
+      : {}),
     ...(adminTest ? { admin_test: true } : {}),
     ...(input.landing?.metaTestCode ? { meta_test_code: input.landing.metaTestCode } : {}),
   };
@@ -417,7 +435,7 @@ export async function startPlanPurchase(
       gross: total,
       currency: "INR",
       customer,
-      note: `${adminTest ? "ADMIN TEST — " : ""}AiDwar ${plan.name} plan, first month${inclGst}`,
+      note: `${adminTest ? "ADMIN TEST — " : ""}AiDwar ${plan.name} plan, ${paidTrial ? "30 days (₹199 offer)" : "first month"}${inclGst}`,
       returnUrl: input.landing
         ? `${APP_PUBLIC_URL}${input.landing.returnPath}?payment=${payment.id}`
         : `${APP_PUBLIC_URL}/app/billing?payment=${payment.id}`,
@@ -526,7 +544,7 @@ export async function activatePlanFromPayment(
     },
   });
 
-  if (payment.raw["source"] === "landing_999") {
+  if (payment.raw["source"] === "landing_999" || payment.raw["source"] === "landing_199") {
     await markPaidVia999(supabase, payment);
   }
   await startFullSiteRead(supabase, payment.organization_id);
@@ -542,7 +560,7 @@ export async function activatePlanFromPayment(
  */
 async function markPaidVia999(
   supabase: SupabaseClient,
-  payment: { id: string; organization_id: string },
+  payment: { id: string; organization_id: string; raw: Record<string, unknown> },
 ): Promise<void> {
   const at = new Date().toISOString();
   try {
@@ -568,7 +586,14 @@ async function markPaidVia999(
     await supabase.from("organization_billing_settings").upsert(
       {
         organization_id: payment.organization_id,
-        limits_override: { ...current, _paid_via: { source: "/999", payment_id: payment.id, at } },
+        limits_override: {
+          ...current,
+          _paid_via: {
+            source: payment.raw["source"] === "landing_199" ? "/199" : "/999",
+            payment_id: payment.id,
+            at,
+          },
+        },
       },
       { onConflict: "organization_id" },
     );

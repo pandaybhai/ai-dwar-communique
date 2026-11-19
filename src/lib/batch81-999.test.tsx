@@ -401,7 +401,8 @@ describe("₹999 is the hero", () => {
   it("/999 paints from its own inlined CSS; the app sheet loads without blocking — only there", async () => {
     const { LEAN_CSS_ROUTES, LEAN_CSS_ID, leanCssLoader, ensureAppCss } =
       await import("./lean-css");
-    expect([...LEAN_CSS_ROUTES]).toEqual(["/999"]);
+    // Batch 82: /199 (a copy of /999) paints from its own inlined CSS too.
+    expect([...LEAN_CSS_ROUTES]).toEqual(["/999", "/199"]);
 
     // The root: preload + loader on a lean route, the blocking link everywhere else.
     const root = readFileSync("src/routes/__root.tsx", "utf8");
@@ -503,8 +504,9 @@ describe("the team hears about checkouts that stopped at payment", () => {
     expect(leadSettled(paid as never, now)).toBe(true);
     expect(alertVariables(paid as never)["5"]).toBe("Website /999 · paid ✓");
     const { LEAD_SOURCE_FILTERS } = await import("./leads");
+    // Batch 82: the filter covers /199's checkout leads too.
     expect(LEAD_SOURCE_FILTERS.find((f) => f.value === "abandoned")!.label).toBe(
-      "/999 · reached payment, didn't pay",
+      "/999 or /199 · reached payment, didn't pay",
     );
   });
 });

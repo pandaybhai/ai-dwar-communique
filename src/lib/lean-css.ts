@@ -4,7 +4,7 @@
  * and this attaches it as a stylesheet nobody else manages, so it stays when
  * the router swaps head tags on a client-side navigation.
  */
-export const LEAN_CSS_ROUTES: ReadonlySet<string> = new Set(["/999"]);
+export const LEAN_CSS_ROUTES: ReadonlySet<string> = new Set(["/999", "/199"]);
 
 export const LEAN_CSS_ID = "aidwar-app-css";
 

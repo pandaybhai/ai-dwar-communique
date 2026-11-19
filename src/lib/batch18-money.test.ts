@@ -441,7 +441,13 @@ describe("(3) a paid plan fee lifts dunning, or the payment isn't marked paid", 
         log.push("dunning_cleared");
         return { data: null, error: o.restoreError ? { message: "timeout" } : null };
       }
-      if (op.table === "organizations" && op.kind === "update") log.push("plan_active");
+      // Batch 82: a paid plan fee also extends the access period (its own step).
+      if (op.table === "organizations" && op.kind === "update")
+        log.push(
+          "plan_period_ends_at" in (op.payload as Record<string, unknown>)
+            ? "plan_period"
+            : "plan_active",
+        );
       return undefined;
     });
     return { ...db, log };
@@ -476,6 +482,8 @@ describe("(3) a paid plan fee lifts dunning, or the payment isn't marked paid", 
       "dunning_cleared",
       "plan_active",
       "payment_paid",
+      // Batch 82: 30 more days of access, after the payment is marked paid.
+      "plan_period",
     ]);
     const invoiceUpdate = retry.ops.find((o) => o.table === "invoices" && o.kind === "update")!;
     // Nothing banked twice, and the invoice keeps the payment it was paid by.

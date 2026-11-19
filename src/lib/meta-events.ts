@@ -163,6 +163,8 @@ const PUBLIC_EXACT = new Set([
   "/start",
   // Batch 80: the ₹999 Basic landing page.
   "/999",
+  // Batch 82: the ₹199 paid-trial landing page.
+  "/199",
 ]);
 
 /**
@@ -192,6 +194,7 @@ export function viewContentName(pathname: string): string | null {
   if (path === "/developers" || path.startsWith("/developers/")) return "Developers";
   if (path === "/demo") return "Demo";
   if (path === "/999") return "999_page";
+  if (path === "/199") return "199_page";
   return null;
 }
 

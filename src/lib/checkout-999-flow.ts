@@ -39,6 +39,8 @@ export type CheckoutOutcome =
   | { kind: "already"; firstName: string }
   | { kind: "field"; field: keyof CheckoutValues; error: string }
   | { kind: "existing"; sentTo: string | null }
+  /** Batch 82 (/199 only): this number or workspace had its ₹199 — no order was made. */
+  | { kind: "offer_used"; message: string }
   | { kind: "failed"; message: string; paymentId: string | null }
   | { kind: "error"; message: string };
 
@@ -50,9 +52,13 @@ export type AccountAnswer =
   | { status: "error"; error: string; field?: string };
 
 export type CheckoutDeps = {
-  saveLead: (
-    body: Record<string, unknown>,
-  ) => Promise<{ ok: boolean; error?: string | undefined; field?: string | undefined }>;
+  saveLead: (body: Record<string, unknown>) => Promise<{
+    ok: boolean;
+    error?: string | undefined;
+    field?: string | undefined;
+    /** Batch 82: "offer_used" from the /199 server. */
+    code?: string | undefined;
+  }>;
   session: () => Promise<{ userId: string; token: string } | null>;
   /** Batch 81: the server makes the account (or emails an existing one a log-in link). */
   account: (input: { phone: string; name: string; email: string }) => Promise<AccountAnswer>;
@@ -113,8 +119,18 @@ export async function runCheckout(
 
   // 1. the lead
   report("saving");
-  const lead = await deps.saveLead({ phone: values.phone, name: values.name, action: "lead" });
+  const lead = await deps.saveLead({
+    phone: values.phone,
+    name: values.name,
+    action: "lead",
+    // Batch 82: /199's early offer check stands aside for the ₹1 admin test
+    // (the pay step still checks Super Admin on the server).
+    ...(opts.adminTestPrice === 1 ? { admin_test_price: 1 } : {}),
+  });
   if (!lead.ok) {
+    if (lead.code === "offer_used") {
+      return { kind: "offer_used", message: lead.error ?? "This offer was already used." };
+    }
     const field = lead.field as keyof CheckoutValues | undefined;
     if (field && field in values)
       return { kind: "field", field, error: lead.error ?? "Check this" };
@@ -158,6 +174,9 @@ export async function runCheckout(
       ...admin,
       action: "pay",
     });
+  }
+  if (started.status === 409 && started.body.code === "offer_used") {
+    return { kind: "offer_used", message: started.body.error ?? "This offer was already used." };
   }
   if (started.status === 409 && started.body.code === "already_on_plan") {
     return { kind: "already", firstName: firstName(values.name) };

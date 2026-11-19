@@ -55,6 +55,12 @@ export const Route = createFileRoute("/api/admin/billing")({
           const core = await import("@/lib/billing.server");
 
           switch (action) {
+            // Batch 82: workspaces with an access period, soonest end first
+            // (owner's first name and the phone's last 4 digits only).
+            case "renewals": {
+              const { listRenewals } = await import("@/lib/renewals.server");
+              return Response.json({ rows: await listRenewals(supabase) });
+            }
             case "overview": {
               const data = await admin.adminOverview(supabase, actorId, {
                 month: (payload["month"] as string) || null,

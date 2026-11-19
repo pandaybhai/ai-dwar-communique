@@ -320,11 +320,11 @@ export function relayToServer(body: Record<string, unknown>): void {
 export function trackRegistration(
   userId: string,
   phone: string | null = null,
-  /** Batch 80: "landing_999" — an account made in the /999 checkout: no Lead. */
-  source: "landing_999" | null = null,
+  /** Batch 80 / 82: an account made in the /999 or /199 checkout: no Lead. */
+  source: "landing_999" | "landing_199" | null = null,
 ): void {
   track("CompleteRegistration", metaEventId("CompleteRegistration", userId), {}, { once: true });
-  if (source !== "landing_999") {
+  if (source !== "landing_999" && source !== "landing_199") {
     void leadEventId(phone, userId)
       .then((id) =>
         track("Lead", id, { content_name: "signup", lead_source: "signup" }, { once: true }),
@@ -424,7 +424,12 @@ export function pageChanged(pathname: string): void {
   }
 }
 
-const is999 = (pathname: string) => (pathname.replace(/\/+$/, "") || "/") === "/999";
+/** Batch 82: the paid checkout pages (/999, /199) — their page events go server side always. */
+const checkoutPageOf = (pathname: string): "999" | "199" | null => {
+  const path = pathname.replace(/\/+$/, "") || "/";
+  return path === "/999" ? "999" : path === "/199" ? "199" : null;
+};
+const is999 = (pathname: string) => checkoutPageOf(pathname) !== null;
 
 /** Batch 81: the current /999 page view (its ViewContent id, shared by server and pixel). */
 let view999: { id: string } | null = null;
@@ -435,13 +440,13 @@ let view999: { id: string } | null = null;
  * AddPaymentInfo and Purchase; the browser pixel only ever with consent.
  * Same event id on both, so Meta counts one. Never awaited by the page.
  */
-function serverCopy999(body: Record<string, unknown>): void {
+function serverCopy999(body: Record<string, unknown>, landing: "999" | "199" = "999"): void {
   try {
     if (debugMode()) return;
     void fetch("/api/public/meta-event", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ ...body, landing: "999", url: window.location.href.split("#")[0] }),
+      body: JSON.stringify({ ...body, landing, url: window.location.href.split("#")[0] }),
       keepalive: true,
     }).catch(() => undefined);
   } catch {
@@ -451,10 +456,11 @@ function serverCopy999(body: Record<string, unknown>): void {
 
 /** Batch 81: /999 was shown (one id per page view): its server copy, whatever the cookie choice. */
 export function view999Shown(pathname: string): void {
-  if (pixelZone(pathname) !== "public" || !is999(pathname)) return;
+  const page = checkoutPageOf(pathname);
+  if (pixelZone(pathname) !== "public" || !page) return;
   const id = randomEventId("ViewContent");
   view999 = { id };
-  serverCopy999({ event: "ViewContent", event_id: id, content_name: "999_page" });
+  serverCopy999({ event: "ViewContent", event_id: id, content_name: `${page}_page` }, page);
 }
 
 /**
@@ -466,6 +472,13 @@ export function trackInitiateCheckout999(): void {
   const id = randomEventId("InitiateCheckout");
   track("InitiateCheckout", id, { content_name: "basic", value: 999, currency: "INR" });
   serverCopy999({ event: "InitiateCheckout", event_id: id });
+}
+
+/** Batch 82: the /199 checkout sheet opened — InitiateCheckout (value 199), the same rule as /999. */
+export function trackInitiateCheckout199(): void {
+  const id = randomEventId("InitiateCheckout");
+  track("InitiateCheckout", id, { content_name: "basic", value: 199, currency: "INR" });
+  serverCopy999({ event: "InitiateCheckout", event_id: id }, "199");
 }
 
 /**

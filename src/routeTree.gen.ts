@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as R199RouteImport } from './routes/199'
 import { Route as R999RouteImport } from './routes/999'
 import { Route as AdminRouteRouteImport } from './routes/admin/route'
 import { Route as AiAssistantsRouteImport } from './routes/ai-assistants'
@@ -98,6 +99,7 @@ import { Route as ApiAdminSuperAdminsRouteImport } from './routes/api/admin/supe
 import { Route as ApiAiEmployeeRouteImport } from './routes/api/ai/employee'
 import { Route as ApiAiKnowledgeRouteImport } from './routes/api/ai/knowledge'
 import { Route as ApiAiToolsRouteImport } from './routes/api/ai/tools'
+import { Route as ApiAppAccessPeriodRouteImport } from './routes/api/app/access-period'
 import { Route as ApiBillingInvoicesRouteImport } from './routes/api/billing/invoices'
 import { Route as ApiBillingLedgerRouteImport } from './routes/api/billing/ledger'
 import { Route as ApiBillingPlanRouteImport } from './routes/api/billing/plan'
@@ -147,6 +149,7 @@ import { Route as ApiOnboardingJourneyRouteImport } from './routes/api/onboardin
 import { Route as ApiOnboardingStartRouteImport } from './routes/api/onboarding/start'
 import { Route as ApiPublicCashfreePayRouteImport } from './routes/api/public/cashfree-pay'
 import { Route as ApiPublicCashfreeWebhookRouteImport } from './routes/api/public/cashfree-webhook'
+import { Route as ApiPublicCheckout199RouteImport } from './routes/api/public/checkout-199'
 import { Route as ApiPublicCheckout999RouteImport } from './routes/api/public/checkout-999'
 import { Route as ApiPublicDemoLeadsRouteImport } from './routes/api/public/demo-leads'
 import { Route as ApiPublicGoogleOauthCallbackRouteImport } from './routes/api/public/google-oauth-callback'
@@ -223,6 +226,11 @@ import { Route as ApiV1ContactsPhoneTagsTagRouteImport } from './routes/api/v1/c
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const R199Route = R199RouteImport.update({
+  id: '/199',
+  path: '/199',
   getParentRoute: () => rootRouteImport,
 } as any)
 const R999Route = R999RouteImport.update({
@@ -671,6 +679,11 @@ const ApiAiToolsRoute = ApiAiToolsRouteImport.update({
   path: '/api/ai/tools',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAppAccessPeriodRoute = ApiAppAccessPeriodRouteImport.update({
+  id: '/api/app/access-period',
+  path: '/api/app/access-period',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiBillingInvoicesRoute = ApiBillingInvoicesRouteImport.update({
   id: '/api/billing/invoices',
   path: '/api/billing/invoices',
@@ -928,6 +941,11 @@ const ApiPublicCashfreeWebhookRoute =
     path: '/api/public/cashfree-webhook',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicCheckout199Route = ApiPublicCheckout199RouteImport.update({
+  id: '/api/public/checkout-199',
+  path: '/api/public/checkout-199',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicCheckout999Route = ApiPublicCheckout999RouteImport.update({
   id: '/api/public/checkout-999',
   path: '/api/public/checkout-999',
@@ -1320,6 +1338,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteRouteWithChildren
   '/app': typeof AppRouteRouteWithChildren
+  '/199': typeof R199Route
   '/999': typeof R999Route
   '/ai-assistants': typeof AiAssistantsRoute
   '/cancellation-policy': typeof CancellationPolicyRoute
@@ -1406,6 +1425,7 @@ export interface FileRoutesByFullPath {
   '/api/ai/employee': typeof ApiAiEmployeeRoute
   '/api/ai/knowledge': typeof ApiAiKnowledgeRoute
   '/api/ai/tools': typeof ApiAiToolsRoute
+  '/api/app/access-period': typeof ApiAppAccessPeriodRoute
   '/api/billing/invoices': typeof ApiBillingInvoicesRoute
   '/api/billing/ledger': typeof ApiBillingLedgerRoute
   '/api/billing/plan': typeof ApiBillingPlanRoute
@@ -1455,6 +1475,7 @@ export interface FileRoutesByFullPath {
   '/api/onboarding/start': typeof ApiOnboardingStartRoute
   '/api/public/cashfree-pay': typeof ApiPublicCashfreePayRoute
   '/api/public/cashfree-webhook': typeof ApiPublicCashfreeWebhookRoute
+  '/api/public/checkout-199': typeof ApiPublicCheckout199Route
   '/api/public/checkout-999': typeof ApiPublicCheckout999Route
   '/api/public/demo-leads': typeof ApiPublicDemoLeadsRoute
   '/api/public/google-oauth-callback': typeof ApiPublicGoogleOauthCallbackRoute
@@ -1530,6 +1551,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/199': typeof R199Route
   '/999': typeof R999Route
   '/ai-assistants': typeof AiAssistantsRoute
   '/cancellation-policy': typeof CancellationPolicyRoute
@@ -1615,6 +1637,7 @@ export interface FileRoutesByTo {
   '/api/ai/employee': typeof ApiAiEmployeeRoute
   '/api/ai/knowledge': typeof ApiAiKnowledgeRoute
   '/api/ai/tools': typeof ApiAiToolsRoute
+  '/api/app/access-period': typeof ApiAppAccessPeriodRoute
   '/api/billing/invoices': typeof ApiBillingInvoicesRoute
   '/api/billing/ledger': typeof ApiBillingLedgerRoute
   '/api/billing/plan': typeof ApiBillingPlanRoute
@@ -1664,6 +1687,7 @@ export interface FileRoutesByTo {
   '/api/onboarding/start': typeof ApiOnboardingStartRoute
   '/api/public/cashfree-pay': typeof ApiPublicCashfreePayRoute
   '/api/public/cashfree-webhook': typeof ApiPublicCashfreeWebhookRoute
+  '/api/public/checkout-199': typeof ApiPublicCheckout199Route
   '/api/public/checkout-999': typeof ApiPublicCheckout999Route
   '/api/public/demo-leads': typeof ApiPublicDemoLeadsRoute
   '/api/public/google-oauth-callback': typeof ApiPublicGoogleOauthCallbackRoute
@@ -1742,6 +1766,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteRouteWithChildren
   '/app': typeof AppRouteRouteWithChildren
+  '/199': typeof R199Route
   '/999': typeof R999Route
   '/ai-assistants': typeof AiAssistantsRoute
   '/cancellation-policy': typeof CancellationPolicyRoute
@@ -1828,6 +1853,7 @@ export interface FileRoutesById {
   '/api/ai/employee': typeof ApiAiEmployeeRoute
   '/api/ai/knowledge': typeof ApiAiKnowledgeRoute
   '/api/ai/tools': typeof ApiAiToolsRoute
+  '/api/app/access-period': typeof ApiAppAccessPeriodRoute
   '/api/billing/invoices': typeof ApiBillingInvoicesRoute
   '/api/billing/ledger': typeof ApiBillingLedgerRoute
   '/api/billing/plan': typeof ApiBillingPlanRoute
@@ -1877,6 +1903,7 @@ export interface FileRoutesById {
   '/api/onboarding/start': typeof ApiOnboardingStartRoute
   '/api/public/cashfree-pay': typeof ApiPublicCashfreePayRoute
   '/api/public/cashfree-webhook': typeof ApiPublicCashfreeWebhookRoute
+  '/api/public/checkout-199': typeof ApiPublicCheckout199Route
   '/api/public/checkout-999': typeof ApiPublicCheckout999Route
   '/api/public/demo-leads': typeof ApiPublicDemoLeadsRoute
   '/api/public/google-oauth-callback': typeof ApiPublicGoogleOauthCallbackRoute
@@ -1956,6 +1983,7 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/app'
+    | '/199'
     | '/999'
     | '/ai-assistants'
     | '/cancellation-policy'
@@ -2042,6 +2070,7 @@ export interface FileRouteTypes {
     | '/api/ai/employee'
     | '/api/ai/knowledge'
     | '/api/ai/tools'
+    | '/api/app/access-period'
     | '/api/billing/invoices'
     | '/api/billing/ledger'
     | '/api/billing/plan'
@@ -2091,6 +2120,7 @@ export interface FileRouteTypes {
     | '/api/onboarding/start'
     | '/api/public/cashfree-pay'
     | '/api/public/cashfree-webhook'
+    | '/api/public/checkout-199'
     | '/api/public/checkout-999'
     | '/api/public/demo-leads'
     | '/api/public/google-oauth-callback'
@@ -2166,6 +2196,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/199'
     | '/999'
     | '/ai-assistants'
     | '/cancellation-policy'
@@ -2251,6 +2282,7 @@ export interface FileRouteTypes {
     | '/api/ai/employee'
     | '/api/ai/knowledge'
     | '/api/ai/tools'
+    | '/api/app/access-period'
     | '/api/billing/invoices'
     | '/api/billing/ledger'
     | '/api/billing/plan'
@@ -2300,6 +2332,7 @@ export interface FileRouteTypes {
     | '/api/onboarding/start'
     | '/api/public/cashfree-pay'
     | '/api/public/cashfree-webhook'
+    | '/api/public/checkout-199'
     | '/api/public/checkout-999'
     | '/api/public/demo-leads'
     | '/api/public/google-oauth-callback'
@@ -2377,6 +2410,7 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/app'
+    | '/199'
     | '/999'
     | '/ai-assistants'
     | '/cancellation-policy'
@@ -2463,6 +2497,7 @@ export interface FileRouteTypes {
     | '/api/ai/employee'
     | '/api/ai/knowledge'
     | '/api/ai/tools'
+    | '/api/app/access-period'
     | '/api/billing/invoices'
     | '/api/billing/ledger'
     | '/api/billing/plan'
@@ -2512,6 +2547,7 @@ export interface FileRouteTypes {
     | '/api/onboarding/start'
     | '/api/public/cashfree-pay'
     | '/api/public/cashfree-webhook'
+    | '/api/public/checkout-199'
     | '/api/public/checkout-999'
     | '/api/public/demo-leads'
     | '/api/public/google-oauth-callback'
@@ -2590,6 +2626,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRouteRoute: typeof AdminRouteRouteWithChildren
   AppRouteRoute: typeof AppRouteRouteWithChildren
+  R199Route: typeof R199Route
   R999Route: typeof R999Route
   AiAssistantsRoute: typeof AiAssistantsRoute
   CancellationPolicyRoute: typeof CancellationPolicyRoute
@@ -2636,6 +2673,7 @@ export interface RootRouteChildren {
   ApiAiEmployeeRoute: typeof ApiAiEmployeeRoute
   ApiAiKnowledgeRoute: typeof ApiAiKnowledgeRoute
   ApiAiToolsRoute: typeof ApiAiToolsRoute
+  ApiAppAccessPeriodRoute: typeof ApiAppAccessPeriodRoute
   ApiBillingInvoicesRoute: typeof ApiBillingInvoicesRoute
   ApiBillingLedgerRoute: typeof ApiBillingLedgerRoute
   ApiBillingPlanRoute: typeof ApiBillingPlanRoute
@@ -2685,6 +2723,7 @@ export interface RootRouteChildren {
   ApiOnboardingStartRoute: typeof ApiOnboardingStartRoute
   ApiPublicCashfreePayRoute: typeof ApiPublicCashfreePayRoute
   ApiPublicCashfreeWebhookRoute: typeof ApiPublicCashfreeWebhookRoute
+  ApiPublicCheckout199Route: typeof ApiPublicCheckout199Route
   ApiPublicCheckout999Route: typeof ApiPublicCheckout999Route
   ApiPublicDemoLeadsRoute: typeof ApiPublicDemoLeadsRoute
   ApiPublicGoogleOauthCallbackRoute: typeof ApiPublicGoogleOauthCallbackRoute
@@ -2750,6 +2789,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/199': {
+      id: '/199'
+      path: '/199'
+      fullPath: '/199'
+      preLoaderRoute: typeof R199RouteImport
       parentRoute: typeof rootRouteImport
     }
     '/999': {
@@ -3368,6 +3414,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAiToolsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/app/access-period': {
+      id: '/api/app/access-period'
+      path: '/api/app/access-period'
+      fullPath: '/api/app/access-period'
+      preLoaderRoute: typeof ApiAppAccessPeriodRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/billing/invoices': {
       id: '/api/billing/invoices'
       path: '/api/billing/invoices'
@@ -3709,6 +3762,13 @@ declare module '@tanstack/react-router' {
       path: '/api/public/cashfree-webhook'
       fullPath: '/api/public/cashfree-webhook'
       preLoaderRoute: typeof ApiPublicCashfreeWebhookRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/checkout-199': {
+      id: '/api/public/checkout-199'
+      path: '/api/public/checkout-199'
+      fullPath: '/api/public/checkout-199'
+      preLoaderRoute: typeof ApiPublicCheckout199RouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/checkout-999': {
@@ -4419,6 +4479,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRouteRoute: AdminRouteRouteWithChildren,
   AppRouteRoute: AppRouteRouteWithChildren,
+  R199Route: R199Route,
   R999Route: R999Route,
   AiAssistantsRoute: AiAssistantsRoute,
   CancellationPolicyRoute: CancellationPolicyRoute,
@@ -4466,6 +4527,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAiEmployeeRoute: ApiAiEmployeeRoute,
   ApiAiKnowledgeRoute: ApiAiKnowledgeRoute,
   ApiAiToolsRoute: ApiAiToolsRoute,
+  ApiAppAccessPeriodRoute: ApiAppAccessPeriodRoute,
   ApiBillingInvoicesRoute: ApiBillingInvoicesRoute,
   ApiBillingLedgerRoute: ApiBillingLedgerRoute,
   ApiBillingPlanRoute: ApiBillingPlanRoute,
@@ -4515,6 +4577,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiOnboardingStartRoute: ApiOnboardingStartRoute,
   ApiPublicCashfreePayRoute: ApiPublicCashfreePayRoute,
   ApiPublicCashfreeWebhookRoute: ApiPublicCashfreeWebhookRoute,
+  ApiPublicCheckout199Route: ApiPublicCheckout199Route,
   ApiPublicCheckout999Route: ApiPublicCheckout999Route,
   ApiPublicDemoLeadsRoute: ApiPublicDemoLeadsRoute,
   ApiPublicGoogleOauthCallbackRoute: ApiPublicGoogleOauthCallbackRoute,
