@@ -1,3 +1,8 @@
+-- The cron secret that was written here in plain text has been removed (it is
+-- rotated; see docs/cron-secret-rotation.md): the job reads it from the Vault
+-- (vault.decrypted_secrets, name 'aidwar_cron_secret'), as every live job does
+-- (20261053_cron_jobs.sql). Already applied — editing this file re-runs nothing.
+
 DROP EXTENSION IF EXISTS pg_net;
 CREATE SCHEMA IF NOT EXISTS extensions;
 CREATE EXTENSION pg_net WITH SCHEMA extensions;
@@ -11,7 +16,10 @@ SELECT cron.schedule(
   $$
   SELECT extensions.http_post(
     url := 'https://project--51455eca-09ce-4838-a463-2f6ecd0c72cd.lovable.app/api/internal/campaign-worker',
-    headers := '{"Content-Type": "application/json", "x-cron-secret": "d044b3bd41a41878cc639875a4181554751916c5b7f4332f"}'::jsonb,
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'aidwar_cron_secret')
+    ),
     body := '{}'::jsonb
   );
   $$
